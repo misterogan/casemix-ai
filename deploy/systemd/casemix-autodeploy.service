@@ -1,0 +1,9 @@
+[Unit]
+Description=Casemix AI - cek dan pasang pembaruan dari Git
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=__APP_DIR__ APP_USER=__APP_USER__ BRANCH=__BRANCH__
+ExecStart=/bin/bash __APP_DIR__/deploy/deploy.sh --auto

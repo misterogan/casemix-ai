@@ -1,0 +1,10 @@
+[Unit]
+Description=Casemix AI - cek pembaruan setiap 5 menit
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Casemix AI - worker antrean (pemeriksaan AI dan impor FTP)
+After=network-online.target mysql.service redis-server.service
+Wants=network-online.target
+Requires=redis-server.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=__APP_DIR__
+# --max-time: worker keluar tiap jam lalu dinyalakan ulang systemd agar memori tetap bersih
+ExecStart=/usr/bin/php __APP_DIR__/artisan queue:work redis --queue=ai,default --timeout=1800 --tries=1 --sleep=3 --max-time=3600
+Restart=always
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=1850
+
+[Install]
+WantedBy=multi-user.target

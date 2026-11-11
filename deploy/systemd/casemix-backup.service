@@ -1,0 +1,10 @@
+[Unit]
+Description=Casemix AI - backup database dan berkas klaim
+After=mysql.service
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=__APP_DIR__
+ExecStart=/bin/bash __APP_DIR__/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,2 @@
+# Skrip dan konfigurasi server harus berakhiran baris LF meskipun di-commit dari Windows.
+* text eol=lf
