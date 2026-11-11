@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Casemix AI — persiapan server (sekali jalan) untuk Ubuntu 24.04 LTS
+# Casemix AI — persiapan server (sekali jalan)
+# Didukung: Ubuntu 22.04 / 24.04 dan turunannya (Linux Mint 21.x / 22.x).
 #
 # Syarat: kode sudah di-clone ke $APP_DIR oleh user $APP_USER (lihat panduan).
 # Jalankan:  cd /var/www/casemix-ai && sudo SERVER_NAME=192.168.x.x bash deploy/setup-server.sh
 # Aman dijalankan ulang: langkah yang sudah selesai tidak diulang secara merusak.
 # =============================================================================
 set -Eeuo pipefail
+export COMPOSER_ALLOW_SUPERUSER=1   # cegah Composer bertanya saat dicek sebagai root
 
 APP_DIR="${APP_DIR:-/var/www/casemix-ai}"
 APP_USER="${APP_USER:-casemix}"
@@ -25,7 +27,12 @@ die()  { echo -e "\033[1;31mXX  $*\033[0m"; exit 1; }
 [[ -f "$APP_DIR/artisan" ]] || die "Kode aplikasi belum ada di $APP_DIR. Clone repositori dulu (lihat panduan)."
 id "$APP_USER" >/dev/null 2>&1 || die "User $APP_USER belum dibuat (lihat panduan)."
 . /etc/os-release
-[[ "${VERSION_ID:-}" == "24.04" ]] || warn "Skrip ini disiapkan untuk Ubuntu 24.04. Server ini: ${PRETTY_NAME:-tidak diketahui}."
+# Linux Mint menyimpan basis Ubuntu-nya di UBUNTU_CODENAME (Mint 21 = jammy, Mint 22 = noble)
+BASE="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+case "$BASE" in
+  jammy|noble) echo "Sistem: ${PRETTY_NAME} (basis Ubuntu $BASE)" ;;
+  *) die "Basis Ubuntu tidak didukung: ${PRETTY_NAME:-?} ($BASE). Yang didukung: Ubuntu 22.04/24.04, Linux Mint 21/22." ;;
+esac
 
 # Port 80 dipakai aplikasi lain (mis. Apache)? Hentikan agar tidak merusak layanan yang sudah ada.
 if ss -ltnp 'sport = :80' 2>/dev/null | grep -q LISTEN && ! ss -ltnp 'sport = :80' | grep -q nginx; then
@@ -36,16 +43,45 @@ fi
 # -----------------------------------------------------------------------------
 step "1/9 Memasang paket sistem"
 apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common ca-certificates curl gnupg unzip git
+
+# PHP 8.3 tidak ada di repositori bawaan Ubuntu 22.04 / Mint 21 -> pakai PPA ondrej/php
+if ! apt-cache policy "php$PHP_VER-fpm" 2>/dev/null | grep -q 'Candidate: [0-9]'; then
+  step "Menambahkan PPA ondrej/php untuk PHP $PHP_VER"
+  add-apt-repository -y ppa:ondrej/php || die "Gagal menambah PPA ondrej/php. Kirim pesan galat di atas."
+  apt-get update
+fi
+
+REDIS_PKG="php$PHP_VER-redis"
+apt-cache show "$REDIS_PKG" >/dev/null 2>&1 || REDIS_PKG="php-redis"
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  nginx mysql-server redis-server git unzip curl ca-certificates poppler-utils composer \
+  nginx mysql-server redis-server poppler-utils \
   php$PHP_VER-fpm php$PHP_VER-cli php$PHP_VER-common php$PHP_VER-mysql php$PHP_VER-mbstring \
-  php$PHP_VER-xml php$PHP_VER-curl php$PHP_VER-zip php$PHP_VER-intl php$PHP_VER-bcmath php-redis
+  php$PHP_VER-xml php$PHP_VER-curl php$PHP_VER-zip php$PHP_VER-intl php$PHP_VER-bcmath "$REDIS_PKG"
+
+# Pastikan perintah "php" menunjuk ke PHP 8.3 walau ada versi PHP lain terpasang
+update-alternatives --set php "/usr/bin/php$PHP_VER" 2>/dev/null || true
+php -v | head -1
+
+# Composer resmi (versi di repositori Ubuntu 22.04 terlalu lama)
+if ! /usr/local/bin/composer --version >/dev/null 2>&1; then
+  step "Memasang Composer"
+  EXPECTED="$(curl -fsSL https://composer.github.io/installer.sig)"
+  curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
+  ACTUAL="$(php -r "echo hash_file('sha384', '/tmp/composer-setup.php');")"
+  [[ "$EXPECTED" == "$ACTUAL" ]] || die "Tanda tangan installer Composer tidak cocok."
+  php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer --quiet
+  rm -f /tmp/composer-setup.php
+fi
+/usr/local/bin/composer --version
 
 if ! command -v node >/dev/null || (( $(node -v | tr -d v | cut -d. -f1) < 20 )); then
   step "Memasang Node.js 22 LTS (untuk build tampilan)"
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
+node -v
 
 for ext in ftp redis intl pdo_mysql zip mbstring fileinfo; do
   php -m | grep -qix "$ext" || die "Ekstensi PHP '$ext' tidak aktif."
@@ -155,7 +191,7 @@ APP_DIR="$APP_DIR" APP_USER="$APP_USER" BRANCH="$BRANCH" bash "$APP_DIR/deploy/d
 USERS="$(mysql -N -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users" 2>/dev/null || echo 0)"
 if [[ "$USERS" == "0" ]]; then
   step "Membuat peran dan akun admin pertama"
-  runuser -u www-data -- php "$APP_DIR/artisan" db:seed --force
+  runuser -u www-data -- "/usr/bin/php$PHP_VER" "$APP_DIR/artisan" db:seed --force
 fi
 
 # -----------------------------------------------------------------------------
@@ -173,7 +209,7 @@ nginx -t
 step "8/9 Mendaftarkan layanan systemd (jalan otomatis saat boot dan saat mati)"
 for f in "$APP_DIR"/deploy/systemd/*.service "$APP_DIR"/deploy/systemd/*.timer; do
   sed -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__APP_USER__|$APP_USER|g" -e "s|__BRANCH__|$BRANCH|g" \
-    "$f" > "/etc/systemd/system/$(basename "$f")"
+      -e "s|__PHP_VER__|$PHP_VER|g" "$f" > "/etc/systemd/system/$(basename "$f")"
 done
 for svc in nginx php$PHP_VER-fpm; do
   mkdir -p "/etc/systemd/system/$svc.service.d"

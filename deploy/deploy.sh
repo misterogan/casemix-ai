@@ -28,7 +28,9 @@ flock -n 9 || { echo "Deploy lain sedang berjalan."; exit 0; }
 as_app() { runuser -u "$APP_USER" -- "$@"; }
 as_web() { runuser -u www-data -- "$@"; }
 log()    { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
-artisan() { as_web php "$APP_DIR/artisan" "$@"; }
+PHP_BIN="${PHP_BIN:-/usr/bin/php8.3}"
+COMPOSER="${COMPOSER:-/usr/local/bin/composer}"
+artisan() { as_web "$PHP_BIN" "$APP_DIR/artisan" "$@"; }
 
 cd "$APP_DIR"
 
@@ -60,7 +62,7 @@ artisan down --retry=30 >/dev/null 2>&1 || true
 
 as_app git reset --hard --quiet "origin/$BRANCH"
 
-as_app composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts --no-progress
+as_app "$PHP_BIN" "$COMPOSER" install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts --no-progress
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R o-rwx storage
 artisan package:discover --ansi >/dev/null

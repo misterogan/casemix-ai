@@ -9,7 +9,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=__APP_DIR__
 # --max-time: worker keluar tiap jam lalu dinyalakan ulang systemd agar memori tetap bersih
-ExecStart=/usr/bin/php __APP_DIR__/artisan queue:work redis --queue=ai,default --timeout=1800 --tries=1 --sleep=3 --max-time=3600
+ExecStart=/usr/bin/php__PHP_VER__ __APP_DIR__/artisan queue:work redis --queue=ai,default --timeout=1800 --tries=1 --sleep=3 --max-time=3600
 Restart=always
 RestartSec=5s
 KillSignal=SIGTERM
