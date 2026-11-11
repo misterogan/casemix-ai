@@ -1,18 +1,16 @@
+# -> /etc/systemd/system/casemix-queue.service (pola sama dengan antrol-queue.service)
 [Unit]
-Description=Casemix AI - worker antrean (pemeriksaan AI dan impor FTP)
-After=network-online.target mysql.service redis-server.service
-Wants=network-online.target
-Requires=redis-server.service
+Description=Casemix AI Laravel Queue (pemeriksaan AI dan impor FTP)
+After=network.target mysql.service
 
 [Service]
-User=www-data
+User=oem
 Group=www-data
-WorkingDirectory=__APP_DIR__
-# --max-time: worker keluar tiap jam lalu dinyalakan ulang systemd agar memori tetap bersih
-ExecStart=/usr/bin/php__PHP_VER__ __APP_DIR__/artisan queue:work redis --queue=ai,default --timeout=1800 --tries=1 --sleep=3 --max-time=3600
+UMask=0002
+WorkingDirectory=/var/www/casemix-ai
+ExecStart=/usr/bin/php8.4 -d memory_limit=512M artisan queue:work database --queue=ai,default --timeout=1800 --tries=1 --sleep=3 --max-time=3600
 Restart=always
 RestartSec=5s
-KillSignal=SIGTERM
 TimeoutStopSec=1850
 
 [Install]
