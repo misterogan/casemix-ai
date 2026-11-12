@@ -3,8 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\ImportBatch;
-use App\Services\Ai\AiManager;
-use App\Services\Import\DocumentClassifier;
 use App\Services\Import\SimrsFtp;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -12,7 +10,10 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
 
-/** Unduh file dari FTP SIMRS lalu pilah jenis dokumen dan identitas pasien tiap file dengan model cepat. */
+/**
+ * Unduh file dari FTP SIMRS ke penyimpanan aplikasi.
+ * Identitas dan jenis dokumen sudah ditebak dari nama folder/file saat impor dibuat; tidak memakai AI.
+ */
 class ProcessImportBatch implements ShouldQueue
 {
     use Queueable;
@@ -26,7 +27,7 @@ class ProcessImportBatch implements ShouldQueue
         $this->onQueue(config('casemix.ai.queue'));
     }
 
-    public function handle(SimrsFtp $ftp, DocumentClassifier $classifier, AiManager $ai): void
+    public function handle(SimrsFtp $ftp): void
     {
         $batch = ImportBatch::find($this->batchId);
         if (! $batch) {
@@ -35,14 +36,6 @@ class ProcessImportBatch implements ShouldQueue
         $batch->update(['status' => 'memilah']);
         $disk = Storage::disk(config('casemix.storage_disk'));
 
-        try {
-            $config = $ai->defaultConfig();
-        } catch (Throwable $e) {
-            $batch->update(['status' => 'gagal', 'error' => $e->getMessage()]);
-
-            return;
-        }
-
         foreach ($batch->items()->where('status', 'antre')->get() as $item) {
             try {
                 $ext = Str::lower(pathinfo($item->original_name, PATHINFO_EXTENSION));
@@ -50,16 +43,10 @@ class ProcessImportBatch implements ShouldQueue
                 $ftp->download($item->remote_path, $local);
 
                 $abs = $disk->path($local);
-                $mime = $disk->mimeType($local) ?: 'application/octet-stream';
-                $detected = $classifier->classify($abs, $mime, $item->original_name, $config);
-
                 $item->update([
                     'local_path' => $local,
-                    'mime' => $mime,
+                    'mime' => $disk->mimeType($local) ?: 'application/octet-stream',
                     'sha256' => hash_file('sha256', $abs),
-                    'detected_type' => $detected['jenis'],
-                    'detected' => $detected,
-                    'group_key' => DocumentClassifier::groupKey($detected),
                     'status' => 'dipilah',
                 ]);
             } catch (Throwable $e) {
@@ -68,6 +55,7 @@ class ProcessImportBatch implements ShouldQueue
             $batch->increment('processed');
         }
 
+        $ftp->client()->close();
         $batch->update(['status' => 'siap_ditinjau']);
     }
 }

@@ -10,7 +10,7 @@ class ImportBatch extends Model
 {
     public const STATUS_LABELS = [
         'antre' => 'Dalam antrean',
-        'memilah' => 'Memilah dokumen',
+        'memilah' => 'Mengunduh dokumen',
         'siap_ditinjau' => 'Siap ditinjau',
         'disimpan' => 'Disimpan',
         'gagal' => 'Gagal',

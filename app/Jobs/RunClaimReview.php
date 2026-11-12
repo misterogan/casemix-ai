@@ -43,9 +43,11 @@ class RunClaimReview implements ShouldQueue, ShouldBeUnique
         // started_at dipakai sebagai patokan "usang": perubahan setelah titik ini membuat hasil usang.
         $review->update(['status' => ReviewStatus::Berjalan, 'started_at' => now()]);
 
+        // Aturan E-Klaim dijalankan lebih dulu agar hasilnya tetap tersimpan bila AI gagal.
+        $ruleFindings = $rules->check($claim);
+
         try {
             $config = $ai->defaultConfig();
-            $ruleFindings = $rules->check($claim);
             $result = $reviewer->review($claim, $config, $ruleFindings);
 
             $review->update([
@@ -69,7 +71,7 @@ class RunClaimReview implements ShouldQueue, ShouldBeUnique
             // Temuan aturan tetap disimpan agar petugas tetap mendapat hasil sebagian.
             $review->update([
                 'status' => ReviewStatus::Gagal,
-                'rule_findings' => $ruleFindings ?? null,
+                'rule_findings' => $ruleFindings,
                 'error' => mb_substr($e->getMessage(), 0, 2000),
                 'duration_ms' => (int) ((microtime(true) - $start) * 1000),
                 'finished_at' => now(),

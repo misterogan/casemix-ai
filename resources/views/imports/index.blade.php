@@ -1,38 +1,89 @@
+@php
+    $statusInfo = [
+        'baru' => ['Baru', 'tone-ok'],
+        'tambahan' => ['Ada file baru', 'tone-warn'],
+        'sudah' => ['Sudah diimpor', 'tone-neutral'],
+        'kosong' => ['Tanpa dokumen', 'tone-neutral'],
+    ];
+    $siap = $folders->whereIn('status', ['baru', 'tambahan']);
+@endphp
 <x-app-layout title="Impor dari SIMRS">
     <x-page-header title="Impor dari FTP SIMRS"
-                   subtitle="AI memilah jenis dokumen dan identitas pasien tiap file, lalu Anda memeriksa pengelompokannya sebelum disimpan."/>
+                   subtitle="Satu folder pasien menjadi satu berkas. Identitas dibaca dari nama folder, jenis dokumen dari nama file."/>
 
-    <section class="panel mb-6">
-        <div class="panel-body flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <p class="text-sm text-tinta-2">Folder <span class="num font-semibold text-tinta">{{ $folder }}</span></p>
-                @if ($error)
-                    <p class="mt-1 text-sm text-kritis">{{ $error }}</p>
-                @else
-                    <p class="mt-1 text-2xl font-bold"><span class="num">{{ $pending->count() }}</span> <span class="text-base font-medium text-tinta-2">file baru belum diimpor</span></p>
-                    @if ($pending->count() > $max)
-                        <p class="text-xs text-tinta-3">Satu kali impor maksimal {{ $max }} file. Sisanya bisa diimpor berikutnya.</p>
-                    @endif
-                @endif
+    @if ($error)
+        <section class="panel panel-body mb-6 text-sm text-kritis">{{ $error }}</section>
+    @else
+        <form method="POST" action="{{ route('imports.store') }}" class="panel mb-6">
+            @csrf
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">Folder pasien di <span class="num">{{ $root }}</span></h2>
+                    <p class="text-xs text-tinta-3">
+                        {{ $folders->count() }} folder · {{ $siap->count() }} siap diimpor · maks. {{ $max }} file per impor, satu folder tidak dipecah
+                    </p>
+                </div>
+                <button type="submit" class="btn-primary" @disabled($siap->isEmpty())>Impor folder terpilih</button>
             </div>
-            <form method="POST" action="{{ route('imports.store') }}">
-                @csrf
-                <button type="submit" class="btn-primary" @disabled($error || $pending->isEmpty())>
-                    Impor {{ min($pending->count(), $max) ?: '' }} file
-                </button>
-            </form>
-        </div>
-        @if (! $error && $pending->isNotEmpty())
-            <details class="border-t border-garis">
-                <summary class="cursor-pointer px-5 py-2.5 text-sm text-tinta-2">Lihat daftar file</summary>
-                <ul class="max-h-64 overflow-y-auto px-5 pb-3 text-sm">
-                    @foreach ($pending->take(200) as $f)
-                        <li class="flex justify-between gap-3 py-0.5"><span class="truncate">{{ $f['name'] }}</span><span class="num text-tinta-3">{{ number_format($f['size'] / 1024, 0, ',', '.') }} KB</span></li>
-                    @endforeach
-                </ul>
-            </details>
-        @endif
-    </section>
+
+            @if ($folders->isEmpty())
+                <x-empty-state title="Belum ada folder pasien"
+                    text="Folder dengan pola NoRM_NAMA_NoSEP di {{ $root }} akan muncul di sini."/>
+            @else
+                <div class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th class="w-10">
+                                <input type="checkbox" data-check-all="folders" checked aria-label="Pilih semua" class="size-4 rounded border-garis-tua accent-giok">
+                            </th>
+                            <th>Pasien</th>
+                            <th>No. SEP</th>
+                            <th>Rawat</th>
+                            <th>Dokumen</th>
+                            <th>Status</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach ($folders as $f)
+                            @php [$label, $tone] = $statusInfo[$f['status']]; $bisa = in_array($f['status'], ['baru', 'tambahan'], true); @endphp
+                            <tr @class(['opacity-55' => ! $bisa])>
+                                <td>
+                                    <input type="checkbox" name="folders[]" value="{{ $f['path'] }}" @checked($bisa) @disabled(! $bisa)
+                                           class="size-4 rounded border-garis-tua accent-giok" aria-label="Pilih {{ $f['folder'] }}">
+                                </td>
+                                <td>
+                                    @if ($f['dikenali'])
+                                        <p class="font-semibold">{{ $f['nama'] }}</p>
+                                        <p class="num text-xs text-tinta-3">RM {{ $f['no_rm'] }}</p>
+                                    @else
+                                        <p class="font-semibold text-waspada">{{ $f['folder'] }}</p>
+                                        <p class="text-xs text-waspada">Nama folder tidak sesuai pola NoRM_NAMA_NoSEP</p>
+                                    @endif
+                                </td>
+                                <td class="num">{{ $f['no_sep'] ?: '—' }}</td>
+                                <td>{{ ['jalan' => 'Rawat jalan', 'inap' => 'Rawat inap'][$f['jenis_rawat']] ?? '—' }}</td>
+                                <td>
+                                    <span class="num">{{ count($f['new_files']) }}/{{ count($f['files']) }}</span>
+                                    <details class="mt-0.5">
+                                        <summary class="cursor-pointer text-xs text-giok">lihat</summary>
+                                        <ul class="mt-1 space-y-0.5 text-xs text-tinta-2">
+                                            @foreach ($f['files'] as $file)
+                                                @php $type = \App\Services\Import\DocumentGuesser::type($file['name']); @endphp
+                                                <li>{{ $file['name'] }} <span class="text-tinta-3">→ {{ $type->label() }}</span></li>
+                                            @endforeach
+                                        </ul>
+                                    </details>
+                                </td>
+                                <td><span class="badge {{ $tone }}">{{ $label }}</span></td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </form>
+    @endif
 
     <section class="panel">
         <div class="panel-head"><h2 class="panel-title">Riwayat impor</h2></div>

@@ -20,7 +20,7 @@
         </section>
     @else
         <p class="mb-4 max-w-[75ch] text-sm text-tinta-2">
-            File dikelompokkan per pasien berdasarkan No. SEP, lalu No. RM, lalu nama. Perbaiki jenis dokumen atau pindahkan file ke kelompok lain bila AI keliru.
+            Identitas pasien diambil dari nama folder FTP, jenis dokumen dari nama file. Periksa jenis dokumen yang belum tepat, misalnya file yang terbaca sebagai "Dokumen tambahan".
             Kelompok dengan SEP atau No. RM yang sudah ada akan ditambahkan ke berkas tersebut.
         </p>
 
@@ -50,9 +50,12 @@
                         <div>
                             <label class="label text-xs" for="g{{ $gi }}jr">Jenis rawat</label>
                             <select id="g{{ $gi }}jr" name="groups[{{ $key }}][jenis_rawat]" class="field py-1.5">
-                                @foreach (\App\Support\Eklaim::JENIS_RAWAT as $k => $l)<option value="{{ $k }}">{{ $l }}</option>@endforeach
+                                @foreach (\App\Support\Eklaim::JENIS_RAWAT as $k => $l)<option value="{{ $k }}" @selected($pick('jenis_rawat') === $k)>{{ $l }}</option>@endforeach
                             </select>
                         </div>
+                        @if ($pick('folder'))
+                            <p class="text-xs text-tinta-3 sm:col-span-2 lg:col-span-5">Folder FTP: <span class="num">{{ $pick('folder') }}</span></p>
+                        @endif
                         @if ($key === 'tidak-dikenal')
                             <p class="text-sm text-waspada sm:col-span-2 lg:col-span-5">Identitas pada file berikut tidak terbaca. Pindahkan ke kelompok pasien yang benar atau lewati.</p>
                         @endif

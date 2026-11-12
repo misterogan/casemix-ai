@@ -4,63 +4,110 @@ namespace App\Http\Controllers;
 
 use App\Enums\DocumentType;
 use App\Jobs\ProcessImportBatch;
-use App\Models\AiProvider;
 use App\Models\ImportBatch;
 use App\Models\ImportItem;
+use App\Services\Import\DocumentGuesser;
 use App\Services\Import\ImportCommitter;
 use App\Services\Import\SimrsFtp;
 use App\Support\Audit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
+/**
+ * Impor dari FTP SIMRS per folder pasien (pola NoRM_NAMA_NoSEP).
+ * Identitas diambil dari nama folder, jenis dokumen dari nama file. Tidak memakai AI.
+ */
 class ImportController extends Controller
 {
     public function index(SimrsFtp $ftp)
     {
-        $pending = collect();
+        $folders = collect();
         $error = null;
-        if ($ftp->configured()) {
+        if (! $ftp->configured()) {
+            $error = 'Koneksi FTP SIMRS belum diatur. Minta Admin mengisi SIMRS_FTP_* di .env.';
+        } else {
             try {
-                $pending = $this->newFiles($ftp);
+                $folders = $this->withStatus($ftp->listPatientFolders());
             } catch (\Throwable $e) {
                 $error = 'Tidak bisa membaca FTP SIMRS: ' . $e->getMessage();
             }
-        } else {
-            $error = 'Koneksi FTP SIMRS belum diatur. Minta Admin mengisi SIMRS_FTP_* di .env.';
         }
 
         return view('imports.index', [
-            'pending' => $pending,
+            'folders' => $folders,
             'error' => $error,
             'max' => config('casemix.ftp.max_files_per_import'),
-            'folder' => config('casemix.ftp.path'),
+            'root' => config('casemix.ftp.path'),
             'batches' => ImportBatch::with('creator')->withCount('items')->latest('id')->paginate(15),
         ]);
     }
 
     public function store(Request $request, SimrsFtp $ftp)
     {
-        if (! AiProvider::default()) {
-            return back()->with('warn', 'Belum ada penyedia AI yang aktif untuk memilah dokumen.');
+        $request->validate(['folders' => ['required', 'array', 'min:1'], 'folders.*' => ['string']],
+            ['folders.required' => 'Pilih minimal satu folder pasien.']);
+
+        $all = $this->withStatus($ftp->listPatientFolders())->keyBy('path');
+        $max = (int) config('casemix.ftp.max_files_per_import');
+        $picked = [];
+        $count = 0;
+
+        foreach ($request->folders as $path) {
+            $f = $all->get($path);
+            if (! $f || $f['new_files'] === []) {
+                continue;
+            }
+            $n = count($f['new_files']);
+            if ($count > 0 && $count + $n > $max) {
+                break; // satu folder tidak dipecah ke dua kali impor
+            }
+            $picked[] = $f;
+            $count += $n;
         }
-        $files = $this->newFiles($ftp)->take(config('casemix.ftp.max_files_per_import'));
-        if ($files->isEmpty()) {
-            return back()->with('warn', 'Tidak ada file baru di folder FTP.');
+
+        if ($picked === []) {
+            return back()->with('warn', 'Tidak ada file baru di folder yang dipilih.');
         }
 
         $batch = ImportBatch::create([
             'source' => 'ftp',
             'remote_dir' => config('casemix.ftp.path'),
-            'total' => $files->count(),
+            'total' => $count,
             'created_by' => $request->user()->id,
         ]);
-        foreach ($files as $f) {
-            $batch->items()->create(['remote_path' => $f['path'], 'remote_size' => $f['size'], 'original_name' => $f['name']]);
-        }
-        ProcessImportBatch::dispatch($batch->id);
-        Audit::log('impor.mulai', $batch, "Mengimpor {$files->count()} file dari FTP SIMRS");
 
-        return redirect()->route('imports.show', $batch);
+        foreach ($picked as $f) {
+            $groupKey = $f['no_sep'] ? 'sep:' . $f['no_sep']
+                : ($f['no_rm'] ? 'rm:' . ltrim($f['no_rm'], '0') : 'folder:' . md5($f['path']));
+            foreach ($f['new_files'] as $file) {
+                $batch->items()->create([
+                    'remote_path' => $file['path'],
+                    'remote_size' => $file['size'],
+                    'original_name' => $file['name'],
+                    'detected_type' => DocumentGuesser::type($file['name'])->value,
+                    'detected' => [
+                        'nama' => $f['nama'],
+                        'no_rm' => $f['no_rm'],
+                        'no_sep' => $f['no_sep'],
+                        'tanggal' => null,
+                        'jenis_rawat' => $f['jenis_rawat'],
+                        'folder' => $f['folder'],
+                        'keyakinan' => $f['dikenali'] ? 'tinggi' : 'rendah',
+                    ],
+                    'group_key' => $groupKey,
+                ]);
+            }
+        }
+
+        ProcessImportBatch::dispatch($batch->id);
+        Audit::log('impor.mulai', $batch, 'Mengimpor ' . count($picked) . " folder pasien ($count file) dari FTP SIMRS");
+
+        $sisa = count($request->folders) - count($picked);
+
+        return redirect()->route('imports.show', $batch)->with($sisa > 0 ? 'warn' : 'ok', $sisa > 0
+            ? count($picked) . " folder diimpor. $sisa folder lain melewati batas $max file per impor; impor lagi setelah ini selesai."
+            : count($picked) . ' folder sedang diunduh.');
     }
 
     public function show(ImportBatch $batch)
@@ -100,15 +147,26 @@ class ImportController extends Controller
             . ($request->boolean('periksa') ? ' dan sedang diperiksa AI.' : '.'));
     }
 
-    /** File di folder FTP yang belum pernah diimpor (berdasarkan path + ukuran). */
-    private function newFiles(SimrsFtp $ftp)
+    /** Tandai file yang sudah pernah diimpor (berdasarkan path + ukuran) dan status tiap folder. */
+    private function withStatus(Collection $folders): Collection
     {
-        $files = $ftp->listFiles(config('casemix.ftp.path'));
-        $seen = ImportItem::query()->whereIn('remote_path', $files->pluck('path'))
-            ->whereNotIn('status', ['gagal'])
+        $paths = $folders->flatMap(fn ($f) => array_column($f['files'], 'path'))->all();
+        $seen = $paths === [] ? collect() : ImportItem::query()
+            ->whereIn('remote_path', $paths)
+            ->whereNotIn('status', ['gagal', 'dilewati'])
             ->get(['remote_path', 'remote_size'])
             ->map(fn ($i) => $i->remote_path . '|' . $i->remote_size)->flip();
 
-        return $files->reject(fn ($f) => $seen->has($f['path'] . '|' . $f['size']))->values();
+        return $folders->map(function (array $f) use ($seen) {
+            $f['new_files'] = array_values(array_filter($f['files'], fn ($x) => ! $seen->has($x['path'] . '|' . $x['size'])));
+            $f['status'] = match (true) {
+                $f['files'] === [] => 'kosong',
+                $f['new_files'] === [] => 'sudah',
+                count($f['new_files']) === count($f['files']) => 'baru',
+                default => 'tambahan',
+            };
+
+            return $f;
+        });
     }
 }

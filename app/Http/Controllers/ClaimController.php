@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\ClaimStatus;
 use App\Enums\DocumentType;
 use App\Models\Claim;
+use App\Services\Rules\ConsistencyChecker;
 use App\Support\Audit;
 use App\Support\Eklaim;
 use Illuminate\Http\Request;
@@ -94,6 +95,8 @@ class ClaimController extends Controller
             'blockers' => $claim->approvalBlockers(),
             'documentTypes' => DocumentType::cases(),
             'activity' => $claim->auditLogs()->with('user')->limit(30)->get(),
+            // Aturan E-Klaim dihitung langsung (tanpa AI) setiap halaman dibuka
+            'liveRules' => app(ConsistencyChecker::class)->check($claim),
         ]);
     }
 
