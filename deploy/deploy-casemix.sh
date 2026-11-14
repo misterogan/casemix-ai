@@ -22,6 +22,8 @@ if [ ! -f public/build/manifest.json ] || echo "$CHANGED" | grep -qE '^(resource
   npm run build
 fi
 $PHP artisan migrate --force
+$PHP artisan db:seed --class=RolePermissionSeeder --force
+$PHP artisan permission:cache-reset
 $PHP artisan config:cache
 $PHP artisan route:cache
 $PHP artisan view:cache
