@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AiBudgetController;
 use App\Http\Controllers\Admin\AiProviderController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\ClaimApprovalController;
 use App\Http\Controllers\ClaimChecklistController;
 use App\Http\Controllers\ClaimController;
 use App\Http\Controllers\ClaimDocumentController;
+use App\Http\Controllers\ClaimExtractionController;
 use App\Http\Controllers\ClaimReportController;
 use App\Http\Controllers\ClaimReviewController;
 use App\Http\Controllers\DashboardController;
@@ -41,6 +43,10 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'history'])->name('claims.history');
     Route::post('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'attachHistory'])->name('claims.history.attach');
 
+    Route::post('/berkas/{claim}/isi-otomatis', [ClaimExtractionController::class, 'store'])->name('claims.extract');
+    Route::get('/berkas/{claim}/isi-otomatis/status', [ClaimExtractionController::class, 'status'])->name('claims.extract.status');
+    Route::post('/berkas/{claim}/isi-otomatis/{extraction}/terapkan', [ClaimExtractionController::class, 'apply'])->name('claims.extract.apply');
+
     Route::post('/berkas/{claim}/periksa', [ClaimReviewController::class, 'store'])->name('claims.review');
     Route::get('/berkas/{claim}/periksa/status', [ClaimReviewController::class, 'status'])->name('claims.review.status');
     Route::put('/berkas/{claim}/daftar-cek', [ClaimChecklistController::class, 'update'])->name('claims.checklist');
@@ -65,6 +71,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::put('peran', [RoleController::class, 'update'])->name('roles.update');
         Route::resource('penyedia-ai', AiProviderController::class)->except(['show'])->parameters(['penyedia-ai' => 'provider'])->names('providers');
         Route::post('penyedia-ai/{provider}/uji', [AiProviderController::class, 'test'])->name('providers.test');
+        Route::get('anggaran-ai', [AiBudgetController::class, 'index'])->name('budget.index');
+        Route::put('anggaran-ai', [AiBudgetController::class, 'update'])->name('budget.update');
         Route::get('pengaturan', [SettingController::class, 'index'])->name('settings.index');
         Route::post('pengaturan/uji-ftp', [SettingController::class, 'testFtp'])->name('settings.ftp');
     });

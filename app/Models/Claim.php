@@ -56,6 +56,11 @@ class Claim extends Model
         return $this->hasMany(AiReview::class)->latest('id');
     }
 
+    public function extractions(): HasMany
+    {
+        return $this->hasMany(ClaimExtraction::class)->latest('id');
+    }
+
     public function latestReview(): HasOne
     {
         return $this->hasOne(AiReview::class)->latestOfMany();
@@ -97,6 +102,32 @@ class Claim extends Model
             ->orWhere('dpjp', 'like', "%$term%"));
     }
 
+    /**
+     * Nilai lama dan baru dari field isi klaim yang berubah (belum disimpan), untuk audit.
+     *
+     * @return array<string, array{lama: mixed, baru: mixed}>
+     */
+    public function contentDiff(): array
+    {
+        $val = function (mixed $raw) {
+            if (is_string($raw) && str_starts_with(ltrim($raw), '{')) {
+                $decoded = json_decode($raw, true);
+
+                return is_array($decoded) ? $decoded : $raw;
+            }
+            // Kolom tanggal tersimpan sebagai "Y-m-d 00:00:00" saat diisi lewat cast; tampilkan Y-m-d saja.
+            if (is_string($raw) && preg_match('/^(\d{4}-\d{2}-\d{2}) 00:00:00$/', $raw, $m)) {
+                return $m[1];
+            }
+
+            return $raw;
+        };
+
+        return collect(array_intersect(array_keys($this->getDirty()), self::CONTENT_FIELDS))
+            ->mapWithKeys(fn ($f) => [$f => ['lama' => $val($this->getRawOriginal($f)), 'baru' => $val($this->getAttributes()[$f] ?? null)]])
+            ->all();
+    }
+
     // Aturan alur kerja -------------------------------------------------
 
     public function isLocked(): bool
@@ -121,6 +152,25 @@ class Claim extends Model
         }
 
         return (int) $this->tanggal_lahir->diffInDays($this->tanggal_masuk, false);
+    }
+
+    /** Field E-Klaim wajib yang belum diisi. Impor FTP sengaja membiarkannya kosong bila tidak diketahui. */
+    public const REQUIRED_FIELDS = [
+        'nama_pasien' => 'Nama pasien',
+        'no_rm' => 'No. RM',
+        'jenis_rawat' => 'Jenis rawat',
+        'tanggal_masuk' => 'Tanggal masuk',
+        'dpjp' => 'DPJP',
+    ];
+
+    /** @return array<string, string> field => label */
+    public function missingRequiredFields(): array
+    {
+        return array_filter(self::REQUIRED_FIELDS, function ($label, $field) {
+            $v = $this->{$field};
+
+            return $v === null || (is_string($v) && in_array(trim($v), ['', '-'], true));
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /** @return array<DocumentType> */
@@ -168,7 +218,7 @@ class Claim extends Model
      *
      * @return array<string>
      */
-    public function approvalBlockers(): array
+    public function approvalBlockers(?User $approver = null): array
     {
         $reasons = [];
         if ($this->isLocked()) {
@@ -176,6 +226,9 @@ class Claim extends Model
         }
         if (! $this->no_sep) {
             $reasons[] = 'No. SEP belum diisi.';
+        }
+        if ($fields = $this->missingRequiredFields()) {
+            $reasons[] = 'Data wajib belum diisi: ' . implode(', ', $fields) . '.';
         }
         foreach ($this->missingRequiredDocuments() as $t) {
             $reasons[] = "Dokumen wajib belum ada: {$t->label()}.";
@@ -188,14 +241,17 @@ class Claim extends Model
         }
         if (! $this->checklistComplete()) {
             $reasons[] = 'Daftar cek petugas belum lengkap.';
+        } elseif ($approver && config('casemix.approval.separate_duties') && (int) $this->checklist_by === $approver->id) {
+            // Pemisahan tugas: yang memeriksa (mengisi daftar cek) tidak menyetujui berkasnya sendiri.
+            $reasons[] = 'Daftar cek diisi oleh Anda sendiri. Persetujuan harus oleh Koordinator lain.';
         }
 
         return $reasons;
     }
 
-    public function canBeApproved(): bool
+    public function canBeApproved(?User $approver = null): bool
     {
-        return $this->approvalBlockers() === [];
+        return $this->approvalBlockers($approver) === [];
     }
 
     /** Dipanggil setiap kali data/dokumen berubah: tandai hasil AI usang dan reset daftar cek. */
@@ -220,8 +276,8 @@ class Claim extends Model
         $status = match (true) {
             ! $this->no_sep => ClaimStatus::SepBelumAda,
             $this->missingRequiredDocuments() !== [] => ClaimStatus::PerluDilengkapi,
-            $this->completedReview() && ! $this->reviewIsStale() => ClaimStatus::SudahKoreksi,
-            default => ClaimStatus::BelumKoreksi,
+            $this->completedReview() && ! $this->reviewIsStale() => ClaimStatus::SudahDiperiksa,
+            default => ClaimStatus::BelumDiperiksa,
         };
 
         if ($this->status !== $status) {

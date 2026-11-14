@@ -43,9 +43,14 @@ class ProcessImportBatch implements ShouldQueue
                 $ftp->download($item->remote_path, $local);
 
                 $abs = $disk->path($local);
+                $mime = $disk->mimeType($local) ?: 'application/octet-stream';
+                if (! in_array($mime, config('casemix.upload.content_types'), true)) {
+                    $disk->delete($local);
+                    throw new \RuntimeException("Isi file bukan PDF/gambar ($mime), tidak diimpor.");
+                }
                 $item->update([
                     'local_path' => $local,
-                    'mime' => $disk->mimeType($local) ?: 'application/octet-stream',
+                    'mime' => $mime,
                     'sha256' => hash_file('sha256', $abs),
                     'status' => 'dipilah',
                 ]);

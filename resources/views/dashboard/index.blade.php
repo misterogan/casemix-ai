@@ -10,7 +10,7 @@
     {{-- Alur status E-Klaim sebagai rangkaian, karena memang berurutan --}}
     <section class="panel mb-6 overflow-hidden" aria-label="Jumlah berkas per status">
         <ol class="grid divide-y divide-garis sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-5 lg:divide-x">
-            @foreach ([\App\Enums\ClaimStatus::SepBelumAda, \App\Enums\ClaimStatus::PerluDilengkapi, \App\Enums\ClaimStatus::BelumKoreksi, \App\Enums\ClaimStatus::SudahKoreksi, \App\Enums\ClaimStatus::Disetujui] as $s)
+            @foreach ([\App\Enums\ClaimStatus::SepBelumAda, \App\Enums\ClaimStatus::PerluDilengkapi, \App\Enums\ClaimStatus::BelumDiperiksa, \App\Enums\ClaimStatus::SudahDiperiksa, \App\Enums\ClaimStatus::Disetujui] as $s)
                 <li>
                     <a href="{{ route('claims.index', ['status' => $s->value]) }}" class="block px-5 py-4 hover:bg-kertas">
                         <span class="badge {{ $s->tone() }}">{{ $s->label() }}</span>

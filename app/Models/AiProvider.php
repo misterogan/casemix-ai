@@ -14,7 +14,7 @@ class AiProvider extends Model
     protected $fillable = [
         'name', 'driver', 'base_url', 'api_key', 'model_fast', 'model_standard',
         'supports_images', 'max_tokens', 'timeout', 'is_active', 'is_default',
-        'data_location', 'notes',
+        'data_location', 'notes', 'price_input_usd', 'price_output_usd',
     ];
 
     protected $hidden = ['api_key'];

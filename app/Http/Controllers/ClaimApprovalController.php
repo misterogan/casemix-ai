@@ -17,7 +17,7 @@ class ClaimApprovalController extends Controller
 
         return DB::transaction(function () use ($request, $claim) {
             $claim = Claim::lockForUpdate()->with('documents')->findOrFail($claim->id);
-            if ($blockers = $claim->approvalBlockers()) {
+            if ($blockers = $claim->approvalBlockers($request->user())) {
                 return back()->with('warn', 'Belum bisa disetujui: ' . implode(' ', $blockers));
             }
 
@@ -43,7 +43,7 @@ class ClaimApprovalController extends Controller
         $data = $request->validate(['alasan' => ['required', 'string', 'min:5', 'max:500']],
             ['alasan.required' => 'Tulis alasan membuka kembali berkas.']);
 
-        $claim->forceFill(['status' => ClaimStatus::BelumKoreksi, 'approved_by' => null, 'approved_at' => null])->save();
+        $claim->forceFill(['status' => ClaimStatus::BelumDiperiksa, 'approved_by' => null, 'approved_at' => null])->save();
         $claim->markContentChanged(); // memaksa pemeriksaan ulang dan daftar cek ulang
         $claim->refresh()->refreshStatus();
         Audit::log('berkas.buka_kembali', $claim, 'Membuka kembali berkas: ' . $data['alasan'], ['alasan' => $data['alasan']]);

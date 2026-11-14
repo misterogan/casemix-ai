@@ -41,6 +41,14 @@
                             @if ($log->subject_type === \App\Models\Claim::class && $log->subject_id)
                                 <a href="{{ route('claims.show', $log->subject_id) }}" class="ml-1 text-xs font-medium text-giok hover:underline">buka berkas</a>
                             @endif
+                            @if (! empty($log->properties['perubahan']))
+                                @php $fmt = fn ($v) => $v === null || $v === '' ? '—' : (is_array($v) ? collect($v)->filter()->map(fn ($x, $k) => "$k: $x")->implode(', ') : $v); @endphp
+                                <ul class="mt-1 space-y-0.5 text-xs text-tinta-2">
+                                    @foreach ($log->properties['perubahan'] as $field => $p)
+                                        <li><span class="font-medium">{{ $field }}</span>: {{ $fmt($p['lama'] ?? null) }} → {{ $fmt($p['baru'] ?? null) }}</li>
+                                    @endforeach
+                                </ul>
+                            @endif
                             <span class="block text-xs text-tinta-3">{{ $log->action }}</span>
                         </td>
                         <td class="num text-xs text-tinta-3">{{ $log->ip }}</td>

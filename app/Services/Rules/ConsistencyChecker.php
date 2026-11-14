@@ -43,6 +43,13 @@ class ConsistencyChecker
         if (! $c->no_sep) {
             $this->add(Severity::Kritis, 'Identitas', 'No. SEP kosong', 'Klaim tidak bisa diproses di E-Klaim tanpa SEP dari V-Claim.');
         }
+        foreach ($c->missingRequiredFields() as $field => $label) {
+            if ($field === 'tanggal_masuk') {
+                continue; // ditangani di tanggalDanLos
+            }
+            $this->add(Severity::Kritis, 'Identitas', "$label belum diisi",
+                'Isi sesuai SEP dan resume medis. Berkas hasil impor FTP tidak menebak field ini.');
+        }
         if (! trim((string) $c->diagnosis_utama)) {
             $this->add(Severity::Kritis, 'Diagnosis', 'Diagnosis utama kosong', 'Isi diagnosis utama sesuai resume medis.');
         }
@@ -57,6 +64,11 @@ class ConsistencyChecker
 
     private function tanggalDanLos(Claim $c): void
     {
+        if (! $c->tanggal_masuk) {
+            $this->add(Severity::Kritis, 'Tanggal', 'Tanggal masuk belum diisi', 'Isi tanggal masuk sesuai SEP. LOS tidak bisa dihitung.');
+
+            return;
+        }
         if ($c->jenis_rawat === 'inap' && ! $c->tanggal_keluar) {
             $this->add(Severity::Kritis, 'Tanggal', 'Tanggal keluar kosong', 'Rawat inap wajib memiliki tanggal keluar untuk menghitung LOS.');
 

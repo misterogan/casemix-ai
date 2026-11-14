@@ -4,6 +4,15 @@
     $date = fn ($f) => old($f, $claim->$f?->format('Y-m-d'));
 @endphp
 
+<p class="mb-4 rounded-md border border-garis bg-giok-muda px-4 py-3 text-sm text-tinta-2">
+    Hanya field bertanda <span class="text-kritis">*</span> yang wajib. Field lain boleh dikosongkan:
+    @if ($claim->exists)
+        gunakan <strong>Isi otomatis dari dokumen</strong> di halaman berkas supaya tidak perlu mengetik ulang dari SEP, resume, dan rincian biaya.
+    @else
+        setelah berkas dibuat dan dokumen diunggah, gunakan <strong>Isi otomatis dari dokumen</strong> supaya tidak perlu mengetik ulang.
+    @endif
+</p>
+
 <div class="grid gap-6 xl:grid-cols-[1fr_360px]">
 <div class="space-y-6">
     <section class="panel">
@@ -39,6 +48,7 @@
         <div class="panel-body grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <x-field name="jenis_rawat" label="Jenis rawat" required>
                 <select id="jenis_rawat" name="jenis_rawat" class="field" required>
+                    <option value="">— pilih —</option>
                     @foreach (Eklaim::JENIS_RAWAT as $k => $l)<option value="{{ $k }}" @selected($v('jenis_rawat') === $k)>{{ $l }}</option>@endforeach
                 </select>
             </x-field>
@@ -88,15 +98,21 @@
             <x-field name="berat_lahir" label="Berat lahir (gram)" hint="Wajib untuk pasien umur ≤ 28 hari.">
                 <input id="berat_lahir" type="number" min="0" name="berat_lahir" value="{{ $v('berat_lahir') }}" class="field num">
             </x-field>
-            <x-field name="tekanan_darah" label="Tekanan darah" hint="Contoh 120/80">
-                <input id="tekanan_darah" name="tekanan_darah" value="{{ $v('tekanan_darah') }}" class="field num" placeholder="120/80">
-            </x-field>
-            <x-field name="adl_sub_acute" label="ADL sub-acute" hint="12–60, bila ada">
-                <input id="adl_sub_acute" type="number" min="12" max="60" name="adl_sub_acute" value="{{ $v('adl_sub_acute') }}" class="field num">
-            </x-field>
-            <x-field name="adl_chronic" label="ADL chronic" hint="12–60, bila ada">
-                <input id="adl_chronic" type="number" min="12" max="60" name="adl_chronic" value="{{ $v('adl_chronic') }}" class="field num">
-            </x-field>
+            @php $adaTambahan = filled($v('tekanan_darah')) || filled($v('adl_sub_acute')) || filled($v('adl_chronic')) || $errors->hasAny(['tekanan_darah', 'adl_sub_acute', 'adl_chronic']); @endphp
+            <details class="sm:col-span-2 lg:col-span-3" @if ($adaTambahan) open @endif>
+                <summary class="cursor-pointer text-sm font-medium text-tinta-2">Field tambahan E-Klaim (tekanan darah, ADL)</summary>
+                <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <x-field name="tekanan_darah" label="Tekanan darah" hint="Contoh 120/80">
+                        <input id="tekanan_darah" name="tekanan_darah" value="{{ $v('tekanan_darah') }}" class="field num" placeholder="120/80">
+                    </x-field>
+                    <x-field name="adl_sub_acute" label="ADL sub-acute" hint="12–60, bila ada">
+                        <input id="adl_sub_acute" type="number" min="12" max="60" name="adl_sub_acute" value="{{ $v('adl_sub_acute') }}" class="field num">
+                    </x-field>
+                    <x-field name="adl_chronic" label="ADL chronic" hint="12–60, bila ada">
+                        <input id="adl_chronic" type="number" min="12" max="60" name="adl_chronic" value="{{ $v('adl_chronic') }}" class="field num">
+                    </x-field>
+                </div>
+            </details>
 
             <div class="flex flex-wrap gap-x-6 gap-y-2 sm:col-span-2 lg:col-span-3">
                 @foreach (['naik_kelas' => 'Naik kelas', 'eksekutif' => 'Eksekutif', 'pasien_tb' => 'Pasien TB'] as $f => $l)
@@ -132,7 +148,7 @@
     <section class="panel">
         <div class="panel-head">
             <h2 class="panel-title">Komponen tarif</h2>
-            <span class="text-xs text-tinta-3">Rupiah</span>
+            <span class="text-xs text-tinta-3">Rupiah · opsional, bisa diisi otomatis dari rincian biaya</span>
         </div>
         <div class="panel-body grid grid-cols-1 gap-2.5">
             @foreach (Eklaim::TARIF as $k => $l)

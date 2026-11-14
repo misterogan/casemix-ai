@@ -33,19 +33,20 @@ function syncToggles() {
 document.addEventListener('change', syncToggles);
 document.addEventListener('DOMContentLoaded', syncToggles);
 
-// Polling status pemeriksaan AI: <div data-poll="url">
+// Polling status proses AI (pemeriksaan, usulan isian): <div data-poll="url">
+// Halaman dimuat ulang begitu salah satu proses selesai.
 document.addEventListener('DOMContentLoaded', () => {
-  const el = document.querySelector('[data-poll]');
-  if (!el) return;
-  const tick = async () => {
-    try {
-      const r = await fetch(el.dataset.poll, { headers: { Accept: 'application/json' } });
-      const j = await r.json();
-      if (!j.active) return window.location.reload();
-    } catch (_) { /* coba lagi */ }
+  document.querySelectorAll('[data-poll]').forEach((el) => {
+    const tick = async () => {
+      try {
+        const r = await fetch(el.dataset.poll, { headers: { Accept: 'application/json' } });
+        const j = await r.json();
+        if (!j.active) return window.location.reload();
+      } catch (_) { /* coba lagi */ }
+      setTimeout(tick, 4000);
+    };
     setTimeout(tick, 4000);
-  };
-  setTimeout(tick, 4000);
+  });
 });
 
 // Pilih semua checkbox: <input type=checkbox data-check-all="name-prefix">

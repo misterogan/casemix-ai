@@ -50,9 +50,19 @@
                         <div>
                             <label class="label text-xs" for="g{{ $gi }}jr">Jenis rawat</label>
                             <select id="g{{ $gi }}jr" name="groups[{{ $key }}][jenis_rawat]" class="field py-1.5">
+                                <option value="">— belum diketahui —</option>
                                 @foreach (\App\Support\Eklaim::JENIS_RAWAT as $k => $l)<option value="{{ $k }}" @selected($pick('jenis_rawat') === $k)>{{ $l }}</option>@endforeach
                             </select>
                         </div>
+                        <div>
+                            <label class="label text-xs" for="g{{ $gi }}tm">Tanggal masuk</label>
+                            <input id="g{{ $gi }}tm" type="date" name="groups[{{ $key }}][tanggal_masuk]" class="field num py-1.5">
+                        </div>
+                        <div class="lg:col-span-2">
+                            <label class="label text-xs" for="g{{ $gi }}dpjp">DPJP</label>
+                            <input id="g{{ $gi }}dpjp" name="groups[{{ $key }}][dpjp]" class="field py-1.5">
+                        </div>
+                        <p class="text-xs text-tinta-3 sm:col-span-2 lg:col-span-2 lg:self-end">Field yang dikosongkan tidak ditebak. Berkas tidak bisa disetujui sebelum field wajib diisi.</p>
                         @if ($pick('folder'))
                             <p class="text-xs text-tinta-3 sm:col-span-2 lg:col-span-5">Folder FTP: <span class="num">{{ $pick('folder') }}</span></p>
                         @endif
@@ -107,10 +117,19 @@
             @endif
 
             <div class="sticky bottom-0 -mx-5 flex flex-wrap items-center justify-end gap-4 border-t border-garis bg-kertas/95 px-5 py-3 backdrop-blur lg:-mx-8 lg:px-8">
-                <label class="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="periksa" value="1" checked class="size-4 rounded border-garis-tua accent-giok">
-                    Langsung periksa semua berkas dengan AI
-                </label>
+                <fieldset class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                    <legend class="sr-only">Setelah disimpan</legend>
+                    <span class="text-tinta-3">Setelah disimpan:</span>
+                    <label class="flex items-center gap-2" title="AI membaca SEP, resume, dan rincian biaya, lalu mengusulkan isian untuk dikonfirmasi petugas">
+                        <input type="radio" name="lanjutan" value="isi" checked class="size-4 accent-giok"> Siapkan usulan isian dari dokumen
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="radio" name="lanjutan" value="periksa" class="size-4 accent-giok"> Langsung periksa dengan AI
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="radio" name="lanjutan" value="tidak" class="size-4 accent-giok"> Tidak ada
+                    </label>
+                </fieldset>
                 <button type="submit" class="btn-primary">Simpan {{ $groups->count() }} kelompok sebagai berkas</button>
             </div>
         </form>

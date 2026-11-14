@@ -7,6 +7,7 @@ use App\Models\AiProvider as ProviderConfig;
 use App\Models\Claim;
 use App\Services\Documents\DocumentReader;
 use App\Support\Eklaim;
+use App\Support\IcdGuard;
 
 /**
  * Menyusun permintaan pemeriksaan berkas ke AI dan merapikan hasilnya.
@@ -43,8 +44,12 @@ class ClaimReviewer
             ])->saveQuietly();
 
             if ($content['text']) {
+                $full = mb_strlen($content['text']);
                 $text = mb_substr($content['text'], 0, $maxChars);
-                $request->text("$header\n$text");
+                $note = $full > $maxChars
+                    ? "\n(TERPOTONG: hanya $maxChars dari $full karakter dikirim. Jangan menyimpulkan sesuatu tidak ada di dokumen ini.)"
+                    : '';
+                $request->text("$header$note\n$text");
 
                 continue;
             }
@@ -91,7 +96,8 @@ Aturan wajib:
 2. Hanya laporkan hal yang didukung isi dokumen. Sebutkan dokumen dan bagian yang menjadi dasar. Jika tidak terbaca, katakan tidak terbaca; jangan menebak.
 3. Saran diagnosis tambahan adalah bahan konfirmasi ke DPJP, bukan diagnosis. Sertakan bukti spesifik (nilai lab, nama obat, hasil radiologi).
 4. Tujuannya klaim yang benar dan lengkap sesuai rekam medis, bukan klaim yang "lolos" atau bernilai lebih tinggi. Jangan menyarankan penambahan diagnosis tanpa bukti klinis.
-5. Gunakan bahasa Indonesia yang ringkas dan jelas untuk petugas casemix.
+5. Bila dokumen ditandai TERPOTONG atau sebagian halaman tidak dikirim, jangan melaporkan sesuatu "tidak ada" hanya karena tidak terlihat. Tulis bahwa bagian itu perlu dicek manual.
+6. Gunakan bahasa Indonesia yang ringkas dan jelas untuk petugas casemix.
 TXT;
     }
 
@@ -109,7 +115,7 @@ TXT;
             "- Nama pasien: {$c->nama_pasien}",
             "- No. RM: {$c->no_rm}",
             '- No. SEP: ' . ($c->no_sep ?: '-'),
-            '- No. peserta: ' . ($c->no_peserta ?: '-'),
+            // No. peserta BPJS sengaja tidak dikirim: tidak diperlukan untuk pemeriksaan (minimisasi data, UU PDP).
             '- Tanggal lahir: ' . ($c->tanggal_lahir?->format('d-m-Y') ?? '-') . ' | Jenis kelamin: ' . ($c->jenis_kelamin ?: '-'),
             '- Jenis rawat: ' . $opt(Eklaim::JENIS_RAWAT, $c->jenis_rawat)
                 . ' | Hak kelas: ' . $opt(Eklaim::KELAS, $c->kelas_hak)
@@ -200,11 +206,8 @@ TXT;
             ])->values()->all();
     }
 
-    /** Pengaman: buang pola yang menyerupai kode ICD-10 (mis. E11.9) bila model tetap menuliskannya. */
     private function stripCodes(string $text): string
     {
-        $text = preg_replace('/\s*[\(\[]\s*[A-TV-Z]\d{2}(?:\.\d{1,2})?\s*[\)\]]/u', '', $text);
-
-        return trim(preg_replace('/\b(?:ICD-?10|ICD-?9(?:-CM)?)\s*:?\s*[A-Z]?\d{1,2}(?:\.\d{1,2})?\b/iu', '', $text));
+        return IcdGuard::strip($text);
     }
 }

@@ -5,10 +5,17 @@ namespace App\Models;
 use App\Enums\DocumentType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
+/**
+ * Dokumen dihapus secara lunak: baris dan file tetap ada sebagai bukti audit,
+ * tetapi tidak lagi tampil di berkas dan tidak ikut diperiksa AI.
+ */
 class ClaimDocument extends Model
 {
+    use SoftDeletes;
+
     protected $guarded = ['id'];
 
     protected $hidden = ['extracted_text'];
@@ -24,6 +31,11 @@ class ClaimDocument extends Model
     public function claim(): BelongsTo
     {
         return $this->belongsTo(Claim::class);
+    }
+
+    public function deleter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'deleted_by');
     }
 
     public function uploader(): BelongsTo

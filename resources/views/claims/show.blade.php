@@ -7,9 +7,12 @@
     $canReview = auth()->user()->can('review', $claim);
     $findings = $completed?->allFindings() ?? collect();
     $justApproved = session('ok') && $claim->isLocked() && $claim->approved_at?->gt(now()->subMinute());
+    $pendingFields = $canEdit && $extraction?->status === ReviewStatus::Selesai ? $extraction->pendingFor($claim) : [];
+    $showExtraction = $canEdit && ($extraction?->status?->isActive() || $extraction?->status === ReviewStatus::Gagal || $pendingFields);
+    $title = $claim->nama_pasien ?: 'Pasien belum dikenali';
 @endphp
-<x-app-layout :title="$claim->nama_pasien">
-    <x-page-header :title="$claim->nama_pasien" :back="route('claims.index')">
+<x-app-layout :title="$title">
+    <x-page-header :title="$title" :back="route('claims.index')">
         <x-slot:meta>
             <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-tinta-2">
                 <span class="num">RM <strong class="text-tinta">{{ $claim->no_rm }}</strong></span>
@@ -28,7 +31,7 @@
             @if ($canReview)
                 <form method="POST" action="{{ route('claims.review', $claim) }}">
                     @csrf
-                    <button type="submit" class="btn-primary" @disabled($review?->status?->isActive())>
+                    <button type="submit" class="btn-primary" @disabled($review?->status?->isActive() || $aiBlocked) @if ($aiBlocked) title="{{ $aiBlocked }}" @endif>
                         {{ $completed ? 'Periksa ulang dengan AI' : 'Periksa dengan AI' }}
                     </button>
                 </form>
@@ -39,6 +42,10 @@
     <div class="grid gap-6 xl:grid-cols-[1fr_380px]">
         {{-- ============ KOLOM UTAMA ============ --}}
         <div class="min-w-0 space-y-6">
+
+            @if ($showExtraction)
+                @include('claims._extraction', ['extraction' => $extraction, 'pending' => $pendingFields])
+            @endif
 
             {{-- Hasil pemeriksaan --}}
             <section class="panel" aria-labelledby="hasil">
@@ -208,7 +215,17 @@
             <section class="panel">
                 <div class="panel-head">
                     <h2 class="panel-title">Data klaim</h2>
-                    @if ($canEdit)<a href="{{ route('claims.edit', $claim) }}" class="text-sm font-medium text-giok hover:underline">Ubah</a>@endif
+                    @if ($canEdit)
+                        <div class="flex items-center gap-4">
+                            @unless ($showExtraction || $aiBlocked)
+                                <form method="POST" action="{{ route('claims.extract', $claim) }}">
+                                    @csrf
+                                    <button type="submit" class="text-sm font-medium text-giok hover:underline" title="AI membaca SEP, resume medis, dan rincian biaya, lalu mengusulkan isian untuk Anda konfirmasi">Isi otomatis dari dokumen</button>
+                                </form>
+                            @endunless
+                            <a href="{{ route('claims.edit', $claim) }}" class="text-sm font-medium text-giok hover:underline">Ubah</a>
+                        </div>
+                    @endif
                 </div>
                 <dl class="grid gap-x-6 gap-y-3 px-5 py-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
                     @foreach ([

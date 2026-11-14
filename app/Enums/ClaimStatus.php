@@ -2,20 +2,25 @@
 
 namespace App\Enums;
 
+/**
+ * Status berkas di Casemix AI. Nilai di database tetap (belum_koreksi, sudah_koreksi) agar data lama aman,
+ * tetapi labelnya sengaja berbeda dari status E-Klaim DHealth: di DHealth "Sudah Koreksi" berarti koding
+ * sudah disimpan, sedangkan di sini artinya berkas sudah diperiksa AI.
+ */
 enum ClaimStatus: string
 {
-    case BelumKoreksi = 'belum_koreksi';
+    case BelumDiperiksa = 'belum_koreksi';
     case PerluDilengkapi = 'perlu_dilengkapi';
-    case SudahKoreksi = 'sudah_koreksi';
+    case SudahDiperiksa = 'sudah_koreksi';
     case Disetujui = 'disetujui';
     case SepBelumAda = 'sep_belum_ada';
 
     public function label(): string
     {
         return match ($this) {
-            self::BelumKoreksi => 'Belum Koreksi',
+            self::BelumDiperiksa => 'Belum Diperiksa',
             self::PerluDilengkapi => 'Perlu Dilengkapi',
-            self::SudahKoreksi => 'Sudah Koreksi',
+            self::SudahDiperiksa => 'Sudah Diperiksa',
             self::Disetujui => 'Disetujui',
             self::SepBelumAda => 'No. SEP belum ada',
         };
@@ -25,9 +30,9 @@ enum ClaimStatus: string
     public function tone(): string
     {
         return match ($this) {
-            self::BelumKoreksi => 'tone-neutral',
+            self::BelumDiperiksa => 'tone-neutral',
             self::PerluDilengkapi => 'tone-warn',
-            self::SudahKoreksi => 'tone-ok',
+            self::SudahDiperiksa => 'tone-ok',
             self::Disetujui => 'tone-done',
             self::SepBelumAda => 'tone-crit',
         };

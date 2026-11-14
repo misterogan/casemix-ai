@@ -26,6 +26,7 @@
         ['route' => 'admin.users.index', 'match' => 'admin.users.*', 'label' => 'Pengguna'],
         ['route' => 'admin.roles.index', 'match' => 'admin.roles.*', 'label' => 'Peran dan hak akses'],
         ['route' => 'admin.providers.index', 'match' => 'admin.providers.*', 'label' => 'Penyedia AI'],
+        ['route' => 'admin.budget.index', 'match' => 'admin.budget.*', 'label' => 'Anggaran AI'],
         ['route' => 'admin.settings.index', 'match' => 'admin.settings.*', 'label' => 'Pengaturan dan FTP'],
     ];
 @endphp
@@ -99,6 +100,8 @@
     {{-- Konten --}}
     <main class="min-w-0">
         <div class="mx-auto max-w-[1320px] px-5 py-6 lg:px-8 lg:py-8">
+            <x-ai-budget-banner/>
+
             @if (session('ok') || session('warn') || $errors->any())
                 <div class="mb-5 space-y-2" role="status">
                     @if (session('ok'))

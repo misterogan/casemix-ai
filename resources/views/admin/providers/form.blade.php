@@ -21,10 +21,10 @@
                          :hint="$provider->exists ? 'Tersimpan terenkripsi (' . $provider->maskedKey() . '). Kosongkan bila tidak diganti.' : 'Disimpan terenkripsi di database.'">
                     <input id="api_key" type="password" name="api_key" autocomplete="off" class="field">
                 </x-field>
-                <x-field name="model_fast" label="Model cepat" required hint="Untuk memilah jenis dokumen saat impor.">
+                <x-field name="model_fast" label="Model cepat" required hint="Cadangan untuk tugas ringan; saat ini belum dipakai. Isi misalnya claude-haiku-5-5.">
                     <input id="model_fast" name="model_fast" value="{{ old('model_fast', $provider->model_fast) }}" required class="field">
                 </x-field>
-                <x-field name="model_standard" label="Model standar" required hint="Untuk pemeriksaan berkas lengkap.">
+                <x-field name="model_standard" label="Model standar" required hint="Untuk pemeriksaan berkas dan usulan isian, misalnya claude-sonnet-5-5.">
                     <input id="model_standard" name="model_standard" value="{{ old('model_standard', $provider->model_standard) }}" required class="field">
                 </x-field>
                 <x-field name="max_tokens" label="Batas token jawaban" required>
@@ -33,8 +33,14 @@
                 <x-field name="timeout" label="Batas waktu (detik)" required>
                     <input id="timeout" type="number" name="timeout" value="{{ old('timeout', $provider->timeout) }}" class="field num">
                 </x-field>
-                <x-field name="data_location" label="Lokasi pemrosesan data" class="sm:col-span-2" hint="Catat di mana data diproses dan dasar perjanjiannya, untuk keperluan UU PDP.">
-                    <input id="data_location" name="data_location" value="{{ old('data_location', $provider->data_location) }}" class="field" placeholder="Contoh: Jakarta, Indonesia — DPA ditandatangani 2026">
+                <x-field name="price_input_usd" label="Harga input (USD / 1 juta token)" hint="Untuk menghitung anggaran AI. Kosongkan untuk memakai harga bawaan model Claude.">
+                    <input id="price_input_usd" type="number" step="0.0001" min="0" name="price_input_usd" value="{{ old('price_input_usd', $provider->price_input_usd) }}" class="field num" placeholder="2.00">
+                </x-field>
+                <x-field name="price_output_usd" label="Harga output (USD / 1 juta token)" hint="Lihat halaman harga penyedia AI.">
+                    <input id="price_output_usd" type="number" step="0.0001" min="0" name="price_output_usd" value="{{ old('price_output_usd', $provider->price_output_usd) }}" class="field num" placeholder="10.00">
+                </x-field>
+                <x-field name="data_location" label="Lokasi pemrosesan data" required class="sm:col-span-2" hint="Catat di mana data diproses dan dasar perjanjiannya, untuk keperluan UU PDP.">
+                    <input id="data_location" name="data_location" value="{{ old('data_location', $provider->data_location) }}" required class="field" placeholder="Contoh: Jakarta, Indonesia — DPA ditandatangani 2026">
                 </x-field>
                 <x-field name="notes" label="Catatan" class="sm:col-span-2">
                     <textarea id="notes" name="notes" rows="2" class="field">{{ old('notes', $provider->notes) }}</textarea>

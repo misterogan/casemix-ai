@@ -73,18 +73,57 @@ class SimrsFtp
         return $out->values();
     }
 
-    /** File riwayat pasien yang nama file atau foldernya memuat No. RM. Kosong bila folder riwayat tidak ada. */
+    /**
+     * File riwayat pasien milik No. RM ini. Kosong bila folder riwayat tidak ada.
+     * Dicocokkan per bagian path (nama folder/file), bukan potongan angka di mana saja,
+     * supaya RM 123 tidak ikut mengambil file RM 1234, tanggal, atau nomor SEP pasien lain.
+     */
     public function findPatientHistory(string $noRm): Collection
     {
-        $needle = ltrim(preg_replace('/\D/', '', $noRm), '0');
         $dir = config('casemix.ftp.path_riwayat_pasien');
-        if ($needle === '' || blank($dir) || ! $this->client()->isDir($dir)) {
+        if (self::normalizeRm($noRm) === '' || blank($dir) || ! $this->client()->isDir($dir)) {
             return collect();
         }
 
+        $base = '/' . trim($dir, '/') . '/';
+
         return $this->listFiles($dir, recursive: true)
-            ->filter(fn ($f) => str_contains(preg_replace('/\D/', '', $f['path']), $needle))
+            ->filter(fn ($f) => self::pathBelongsToRm(str_starts_with($f['path'], $base) ? substr($f['path'], strlen($base)) : $f['path'], $noRm))
             ->values();
+    }
+
+    /** No. RM tanpa nol di depan dan tanpa karakter selain angka. */
+    public static function normalizeRm(string $noRm): string
+    {
+        return ltrim(preg_replace('/\D/', '', $noRm), '0');
+    }
+
+    /**
+     * Path (relatif terhadap folder riwayat) dianggap milik No. RM ini bila salah satu bagiannya
+     * - diawali No. RM yang utuh, mis. "000123_NAMA", "000123.pdf", "123 - Lab", atau
+     * - memuat label RM diikuti No. RM yang utuh, mis. "Lab RM 000123.pdf", "RM-123_ronsen".
+     * Angka di tengah nama (tanggal, SEP, RM lain) tidak dihitung.
+     */
+    public static function pathBelongsToRm(string $relativePath, string $noRm): bool
+    {
+        $needle = self::normalizeRm($noRm);
+        if ($needle === '') {
+            return false;
+        }
+        // Setelah No. RM harus pemisah atau akhir nama, supaya "0301R0011..." (SEP) tidak terbaca RM 301.
+        $rm = '0*' . preg_quote($needle, '/') . '(?![0-9a-z])';
+
+        foreach (explode('/', str_replace('\\', '/', $relativePath)) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '') {
+                continue;
+            }
+            if (preg_match('/^' . $rm . '/i', $segment) || preg_match('/(?<![a-z])(?:no\.?\s*)?rm[\s_\-.:#]*' . $rm . '/i', $segment)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function download(string $remotePath, string $localRelative): string

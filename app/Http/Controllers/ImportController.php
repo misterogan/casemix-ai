@@ -137,14 +137,35 @@ class ImportController extends Controller
             'groups.*.no_sep' => ['nullable', 'string', 'max:30'],
             'groups.*.jenis_rawat' => ['nullable', 'in:inap,jalan'],
             'groups.*.dpjp' => ['nullable', 'string', 'max:150'],
+            'groups.*.tanggal_masuk' => ['nullable', 'date'],
+            'lanjutan' => ['nullable', Rule::in([ImportCommitter::NEXT_FILL, ImportCommitter::NEXT_REVIEW, ImportCommitter::NEXT_NONE])],
         ]);
+        $next = $data['lanjutan'] ?? ImportCommitter::NEXT_NONE;
 
         $groups = collect($data['groups'] ?? [])->map(fn ($g) => array_filter($g, fn ($v) => $v !== null && $v !== ''))->all();
-        $ids = $committer->commit($batch, $data['items'] ?? [], $groups, $request->user()->id, $request->boolean('periksa'));
-        Audit::log('impor.simpan', $batch, 'Menyimpan hasil impor menjadi ' . count($ids) . ' berkas');
+        $result = $committer->commit($batch, $data['items'] ?? [], $groups, $request->user()->id, $next);
+        $ids = $result['claims'];
+        Audit::log('impor.simpan', $batch, 'Menyimpan hasil impor menjadi ' . count($ids) . ' berkas'
+            . ($result['blocked'] ? ', ' . count($result['blocked']) . ' kelompok tertahan' : ''));
 
-        return redirect()->route('claims.index')->with('ok', count($ids) . ' berkas disimpan'
-            . ($request->boolean('periksa') ? ' dan sedang diperiksa AI.' : '.'));
+        if ($result['blocked']) {
+            $daftar = collect($result['blocked'])->map(fn ($b) => "SEP {$b['no_sep']} ({$b['files']} file)")->implode(', ');
+
+            return redirect()->route('imports.show', $batch)->with('warn', count($ids) . ' berkas disimpan. '
+                . "Dokumen untuk $daftar tertahan karena berkasnya sudah disetujui. "
+                . 'Minta Koordinator membuka kembali berkas tersebut, lalu simpan impor ini lagi.');
+        }
+
+        if ($result['ai_skipped']) {
+            return redirect()->route('claims.index')->with('warn', count($ids) . ' berkas disimpan. '
+                . $result['ai_skipped'] . ' berkas tidak diproses AI: ' . $result['ai_skipped_reason']);
+        }
+
+        return redirect()->route('claims.index')->with('ok', count($ids) . ' berkas disimpan' . match ($next) {
+            ImportCommitter::NEXT_FILL => '. Dokumen sedang dibaca untuk usulan isian; buka tiap berkas untuk mengonfirmasi.',
+            ImportCommitter::NEXT_REVIEW => ' dan sedang diperiksa AI.',
+            default => '.',
+        });
     }
 
     /** Tandai file yang sudah pernah diimpor (berdasarkan path + ukuran) dan status tiap folder. */

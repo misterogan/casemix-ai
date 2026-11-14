@@ -83,16 +83,19 @@ class ClaimController extends Controller
     {
         Gate::authorize('view', $claim);
         $claim->load(['documents.uploader', 'reviews.requester', 'reviews.provider', 'approver', 'checklistUser', 'creator']);
+        $extraction = $claim->extractions()->first();
 
         $review = $claim->reviews->first();
         $completed = $claim->reviews->first(fn ($r) => $r->status === \App\Enums\ReviewStatus::Selesai);
 
         return view('claims.show', [
             'claim' => $claim,
+            'extraction' => $extraction,
+            'aiBlocked' => app(\App\Services\Ai\AiBudget::class)->startBlocker(),
             'review' => $review,
             'completed' => $completed,
             'stale' => $completed ? $claim->reviewIsStale($completed) : false,
-            'blockers' => $claim->approvalBlockers(),
+            'blockers' => $claim->approvalBlockers(auth()->user()->can('claims.approve') ? auth()->user() : null),
             'documentTypes' => DocumentType::cases(),
             'activity' => $claim->auditLogs()->with('user')->limit(30)->get(),
             // Aturan E-Klaim dihitung langsung (tanpa AI) setiap halaman dibuka
@@ -113,13 +116,19 @@ class ClaimController extends Controller
         $data = $this->validated($request, $claim);
 
         $claim->fill($data);
-        $changed = array_intersect(array_keys($claim->getDirty()), Claim::CONTENT_FIELDS);
+        // Simpan nilai lama dan baru, supaya setiap koreksi bisa ditelusuri saat audit klaim.
+        $diff = $claim->contentDiff();
+        $changed = array_keys($diff);
+
         $claim->updated_by = $request->user()->id;
         $claim->save();
 
         if ($changed) {
             $claim->markContentChanged();
-            Audit::log('berkas.ubah', $claim, 'Mengubah data klaim: ' . implode(', ', $changed), ['field' => array_values($changed)]);
+            Audit::log('berkas.ubah', $claim, 'Mengubah data klaim: ' . implode(', ', $changed), [
+                'field' => $changed,
+                'perubahan' => $diff,
+            ]);
         }
         $claim->refresh()->refreshStatus();
 

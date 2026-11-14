@@ -7,6 +7,7 @@ use App\Jobs\RunClaimReview;
 use App\Models\AiProvider;
 use App\Models\AiReview;
 use App\Models\Claim;
+use App\Services\Ai\AiBudget;
 use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -19,6 +20,9 @@ class ClaimReviewController extends Controller
 
         if (! AiProvider::default()) {
             return back()->with('warn', 'Belum ada penyedia AI yang aktif. Minta Admin mengatur Penyedia AI.');
+        }
+        if ($blocked = app(AiBudget::class)->startBlocker()) {
+            return back()->with('warn', $blocked);
         }
         if ($claim->documents()->count() === 0) {
             return back()->with('warn', 'Unggah dokumen terlebih dahulu sebelum diperiksa.');

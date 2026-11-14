@@ -92,8 +92,12 @@ class AiProviderController extends Controller
             'model_fast' => ['required', 'string', 'max:150'],
             'model_standard' => ['required', 'string', 'max:150'],
             'max_tokens' => ['required', 'integer', 'min:512', 'max:64000'],
-            'timeout' => ['required', 'integer', 'min:10', 'max:600'],
-            'data_location' => ['nullable', 'string', 'max:255'],
+            // 3 percobaan × 580 detik masih di bawah timeout job pemeriksaan (1800 detik)
+            'timeout' => ['required', 'integer', 'min:10', 'max:580'],
+            'price_input_usd' => ['nullable', 'numeric', 'min:0', 'max:1000', 'required_with:price_output_usd'],
+            'price_output_usd' => ['nullable', 'numeric', 'min:0', 'max:1000', 'required_with:price_input_usd'],
+            // Wajib: dasar kepatuhan UU PDP karena berkas pasien dikirim ke penyedia ini
+            'data_location' => ['required', 'string', 'min:5', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], ['base_url.required' => 'Base URL wajib untuk penyedia OpenAI-compatible, misalnya https://…/v1']);
 

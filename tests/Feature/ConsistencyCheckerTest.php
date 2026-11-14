@@ -266,4 +266,23 @@ class ConsistencyCheckerTest extends TestCase
     {
         $this->assertAdaTemuan($this->periksa($this->berkas(['tarif' => ['obat' => 500000]])), 'Rawat inap tanpa biaya kamar', 'perhatian');
     }
+
+    // ------------------------------------------------- field wajib (impor FTP tidak menebak)
+
+    public function test_tanggal_masuk_kosong_kritis(): void
+    {
+        $this->assertAdaTemuan($this->periksa($this->berkas(['tanggal_masuk' => null])), 'Tanggal masuk belum diisi', 'kritis');
+    }
+
+    public function test_dpjp_kosong_kritis_dan_menahan_persetujuan(): void
+    {
+        $claim = $this->berkas(['dpjp' => null]);
+        $this->assertAdaTemuan($this->periksa($claim), 'DPJP belum diisi', 'kritis');
+        $this->assertTrue(collect($claim->approvalBlockers())->contains(fn ($r) => str_contains($r, 'DPJP')));
+    }
+
+    public function test_jenis_rawat_kosong_kritis(): void
+    {
+        $this->assertAdaTemuan($this->periksa($this->berkas(['jenis_rawat' => null])), 'Jenis rawat belum diisi', 'kritis');
+    }
 }

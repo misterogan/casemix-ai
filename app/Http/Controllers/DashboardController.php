@@ -17,9 +17,9 @@ class DashboardController extends Controller
         return view('dashboard.index', [
             'counts' => collect(ClaimStatus::cases())->mapWithKeys(fn ($s) => [$s->value => (int) ($counts[$s->value] ?? 0)]),
             'needsAttention' => Claim::query()
-                ->whereIn('status', [ClaimStatus::PerluDilengkapi->value, ClaimStatus::SepBelumAda->value, ClaimStatus::BelumKoreksi->value])
+                ->whereIn('status', [ClaimStatus::PerluDilengkapi->value, ClaimStatus::SepBelumAda->value, ClaimStatus::BelumDiperiksa->value])
                 ->with('latestReview')->latest('updated_at')->limit(8)->get(),
-            'readyToApprove' => Claim::query()->where('status', ClaimStatus::SudahKoreksi->value)
+            'readyToApprove' => Claim::query()->where('status', ClaimStatus::SudahDiperiksa->value)
                 ->with('latestReview')->latest('updated_at')->limit(8)->get(),
             'running' => AiReview::query()->whereIn('status', [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value])->count(),
             'approvedToday' => Claim::query()->whereDate('approved_at', today())->count(),
