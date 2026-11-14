@@ -33,10 +33,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         return match (true) {
             $u->can('folders.view') => redirect()->route('folders.index'),
             $u->can('admin.manage') => redirect()->route('admin.budget.index'),
-            default => app()->call(DashboardController::class),
+            default => abort(403),
         };
     })->name('home');
-    Route::get('/ringkasan', DashboardController::class)->name('dashboard');
 
     // Verifikasi langsung dari folder FTP
     Route::middleware('permission:folders.view')->group(function () {
@@ -47,39 +46,44 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/verifikasi/{folder}/analisa', [FolderController::class, 'analyze'])->middleware('permission:folders.analyze')->name('folders.analyze');
     });
 
-    // Berkas klaim
-    Route::get('/berkas', [ClaimController::class, 'index'])->name('claims.index');
-    Route::get('/berkas/ekspor', [ClaimController::class, 'export'])->name('claims.export')->middleware('permission:reports.download');
-    Route::get('/berkas/baru', [ClaimController::class, 'create'])->name('claims.create');
-    Route::post('/berkas', [ClaimController::class, 'store'])->name('claims.store');
-    Route::get('/berkas/{claim}', [ClaimController::class, 'show'])->name('claims.show');
-    Route::get('/berkas/{claim}/ubah', [ClaimController::class, 'edit'])->name('claims.edit');
-    Route::put('/berkas/{claim}', [ClaimController::class, 'update'])->name('claims.update');
+    // Modul lama: berkas klaim, impor, unggah. Mati kecuali CASEMIX_LEGACY_CLAIMS=true.
+    Route::middleware('legacy')->group(function () {
+        Route::get('/ringkasan', DashboardController::class)->name('dashboard');
 
-    Route::post('/berkas/{claim}/dokumen', [ClaimDocumentController::class, 'store'])->name('claims.documents.store');
-    Route::get('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'show'])->name('claims.documents.show')->scopeBindings();
-    Route::patch('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'update'])->name('claims.documents.update')->scopeBindings();
-    Route::delete('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'destroy'])->name('claims.documents.destroy')->scopeBindings();
-    Route::get('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'history'])->name('claims.history');
-    Route::post('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'attachHistory'])->name('claims.history.attach');
+        // Berkas klaim
+        Route::get('/berkas', [ClaimController::class, 'index'])->name('claims.index');
+        Route::get('/berkas/ekspor', [ClaimController::class, 'export'])->name('claims.export')->middleware('permission:reports.download');
+        Route::get('/berkas/baru', [ClaimController::class, 'create'])->name('claims.create');
+        Route::post('/berkas', [ClaimController::class, 'store'])->name('claims.store');
+        Route::get('/berkas/{claim}', [ClaimController::class, 'show'])->name('claims.show');
+        Route::get('/berkas/{claim}/ubah', [ClaimController::class, 'edit'])->name('claims.edit');
+        Route::put('/berkas/{claim}', [ClaimController::class, 'update'])->name('claims.update');
 
-    Route::post('/berkas/{claim}/isi-otomatis', [ClaimExtractionController::class, 'store'])->name('claims.extract');
-    Route::get('/berkas/{claim}/isi-otomatis/status', [ClaimExtractionController::class, 'status'])->name('claims.extract.status');
-    Route::post('/berkas/{claim}/isi-otomatis/{extraction}/terapkan', [ClaimExtractionController::class, 'apply'])->name('claims.extract.apply');
+        Route::post('/berkas/{claim}/dokumen', [ClaimDocumentController::class, 'store'])->name('claims.documents.store');
+        Route::get('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'show'])->name('claims.documents.show')->scopeBindings();
+        Route::patch('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'update'])->name('claims.documents.update')->scopeBindings();
+        Route::delete('/berkas/{claim}/dokumen/{document}', [ClaimDocumentController::class, 'destroy'])->name('claims.documents.destroy')->scopeBindings();
+        Route::get('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'history'])->name('claims.history');
+        Route::post('/berkas/{claim}/riwayat-pasien', [ClaimDocumentController::class, 'attachHistory'])->name('claims.history.attach');
 
-    Route::post('/berkas/{claim}/periksa', [ClaimReviewController::class, 'store'])->name('claims.review');
-    Route::get('/berkas/{claim}/periksa/status', [ClaimReviewController::class, 'status'])->name('claims.review.status');
-    Route::put('/berkas/{claim}/daftar-cek', [ClaimChecklistController::class, 'update'])->name('claims.checklist');
-    Route::post('/berkas/{claim}/setujui', [ClaimApprovalController::class, 'approve'])->name('claims.approve');
-    Route::post('/berkas/{claim}/buka-kembali', [ClaimApprovalController::class, 'reopen'])->name('claims.reopen');
-    Route::get('/berkas/{claim}/laporan', ClaimReportController::class)->name('claims.report')->middleware('permission:reports.download');
+        Route::post('/berkas/{claim}/isi-otomatis', [ClaimExtractionController::class, 'store'])->name('claims.extract');
+        Route::get('/berkas/{claim}/isi-otomatis/status', [ClaimExtractionController::class, 'status'])->name('claims.extract.status');
+        Route::post('/berkas/{claim}/isi-otomatis/{extraction}/terapkan', [ClaimExtractionController::class, 'apply'])->name('claims.extract.apply');
 
-    // Impor dari FTP SIMRS
-    Route::middleware('permission:claims.import')->group(function () {
-        Route::get('/impor', [ImportController::class, 'index'])->name('imports.index');
-        Route::post('/impor', [ImportController::class, 'store'])->name('imports.store');
-        Route::get('/impor/{batch}', [ImportController::class, 'show'])->name('imports.show');
-        Route::post('/impor/{batch}/simpan', [ImportController::class, 'commit'])->name('imports.commit');
+        Route::post('/berkas/{claim}/periksa', [ClaimReviewController::class, 'store'])->name('claims.review');
+        Route::get('/berkas/{claim}/periksa/status', [ClaimReviewController::class, 'status'])->name('claims.review.status');
+        Route::put('/berkas/{claim}/daftar-cek', [ClaimChecklistController::class, 'update'])->name('claims.checklist');
+        Route::post('/berkas/{claim}/setujui', [ClaimApprovalController::class, 'approve'])->name('claims.approve');
+        Route::post('/berkas/{claim}/buka-kembali', [ClaimApprovalController::class, 'reopen'])->name('claims.reopen');
+        Route::get('/berkas/{claim}/laporan', ClaimReportController::class)->name('claims.report')->middleware('permission:reports.download');
+
+        // Impor dari FTP SIMRS
+        Route::middleware('permission:claims.import')->group(function () {
+            Route::get('/impor', [ImportController::class, 'index'])->name('imports.index');
+            Route::post('/impor', [ImportController::class, 'store'])->name('imports.store');
+            Route::get('/impor/{batch}', [ImportController::class, 'show'])->name('imports.show');
+            Route::post('/impor/{batch}/simpan', [ImportController::class, 'commit'])->name('imports.commit');
+        });
     });
 
     Route::get('/riwayat-aktivitas', [AuditLogController::class, 'index'])->name('audit.index')->middleware('permission:audit.view');

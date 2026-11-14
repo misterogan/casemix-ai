@@ -1,31 +1,22 @@
 @php
     $syncAt = $lastSync['at'] ?? null;
-    $mode = $q !== '' ? 'hasil' : 'beranda';
+    $aktif = array_filter($filters, fn ($v) => filled($v));
+    $tgl = fn (?string $d) => $d ? \Illuminate\Support\Carbon::parse($d)->translatedFormat('d M Y') : null;
+    $ringkas = array_values(array_filter([
+        $filters['sep'] ? 'No. SEP mengandung "' . $filters['sep'] . '"' : null,
+        match (true) {
+            $filters['dari'] && $filters['sampai'] => 'Tanggal di FTP ' . $tgl($filters['dari']) . ' – ' . $tgl($filters['sampai']),
+            (bool) $filters['dari'] => 'Tanggal di FTP sejak ' . $tgl($filters['dari']),
+            (bool) $filters['sampai'] => 'Tanggal di FTP sampai ' . $tgl($filters['sampai']),
+            default => null,
+        },
+        ['sudah' => 'Sudah diperiksa AI', 'belum' => 'Belum diperiksa AI'][$filters['periksa']] ?? null,
+    ]));
 @endphp
 <x-app-layout title="Verifikasi berkas">
-    <div class="mx-auto max-w-[720px]" data-cari-wadah data-mode="{{ $mode }}">
-        <h1 class="cari-judul">Verifikasi berkas</h1>
-
-        {{-- Tetap bekerja tanpa JavaScript: Enter dan tombol Cari mengirim GET biasa --}}
-        <form method="GET" action="{{ route('folders.index') }}" role="search" data-cari-form>
-            @if ($state)<input type="hidden" name="status" value="{{ $state }}">@endif
-            <div class="cari">
-                <button type="submit" class="cari-ikon" aria-label="Cari">
-                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
-                </button>
-                <label for="q" class="sr-only">Cari folder pasien</label>
-                <input id="q" name="q" type="search" value="{{ $q }}" class="cari-input"
-                       placeholder="Cari No. SEP, No. RM, atau nama pasien" autocomplete="off" spellcheck="false"
-                       @if ($q === '') autofocus @endif data-cari-input>
-                <a href="{{ route('folders.index', $state ? ['status' => $state] : []) }}" class="cari-hapus"
-                   aria-label="Hapus kata kunci" data-cari-hapus @if ($q === '') hidden @endif>
-                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
-                </a>
-            </div>
-            <div class="cari-tombol"><button type="submit" class="btn-secondary rounded-full px-5">Cari</button></div>
-        </form>
-
-        <p class="cari-meta">
+    <div class="mx-auto max-w-[960px]">
+        <h1 class="text-[26px] leading-8 font-normal text-arang">Verifikasi berkas</h1>
+        <p class="mt-1 text-xs text-abu">
             @if ($syncAt)
                 Daftar folder dari FTP DHealth diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
                 @if (! ($lastSync['ok'] ?? true))<span class="text-kritis"> · gagal terhubung ke FTP, dicoba lagi jam berikutnya</span>@endif
@@ -34,21 +25,62 @@
             @endif
         </p>
 
-        <div class="mt-6" data-hasil aria-busy="false">
-            @include('folders.partials.results')
-        </div>
+        {{-- Satu-satunya isian di halaman ini: filter pencarian (GET) --}}
+        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_auto] lg:items-end">
+            <div>
+                <label for="sep" class="label">No. SEP</label>
+                <input id="sep" name="sep" value="{{ $filters['sep'] }}" maxlength="30" class="field num" placeholder="Contoh 0030R0011126V000143" autocomplete="off" spellcheck="false" autofocus>
+            </div>
+            <div>
+                <label for="dari" class="label">Dari tanggal</label>
+                <input id="dari" name="dari" type="date" value="{{ $filters['dari'] }}" class="field num">
+            </div>
+            <div>
+                <label for="sampai" class="label">Sampai tanggal</label>
+                <input id="sampai" name="sampai" type="date" value="{{ $filters['sampai'] }}" class="field num">
+            </div>
+            <div>
+                <label for="periksa" class="label">Status pemeriksaan</label>
+                <select id="periksa" name="periksa" class="field">
+                    <option value="">Semua</option>
+                    <option value="sudah" @selected($filters['periksa'] === 'sudah')>Sudah diperiksa AI</option>
+                    <option value="belum" @selected($filters['periksa'] === 'belum')>Belum diperiksa AI</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2 sm:col-span-2 lg:col-span-1">
+                <button type="submit" class="btn-primary">Cari</button>
+                @if ($aktif)<a href="{{ route('folders.index') }}" class="btn-ghost">Hapus filter</a>@endif
+            </div>
+        </form>
+        <p class="hint">Tanggal mengacu pada tanggal di FTP (waktu file terakhir diperbarui di DHealth).</p>
 
-        {{-- Kerangka saat memuat: setinggi baris hasil asli supaya tata letak tidak bergeser --}}
-        <template data-kerangka>
-            <p class="sr-only">Memuat hasil…</p>
-            @for ($i = 0; $i < 4; $i++)
-                <div class="animate-pulse py-4 motion-reduce:animate-none" aria-hidden="true">
-                    <div class="flex h-5 items-center"><div class="h-3 w-56 max-w-full rounded-full bg-abu-muda"></div></div>
-                    <div class="mt-0.5 flex h-[26px] items-center"><div class="h-4 w-72 max-w-full rounded-full bg-[#E8EAED]"></div></div>
-                    <div class="mt-0.5 flex h-5 items-center"><div class="h-3 w-[26rem] max-w-full rounded-full bg-abu-muda"></div></div>
-                    <div class="mt-2 h-[26px] w-48 rounded-full bg-abu-muda"></div>
+        <div class="mt-6">
+            <p class="num text-sm text-abu" aria-live="polite">
+                <span class="font-medium text-arang">{{ number_format($folders->total(), 0, ',', '.') }} folder ditemukan</span>
+                @if ($ringkas) · {{ implode(' · ', $ringkas) }}@endif
+            </p>
+            @unless ($filters['periksa'])
+                <p class="num mt-0.5 text-xs text-abu">{{ number_format($counts['sudah'], 0, ',', '.') }} sudah diperiksa AI · {{ number_format($counts['belum'], 0, ',', '.') }} belum diperiksa AI</p>
+            @endunless
+
+            @if ($folders->isEmpty())
+                <div class="py-12 text-center">
+                    @if ($aktif)
+                        <p class="text-arang">Tidak ada folder yang cocok dengan filter ini.</p>
+                        <p class="mt-1 text-sm text-abu">Periksa No. SEP, perlebar rentang tanggal, atau hapus filter.</p>
+                    @else
+                        <p class="text-arang">Belum ada folder.</p>
+                        <p class="mt-1 text-sm text-abu">Folder pasien dari FTP DHealth akan muncul setelah sinkronisasi otomatis berikutnya.</p>
+                    @endif
                 </div>
-            @endfor
-        </template>
+            @else
+                <ol class="mt-1">
+                    @foreach ($folders as $f)
+                        @include('folders.partials.result-item', ['f' => $f, 'q' => ''])
+                    @endforeach
+                </ol>
+                {{ $folders->links('folders.partials.pagination') }}
+            @endif
+        </div>
     </div>
 </x-app-layout>

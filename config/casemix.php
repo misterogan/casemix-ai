@@ -4,6 +4,9 @@ return [
     'app_name' => env('CASEMIX_APP_NAME', 'Casemix AI'),
     'hospital_name' => env('CASEMIX_HOSPITAL_NAME', 'Rumah Sakit'),
 
+    // Modul lama berkas klaim/impor/unggah; dimatikan karena verifikasi kini langsung dari FTP.
+    'legacy_claims' => (bool) env('CASEMIX_LEGACY_CLAIMS', false),
+
     // Disk penyimpanan berkas klaim. Harus di server RS / cloud yang disetujui (UU PDP).
     'storage_disk' => env('CASEMIX_STORAGE_DISK', 'local'),
 

@@ -125,8 +125,61 @@ class FolderVerificationTest extends TestCase
     {
         $this->synced();
         $this->actingAs($this->koordinator)->get('/')->assertRedirect(route('folders.index'));
-        $this->actingAs($this->koordinator)->get(route('folders.index', ['q' => '000001']))->assertOk()->assertSee('PASIEN CONTOH')->assertSee('Belum diperiksa AI');
-        $this->actingAs($this->koordinator)->get(route('folders.index', ['q' => 'tidak ada']))->assertOk()->assertDontSee('PASIEN CONTOH');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['sep' => '0000R0000000V000001']))->assertOk()->assertSee('PASIEN CONTOH')->assertSee('Belum diperiksa AI');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['sep' => 'TIDAKADA']))->assertOk()->assertDontSee('PASIEN CONTOH');
+    }
+
+    private function folder(string $nama, array $attrs = []): FtpFolder
+    {
+        return FtpFolder::create($attrs + ['path' => "/ftp/data/$nama", 'name' => $nama, 'nama_pasien' => $nama, 'files' => [], 'fingerprint' => 'f']);
+    }
+
+    private function daftar(array $filter)
+    {
+        return $this->actingAs($this->koordinator)->get(route('folders.index', $filter))->assertOk();
+    }
+
+    public function test_filter_sep_cocok_sebagian_tanpa_peduli_spasi_dan_huruf(): void
+    {
+        $this->folder('PASIEN SATU', ['no_sep' => '0030R0011126V000143']);
+        $this->folder('PASIEN DUA', ['no_sep' => '0030R0011126V000999']);
+
+        $this->daftar(['sep' => ' 126v 000143 '])->assertSee('PASIEN SATU')->assertDontSee('PASIEN DUA')->assertSee('1 folder ditemukan');
+        $this->daftar(['sep' => '0030r0011126'])->assertSee('PASIEN SATU')->assertSee('PASIEN DUA');
+    }
+
+    public function test_filter_tanggal_inklusif_dan_boleh_terbalik(): void
+    {
+        $this->folder('PASIEN AWAL', ['files_modified_at' => '2026-11-01 00:00:00']);
+        $this->folder('PASIEN AKHIR', ['files_modified_at' => '2026-11-03 23:59:00']);
+        $this->folder('PASIEN LUAR', ['files_modified_at' => '2026-11-04 00:00:01']);
+
+        foreach ([['dari' => '2026-11-01', 'sampai' => '2026-11-03'], ['dari' => '2026-11-03', 'sampai' => '2026-11-01']] as $f) {
+            $this->daftar($f)->assertSee('PASIEN AWAL')->assertSee('PASIEN AKHIR')->assertDontSee('PASIEN LUAR');
+        }
+    }
+
+    public function test_filter_status_pemeriksaan(): void
+    {
+        $this->folder('PASIEN SUDAH', ['analysis_status' => 'selesai', 'analyzed_fingerprint' => 'f']);
+        $this->folder('PASIEN BELUM');
+
+        $this->daftar(['periksa' => 'sudah'])->assertSee('PASIEN SUDAH')->assertDontSee('PASIEN BELUM');
+        $this->daftar(['periksa' => 'belum'])->assertSee('PASIEN BELUM')->assertDontSee('PASIEN SUDAH');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['periksa' => 'lain']))->assertSessionHasErrors('periksa');
+    }
+
+    public function test_modul_lama_mati_bila_legacy_dimatikan(): void
+    {
+        $this->assertNotSame(404, $this->actingAs($this->koordinator)->get('/berkas')->status(), 'Saat menyala, route lama tetap ada');
+
+        config(['casemix.legacy_claims' => false]);
+        $this->actingAs($this->koordinator)->get('/berkas')->assertNotFound();
+        $this->actingAs($this->koordinator)->get('/impor')->assertNotFound();
+        $this->actingAs($this->koordinator)->get('/ringkasan')->assertNotFound();
+        $this->actingAs($this->koordinator)->post('/berkas')->assertNotFound();
+        $this->actingAs($this->koordinator)->post('/berkas/1/dokumen')->assertNotFound();
+        $this->actingAs($this->koordinator)->get(route('folders.index'))->assertOk();
     }
 
     public function test_dibuka_pertama_kali_menganalisa_otomatis_lalu_tidak_lagi(): void
@@ -171,7 +224,11 @@ class FolderVerificationTest extends TestCase
         $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
         $admin = User::factory()->create(['is_active' => true])->assignRole('admin');
 
-        $this->actingAs($petugas)->get(route('folders.show', $folder))->assertForbidden();
+        // Petugas hanya membaca: boleh membuka, tetapi tidak memicu atau meminta analisa AI
+        Queue::fake();
+        $this->actingAs($petugas)->get(route('folders.show', $folder))->assertOk()->assertDontSee('Analisa ulang dengan AI');
+        $this->actingAs($petugas)->post(route('folders.analyze', $folder))->assertForbidden();
+        Queue::assertNothingPushed();
         $this->actingAs($admin)->get(route('folders.index'))->assertForbidden();
         $this->actingAs($admin)->get('/')->assertRedirect(route('admin.budget.index'));
     }

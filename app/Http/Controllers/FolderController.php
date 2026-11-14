@@ -13,6 +13,7 @@ use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderSync;
 use App\Support\Audit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -21,31 +22,39 @@ class FolderController extends Controller
 {
     public function index(Request $request)
     {
-        $q = trim((string) $request->query('q', ''));
-        $state = $request->query('status');
-        $state = array_key_exists((string) $state, FtpFolder::STATUSES) ? $state : null;
+        $v = $request->validate([
+            'sep' => ['nullable', 'string', 'max:30'],
+            'dari' => ['nullable', 'date'],
+            'sampai' => ['nullable', 'date'],
+            'periksa' => ['nullable', 'in:sudah,belum'],
+        ]);
 
+        $sep = strtoupper(preg_replace('/\s+/', '', (string) ($v['sep'] ?? '')));
+        $dari = filled($v['dari'] ?? null) ? Carbon::parse($v['dari'])->startOfDay() : null;
+        $sampai = filled($v['sampai'] ?? null) ? Carbon::parse($v['sampai'])->endOfDay() : null;
+        if ($dari && $sampai && $dari->gt($sampai)) {
+            [$dari, $sampai] = [$sampai->copy()->startOfDay(), $dari->copy()->endOfDay()];
+        }
+        $periksa = $v['periksa'] ?? '';
+
+        // Filter No. SEP dan tanggal; status pemeriksaan ditambahkan terpisah supaya jumlah per status bisa dihitung
         $base = fn () => FtpFolder::query()
             ->whereNull('missing_at')
-            ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('nama_pasien', 'like', "%$q%")
-                ->orWhere('no_rm', 'like', "%$q%")->orWhere('no_sep', 'like', "%$q%")->orWhere('name', 'like', "%$q%")));
+            ->when($sep !== '', fn ($w) => $w->where('no_sep', 'like', "%$sep%"))
+            ->when($dari, fn ($w) => $w->where('files_modified_at', '>=', $dari))
+            ->when($sampai, fn ($w) => $w->where('files_modified_at', '<=', $sampai));
+        $byStatus = fn ($w, string $p) => match ($p) {
+            'sudah' => $w->where('analysis_status', 'selesai'),
+            'belum' => $w->whereNull('analysis_status'),
+            default => $w,
+        };
 
-        $data = [
-            'folders' => $base()->state($state)->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
-            'q' => $q,
-            'state' => $state,
-            // Jumlah per tab mengikuti kata kunci yang sedang dicari
-            'counts' => collect(FtpFolder::STATUSES)->map(fn ($l, $k) => $base()->state($k)->count()),
-            'total' => $base()->count(),
+        return view('folders.index', [
+            'folders' => $byStatus($base(), $periksa)->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
+            'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa],
+            'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
-        ];
-
-        // Pencarian langsung: hanya daftar hasil, tanpa kerangka halaman
-        if ($request->ajax()) {
-            return response()->view('folders.partials.results', $data)->header('Vary', 'X-Requested-With');
-        }
-
-        return view('folders.index', $data);
+        ]);
     }
 
     /** Dibuka pertama kali: analisa AI dimulai otomatis. Berikutnya: hasil tersimpan, tanpa memanggil AI. */

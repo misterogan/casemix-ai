@@ -34,8 +34,8 @@ class RolePermissionSeeder extends Seeder
         $map = [
             'admin' => ['admin.manage', 'claims.view', 'audit.view', 'reports.download'],
             'koordinator' => ['folders.view', 'folders.analyze', 'claims.view', 'claims.edit', 'claims.review', 'claims.import', 'claims.approve', 'claims.reopen', 'reports.download', 'audit.view'],
-            'petugas' => ['claims.view', 'claims.edit', 'claims.review', 'claims.import', 'reports.download'],
-            'viewer' => ['claims.view', 'reports.download', 'audit.view'],
+            'petugas' => ['folders.view', 'claims.view', 'claims.edit', 'claims.review', 'claims.import', 'reports.download'],
+            'viewer' => ['folders.view', 'claims.view', 'reports.download', 'audit.view'],
         ];
 
         foreach ($map as $role => $perms) {
