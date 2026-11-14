@@ -17,9 +17,17 @@ class ConsistencyChecker
     /** @var array<int, array{tingkat: string, kategori: string, judul: string, uraian: string}> */
     private array $out = [];
 
-    public function check(Claim $claim): array
+    /** true: data klaim dibaca AI dari dokumen (verifikasi folder FTP), bukan diisi petugas. */
+    private bool $fromDocuments = false;
+
+    /**
+     * @param  bool  $fromDocuments  Field yang tidak terbaca dari dokumen tidak dilaporkan sebagai "belum diisi":
+     *                               kelengkapan dokumennya dinilai AI, dan aturan hanya menghitung yang terbaca.
+     */
+    public function check(Claim $claim, bool $fromDocuments = false): array
     {
         $this->out = [];
+        $this->fromDocuments = $fromDocuments;
         $claim->loadMissing('documents');
 
         $this->identitas($claim);
@@ -43,6 +51,9 @@ class ConsistencyChecker
         if (! $c->no_sep) {
             $this->add(Severity::Kritis, 'Identitas', 'No. SEP kosong', 'Klaim tidak bisa diproses di E-Klaim tanpa SEP dari V-Claim.');
         }
+        if ($this->fromDocuments) {
+            return;
+        }
         foreach ($c->missingRequiredFields() as $field => $label) {
             if ($field === 'tanggal_masuk') {
                 continue; // ditangani di tanggalDanLos
@@ -58,15 +69,22 @@ class ConsistencyChecker
     private function dokumenWajib(Claim $c): void
     {
         foreach ($c->missingRequiredDocuments() as $t) {
-            $this->add(Severity::Kritis, 'Kelengkapan', "{$t->label()} belum diunggah", 'Dokumen wajib untuk verifikasi Vedika.');
+            $this->add(Severity::Kritis, 'Kelengkapan', $this->fromDocuments ? "{$t->label()} tidak ada di folder" : "{$t->label()} belum diunggah",
+                $this->fromDocuments ? 'Dokumen wajib untuk verifikasi Vedika. Lengkapi di DHealth.' : 'Dokumen wajib untuk verifikasi Vedika.');
         }
     }
 
     private function tanggalDanLos(Claim $c): void
     {
+        if (! $c->tanggal_masuk && $this->fromDocuments) {
+            return;
+        }
         if (! $c->tanggal_masuk) {
             $this->add(Severity::Kritis, 'Tanggal', 'Tanggal masuk belum diisi', 'Isi tanggal masuk sesuai SEP. LOS tidak bisa dihitung.');
 
+            return;
+        }
+        if ($c->jenis_rawat === 'inap' && ! $c->tanggal_keluar && $this->fromDocuments) {
             return;
         }
         if ($c->jenis_rawat === 'inap' && ! $c->tanggal_keluar) {

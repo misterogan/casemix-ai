@@ -1,0 +1,13 @@
+# -> /etc/systemd/system/casemix-scheduler.service
+# Menjalankan jadwal Laravel (sinkronisasi folder FTP tiap jam). Dipicu casemix-scheduler.timer setiap menit.
+[Unit]
+Description=Casemix AI - jadwal Laravel (sinkron FTP tiap jam)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=oem
+Group=www-data
+UMask=0002
+WorkingDirectory=/var/www/casemix-ai
+ExecStart=/usr/bin/php8.4 artisan schedule:run

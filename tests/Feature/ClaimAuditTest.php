@@ -44,8 +44,8 @@ class ClaimAuditTest extends TestCase
         $log = AuditLog::where('action', 'berkas.ubah')->sole();
         $diff = $log->properties['perubahan'];
 
-        $this->assertSame(['lama' => 'Pneumonia', 'baru' => 'Pneumonia berat'], $diff['diagnosis_utama']);
-        $this->assertSame(['lama' => null, 'baru' => 'Diabetes melitus tipe 2'], $diff['diagnosis_sekunder']);
+        $this->assertEquals(['lama' => 'Pneumonia', 'baru' => 'Pneumonia berat'], $diff['diagnosis_utama']);
+        $this->assertEquals(['lama' => null, 'baru' => 'Diabetes melitus tipe 2'], $diff['diagnosis_sekunder']);
         $this->assertSame($this->petugas->id, $log->user_id);
     }
 

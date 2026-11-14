@@ -30,7 +30,7 @@ class LoginController extends Controller
         $request->user()->forceFill(['last_login_at' => now()])->save();
         Audit::log('auth.masuk', $request->user(), 'Masuk ke aplikasi');
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->intended(route('home'));
     }
 
     public function logout(Request $request)

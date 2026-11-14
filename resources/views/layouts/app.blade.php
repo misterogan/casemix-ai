@@ -12,13 +12,11 @@
 </head>
 <body class="min-h-screen">
 @php
+    // Menu utama: Koordinator membaca hasil verifikasi AI langsung dari folder FTP.
+    // Menu berkas klaim, impor, dan ringkasan lama disembunyikan (datanya tetap ada).
     $nav = [
-        ['route' => 'dashboard', 'match' => 'dashboard', 'label' => 'Ringkasan', 'can' => 'claims.view',
-         'icon' => 'M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10'],
-        ['route' => 'claims.index', 'match' => 'claims.*', 'label' => 'Berkas klaim', 'can' => 'claims.view',
-         'icon' => 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'],
-        ['route' => 'imports.index', 'match' => 'imports.*', 'label' => 'Impor dari SIMRS', 'can' => 'claims.import',
-         'icon' => 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2'],
+        ['route' => 'folders.index', 'match' => 'folders.*', 'label' => 'Verifikasi berkas', 'can' => 'folders.view',
+         'icon' => 'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
         ['route' => 'audit.index', 'match' => 'audit.*', 'label' => 'Riwayat aktivitas', 'can' => 'audit.view',
          'icon' => 'M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z'],
     ];
@@ -35,7 +33,7 @@
     {{-- Sidebar --}}
     <aside class="bg-hutan text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
         <div class="flex items-center justify-between px-5 py-5 lg:block">
-            <a href="{{ route('dashboard') }}" class="block">
+            <a href="{{ route('home') }}" class="block">
                 <span class="flex items-center gap-2.5">
                     <svg viewBox="0 0 32 32" class="size-8 shrink-0" aria-hidden="true">
                         <rect x="3" y="7" width="26" height="20" rx="3" fill="#EADFC4"/>

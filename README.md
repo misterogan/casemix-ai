@@ -69,6 +69,25 @@ Jejak audit: perubahan data klaim dicatat beserta nilai lama dan nilai baru (ter
 
 Dokumen susulan dari FTP untuk SEP yang berkasnya sudah **Disetujui** tidak ditempel dan tidak dibuat menjadi berkas baru. File tersebut tertahan di halaman impor sampai Koordinator membuka kembali berkasnya, lalu impor disimpan lagi.
 
+## Verifikasi berkas langsung dari FTP (alur utama)
+
+Tidak ada pengisian data. Koordinator casemix membuka **Verifikasi berkas**:
+
+1. **Daftar folder** pasien dari FTP DHealth, terbaru di atas, bisa dicari (nama, No. RM, No. SEP) dan disaring per status: *Belum dianalisa*, *Sedang dianalisa*, *Ada temuan*, *Tidak ada temuan*, *File berubah*, *Analisa gagal*. Daftar ini indeks di database, diperbarui **otomatis tiap jam** (`casemix:sync-ftp` lewat jadwal Laravel); tidak ada tombol sinkron manual. Folder yang hilang dari FTP disembunyikan, hasil analisanya tetap tersimpan.
+2. **Klik folder**: bila belum pernah dianalisa, analisa AI dimulai otomatis dan halaman menampilkan proses sampai selesai. AI membaca semua dokumen (PDF teks per halaman, scan sebagai gambar) dan memberi **rekomendasi**: ringkasan, temuan kritis/perhatian/sesuai dengan **nama dokumen dan halamannya** (klik untuk membuka PDF di halaman itu), dan kondisi untuk dikonfirmasi ke DPJP. Aturan E-Klaim (LOS, kelas, ICU, biaya tanpa bukti, dokumen wajib) dijalankan atas data yang terbaca AI dari dokumen.
+3. **Hasil disimpan.** Membuka folder lagi menampilkan hasil tersimpan tanpa memanggil AI. Bila file di FTP berubah (sidik nama + ukuran + waktu ubah), folder ditandai *File berubah*; analisa ulang dijalankan Koordinator dengan tombol **Analisa ulang dengan AI**.
+4. **Tidak ada salinan.** File diunduh sementara untuk dibaca AI lalu dihapus; dokumen yang dibuka Koordinator diambil langsung dari FTP. Setiap pembukaan dokumen dan analisa tercatat di Riwayat aktivitas.
+
+Peran: **Koordinator** (verifikasi), **Admin** (pengguna, penyedia AI, anggaran AI, pengaturan FTP). Pengguna lama berperan Petugas perlu diubah Admin menjadi Koordinator. Menu berkas klaim, impor, dan ringkasan lama disembunyikan; datanya tidak dihapus.
+
+**Jadwal di server** (sekali saja):
+
+```bash
+sudo cp deploy/systemd/casemix-scheduler.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now casemix-scheduler.timer
+php8.4 artisan casemix:sync-ftp   # isi daftar pertama kali tanpa menunggu jam berikutnya
+```
+
 ## Anggaran AI (dua lapis)
 
 **Lapis 1, di penyedia AI (wajib).** Untuk Claude API: buat workspace khusus "Casemix AI" di Claude Console, pasang *Spend limit* bulanan (mis. US$200) dan notifikasi (mis. US$150) di workspace itu, lalu buat API key dari dalam workspace tersebut. Workspace *Default* tidak bisa diberi batas sendiri. Batas ini dipegang penyedia, jadi tetap berlaku apa pun yang terjadi di aplikasi.

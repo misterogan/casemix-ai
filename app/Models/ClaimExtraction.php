@@ -57,7 +57,10 @@ class ClaimExtraction extends Model
     public function pendingFor(Claim $claim): array
     {
         $out = [];
-        foreach ($this->suggestions ?? [] as $field => $s) {
+        // Urutan mengikuti formulir (MySQL menyimpan kunci JSON dalam urutan lain)
+        $all = $this->suggestions ?? [];
+        $ordered = array_merge(array_intersect_key(array_flip(array_keys(ClaimFields::spec())), $all), $all);
+        foreach ($ordered as $field => $s) {
             $current = ClaimFields::current($claim, $field);
             if (ClaimFields::same($current, $s['nilai'])) {
                 continue;

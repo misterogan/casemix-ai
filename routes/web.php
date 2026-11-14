@@ -15,6 +15,7 @@ use App\Http\Controllers\ClaimExtractionController;
 use App\Http\Controllers\ClaimReportController;
 use App\Http\Controllers\ClaimReviewController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FolderController;
 use App\Http\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,7 +26,26 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/keluar', [LoginController::class, 'logout'])->name('logout');
-    Route::get('/', DashboardController::class)->name('dashboard');
+    // Halaman awal menurut peran: Koordinator ke verifikasi, Admin ke pengaturan.
+    Route::get('/', function () {
+        $u = auth()->user();
+
+        return match (true) {
+            $u->can('folders.view') => redirect()->route('folders.index'),
+            $u->can('admin.manage') => redirect()->route('admin.budget.index'),
+            default => app()->call(DashboardController::class),
+        };
+    })->name('home');
+    Route::get('/ringkasan', DashboardController::class)->name('dashboard');
+
+    // Verifikasi langsung dari folder FTP
+    Route::middleware('permission:folders.view')->group(function () {
+        Route::get('/verifikasi', [FolderController::class, 'index'])->name('folders.index');
+        Route::get('/verifikasi/{folder}', [FolderController::class, 'show'])->name('folders.show');
+        Route::get('/verifikasi/{folder}/status', [FolderController::class, 'status'])->name('folders.status');
+        Route::get('/verifikasi/{folder}/dokumen/{index}', [FolderController::class, 'file'])->whereNumber('index')->name('folders.file');
+        Route::post('/verifikasi/{folder}/analisa', [FolderController::class, 'analyze'])->middleware('permission:folders.analyze')->name('folders.analyze');
+    });
 
     // Berkas klaim
     Route::get('/berkas', [ClaimController::class, 'index'])->name('claims.index');

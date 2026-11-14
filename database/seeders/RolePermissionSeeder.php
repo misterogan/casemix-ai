@@ -19,6 +19,8 @@ class RolePermissionSeeder extends Seeder
         'reports.download' => 'Mengunduh laporan dan ekspor',
         'audit.view' => 'Melihat riwayat aktivitas',
         'admin.manage' => 'Mengelola pengguna, peran, penyedia AI, dan pengaturan',
+        'folders.view' => 'Membuka daftar folder FTP dan hasil verifikasi AI',
+        'folders.analyze' => 'Meminta analisa AI atas folder FTP',
     ];
 
     public function run(): void
@@ -31,7 +33,7 @@ class RolePermissionSeeder extends Seeder
 
         $map = [
             'admin' => ['admin.manage', 'claims.view', 'audit.view', 'reports.download'],
-            'koordinator' => ['claims.view', 'claims.edit', 'claims.review', 'claims.import', 'claims.approve', 'claims.reopen', 'reports.download', 'audit.view'],
+            'koordinator' => ['folders.view', 'folders.analyze', 'claims.view', 'claims.edit', 'claims.review', 'claims.import', 'claims.approve', 'claims.reopen', 'reports.download', 'audit.view'],
             'petugas' => ['claims.view', 'claims.edit', 'claims.review', 'claims.import', 'reports.download'],
             'viewer' => ['claims.view', 'reports.download', 'audit.view'],
         ];

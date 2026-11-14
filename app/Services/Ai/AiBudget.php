@@ -7,6 +7,7 @@ use App\Models\AiProvider;
 use App\Models\AiReview;
 use App\Models\AppSetting;
 use App\Models\ClaimExtraction;
+use App\Models\FolderAnalysis;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -24,6 +25,13 @@ class AiBudget
     public const KEY_WARN = 'ai_budget_warn_pct';
 
     private const KEY_WARNED = 'ai_budget_warned_month';
+
+    /** Semua jenis pemanggilan AI yang dicatat biayanya, dengan label untuk laporan. */
+    public const SOURCES = [
+        FolderAnalysis::class => 'Verifikasi folder',
+        AiReview::class => 'Pemeriksaan berkas',
+        ClaimExtraction::class => 'Usulan isian',
+    ];
 
     /** Anggaran bulanan dalam USD, atau null bila tidak dibatasi. */
     public function budget(): ?float
@@ -90,8 +98,7 @@ class AiBudget
     {
         $from = $this->monthStart();
 
-        return round((float) AiReview::where('finished_at', '>=', $from)->sum('cost_usd')
-            + (float) ClaimExtraction::where('finished_at', '>=', $from)->sum('cost_usd'), 6);
+        return round(collect(array_keys(self::SOURCES))->sum(fn ($m) => (float) $m::where('finished_at', '>=', $from)->sum('cost_usd')), 6);
     }
 
     /** Pemanggilan bulan ini yang memakai token tetapi harganya tidak diketahui (biaya tidak terhitung). */
@@ -100,14 +107,13 @@ class AiBudget
         $from = $this->monthStart();
         $q = fn ($m) => $m::where('finished_at', '>=', $from)->whereNotNull('tokens_in')->whereNull('cost_usd')->count();
 
-        return $q(AiReview::class) + $q(ClaimExtraction::class);
+        return collect(array_keys(self::SOURCES))->sum($q);
     }
 
     /** Rata-rata biaya per pemanggilan dari 50 pemanggilan terakhir, untuk memperkirakan antrean. */
     public function averageJobCost(): float
     {
-        $costs = AiReview::whereNotNull('cost_usd')->latest('id')->limit(50)->pluck('cost_usd')
-            ->merge(ClaimExtraction::whereNotNull('cost_usd')->latest('id')->limit(50)->pluck('cost_usd'));
+        $costs = collect(array_keys(self::SOURCES))->flatMap(fn ($m) => $m::whereNotNull('cost_usd')->latest('id')->limit(50)->pluck('cost_usd'));
 
         return $costs->isEmpty() ? (float) config('casemix.budget.default_job_cost_usd') : (float) $costs->avg();
     }
@@ -116,7 +122,7 @@ class AiBudget
     {
         $active = [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value];
 
-        return AiReview::whereIn('status', $active)->count() + ClaimExtraction::whereIn('status', $active)->count();
+        return collect(array_keys(self::SOURCES))->sum(fn ($m) => $m::whereIn('status', $active)->count());
     }
 
     /**
@@ -162,7 +168,7 @@ class AiBudget
     {
         $from = $this->monthStart()->subMonths($months - 1);
         $rows = collect();
-        foreach ([AiReview::class => 'Pemeriksaan berkas', ClaimExtraction::class => 'Usulan isian'] as $model => $label) {
+        foreach (self::SOURCES as $model => $label) {
             $rows = $rows->merge($model::query()->where('finished_at', '>=', $from)->whereNotNull('finished_at')
                 ->get(['finished_at', 'cost_usd', 'tokens_in', 'tokens_out', 'requested_by'])
                 ->map(fn ($r) => ['bulan' => $r->finished_at->format('Y-m'), 'fitur' => $label, 'biaya' => (float) $r->cost_usd,

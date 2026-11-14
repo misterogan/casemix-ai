@@ -82,7 +82,8 @@ class FieldExtractionTest extends TestCase
         $x = $this->runExtraction($claim);
 
         $this->assertSame(ReviewStatus::Selesai, $x->status);
-        $this->assertSame(['tanggal_masuk', 'dpjp', 'jenis_rawat', 'diagnosis_utama', 'tarif.kamar'], array_keys($x->suggestions));
+        // MySQL mengurutkan ulang kunci JSON, jadi urutan tidak dibandingkan
+        $this->assertEqualsCanonicalizing(['tanggal_masuk', 'dpjp', 'jenis_rawat', 'diagnosis_utama', 'tarif.kamar'], array_keys($x->suggestions));
         $this->assertSame('Pneumonia', $x->suggestions['diagnosis_utama']['nilai'], 'Kode ICD harus dibuang.');
         $this->assertNull($claim->fresh()->dpjp, 'Usulan tidak boleh diterapkan otomatis.');
 
@@ -111,7 +112,7 @@ class FieldExtractionTest extends TestCase
         $this->assertNotNull($claim->content_updated_at);
 
         $log = AuditLog::where('action', 'berkas.isi_otomatis')->sole();
-        $this->assertSame(['lama' => null, 'baru' => '2026-11-01'], $log->properties['perubahan']['tanggal_masuk']);
+        $this->assertEquals(['lama' => null, 'baru' => '2026-11-01'], $log->properties['perubahan']['tanggal_masuk']);
         $this->assertSame($x->id, $log->properties['ekstraksi']);
         $this->assertSame(['tanggal_masuk', 'tarif.kamar'], $x->fresh()->applied_fields);
 

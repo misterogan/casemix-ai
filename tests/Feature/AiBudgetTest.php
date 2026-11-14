@@ -201,7 +201,7 @@ class AiBudgetTest extends TestCase
         $this->actingAs($this->admin)->put(route('admin.budget.update'), ['budget' => '200', 'warn_pct' => 80])->assertSessionHas('ok');
 
         $this->assertSame(200.0, $this->budget()->budget());
-        $this->assertSame(['lama' => null, 'baru' => 200], AuditLog::where('action', 'admin.anggaran')->sole()->properties['perubahan']['anggaran_usd']);
+        $this->assertEquals(['lama' => null, 'baru' => 200], AuditLog::where('action', 'admin.anggaran')->sole()->properties['perubahan']['anggaran_usd']);
 
         $this->actingAs($this->petugas)->get(route('admin.budget.index'))->assertForbidden();
         $this->actingAs($this->admin)->get(route('admin.providers.create'))->assertOk()->assertSee('Harga input');

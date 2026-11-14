@@ -3,7 +3,7 @@
     $user = auth()->user();
     $s = $user ? \Illuminate\Support\Facades\Cache::remember('ai_budget_status', 60, fn () => app(\App\Services\Ai\AiBudget::class)->status()) : null;
     $manager = $user && ($user->can('admin.manage') || $user->can('claims.approve'));
-    $show = $s && (($s['state'] === 'habis' && ($manager || $user->can('claims.review'))) || ($s['state'] === 'peringatan' && $manager));
+    $show = $s && (($s['state'] === 'habis' && ($manager || $user->can('folders.analyze') || $user->can('claims.review'))) || ($s['state'] === 'peringatan' && $manager));
 @endphp
 @if ($show)
     <div @class(['mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-4 py-3 text-sm',

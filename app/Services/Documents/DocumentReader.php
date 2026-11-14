@@ -43,6 +43,25 @@ class DocumentReader
         return ['text' => null, 'images' => $this->renderPdf($absolutePath, $maxPages), 'pages' => $pages ?: null, 'has_text' => false];
     }
 
+    /**
+     * Teks per halaman, supaya temuan bisa menyebut nomor halaman. Null bila PDF tidak punya teks (hasil scan).
+     *
+     * @return ?array<int, string> nomor halaman (mulai 1) => teks
+     */
+    public function pdfPageTexts(string $path): ?array
+    {
+        try {
+            $out = [];
+            foreach ((new Parser)->parseFile($path)->getPages() as $i => $page) {
+                $out[$i + 1] = trim(preg_replace("/[ \t]+/", ' ', (string) $page->getText()));
+            }
+
+            return $out && mb_strlen(implode("", $out)) / count($out) >= self::MIN_CHARS_PER_PAGE ? $out : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /** @return array{0: ?string, 1: int} */
     public function pdfText(string $path): array
     {

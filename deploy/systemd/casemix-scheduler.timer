@@ -1,0 +1,12 @@
+# -> /etc/systemd/system/casemix-scheduler.timer
+# Aktifkan: sudo systemctl daemon-reload && sudo systemctl enable --now casemix-scheduler.timer
+[Unit]
+Description=Casemix AI - pemicu jadwal Laravel setiap menit
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
