@@ -25,7 +25,6 @@ class AnthropicProvider implements AiProvider
         $payload = [
             'model' => $request->model,
             'max_tokens' => $request->maxTokens,
-            'temperature' => $request->temperature,
             'messages' => [['role' => 'user', 'content' => $content]],
         ];
         if ($request->system !== '') {
