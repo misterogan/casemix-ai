@@ -205,7 +205,7 @@ class FolderVerificationTest extends TestCase
         Queue::fake();
         $folder = $this->synced();
 
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('AI sedang membaca')->assertSee('0 dari 2 dokumen selesai');
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('AI sedang membaca')->assertSee('0 dari 2 file selesai');
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk();
 
         Queue::assertPushed(RunFolderAnalysis::class, 1);
@@ -307,7 +307,7 @@ class FolderVerificationTest extends TestCase
 
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertSee('3 dari 3 dokumen selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP');
+            ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP');
         $this->assertCount(4, Http::recorded());
     }
 
@@ -397,7 +397,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame(ReviewStatus::Selesai, $a->fresh()->status, (string) $a->fresh()->error);
         $sent = Http::recorded()->map(fn ($p) => $p[0]->data())->values();
         $this->assertSame(
-            [['claude-haiku-5-5', 1500], ['claude-sonnet-5-5', 2000], ['claude-haiku-5-5', 1500], ['claude-sonnet-5-5', 2000]],
+            [['claude-haiku-5-5', 4000], ['claude-sonnet-5-5', 4096], ['claude-haiku-5-5', 4000], ['claude-sonnet-5-5', 4096]],
             $sent->map(fn ($d) => [$d['model'], $d['max_tokens']])->all(),
         );
         $prompt = fn ($i) => json_encode($sent[$i]['messages']);
@@ -416,6 +416,7 @@ class FolderVerificationTest extends TestCase
 
     public function test_terpotong_sekali_dicoba_ulang_lalu_berhasil(): void
     {
+        AiProvider::query()->update(['max_tokens' => 20000]);
         $folder = $this->synced(['SEP.png']);
         Http::fake(['*/v1/messages' => Http::sequence()
             ->push($this->reply([], 'max_tokens'))
@@ -429,7 +430,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
         $sent = Http::recorded()->map(fn ($p) => $p[0]->data())->values();
         $this->assertCount(3, $sent, '2 request untuk dokumen + tahap 2');
-        $this->assertSame([1500, 3000], [$sent[0]['max_tokens'], $sent[1]['max_tokens']], 'Coba ulang dengan batas dua kali lipat');
+        $this->assertSame([4000, 8000], [$sent[0]['max_tokens'], $sent[1]['max_tokens']], 'Coba ulang dengan batas dua kali lipat');
         $this->assertStringContainsString('Jawab lebih singkat: maks 3 temuan', json_encode($sent[1]['messages']));
         $this->assertSame([2000, 200], [$doc->tokens_in, $doc->tokens_out], 'Token kedua percobaan tercatat');
         $this->assertEquals(0.006, (float) $doc->cost_usd);
@@ -437,6 +438,7 @@ class FolderVerificationTest extends TestCase
 
     public function test_terpotong_dua_kali_ditandai_gagal(): void
     {
+        AiProvider::query()->update(['max_tokens' => 20000]);
         $folder = $this->synced(['SEP.png']);
         Http::fake(['*/v1/messages' => Http::response($this->reply([], 'max_tokens'))]);
 
@@ -444,7 +446,7 @@ class FolderVerificationTest extends TestCase
 
         $this->assertCount(2, Http::recorded(), 'Tepat satu kali coba ulang; tahap 2 tidak dipanggil');
         $this->assertSame(ReviewStatus::Gagal, $doc->status);
-        $this->assertSame('Jawaban AI terpotong karena batas 3000 token tercapai.', $doc->error);
+        $this->assertStringStartsWith('Jawaban AI terpotong karena batas 8000 token tercapai (blok: text; output_tokens: 100;', $doc->error);
         $this->assertEquals(0.006, (float) $doc->cost_usd, 'Biaya kedua percobaan tercatat');
     }
 
@@ -454,7 +456,66 @@ class FolderVerificationTest extends TestCase
         $folder = $this->synced();
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder));
 
-        $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))->assertExactJson(['active' => true, 'done' => 0, 'total' => 2]);
+        $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))
+            ->assertJson(['active' => true, 'done' => 0, 'total' => 2, 'summary_html' => null])->assertJsonCount(2, 'docs');
+    }
+
+    public function test_status_mengembalikan_html_per_file_dan_rekomendasi(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'diagnosis' => ['Pneumonia'], 'temuan' => [['tingkat' => 'kritis', 'judul' => 'TTD DPJP kosong', 'halaman' => 2]]];
+        $this->fakeAi($doc, ['isian' => [], 'temuan' => []], self::SILANG);
+        $a = $this->analyze($folder);
+
+        $j = $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))->assertOk()
+            ->assertJson(['active' => false, 'done' => 2, 'total' => 2, 'stuck' => false])
+            ->assertJsonStructure(['docs' => [['id', 'status', 'html']], 'summary_html'])->json();
+
+        $resume = collect($j['docs'])->firstWhere('id', $a->documents->firstWhere('name', 'Resume Medis.png')->id);
+        $this->assertSame('selesai', $resume['status']);
+        $this->assertStringContainsString('TTD DPJP kosong', $resume['html']);
+        $this->assertStringContainsString('Pneumonia', $resume['html'], 'Data ringkas yang terbaca tampil');
+        $this->assertStringContainsString('#page=2', $resume['html'], 'Tautan ke halaman temuan');
+        $this->assertStringContainsString('Proses ulang file ini', $resume['html']);
+        $this->assertMatchesRegularExpression('/<details[^>]*open/', $resume['html'], 'Item dengan temuan terbuka');
+        $this->assertStringContainsString('Berkas lengkap.', $j['summary_html']);
+    }
+
+    public function test_proses_ulang_semua_file_memanggil_ai_untuk_semua_file(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG, $doc, $doc, self::SILANG);
+        $this->analyze($folder);
+
+        $this->actingAs($this->koordinator)->post(route('folders.process_all', $folder))->assertSessionHas('ok');
+
+        $a = $folder->analyses()->first();
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(6, Http::recorded(), 'File tidak berubah tetap dibaca ulang');
+        $this->assertTrue($a->documents->every(fn ($d) => ! $d->reused && $d->cost_usd !== null));
+        $this->assertSame(1, AuditLog::where('action', 'folder.proses_semua')->count());
+    }
+
+    public function test_proses_ulang_satu_file_hanya_file_itu_dan_tahap_dua(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+        $sep = $a->documents->firstWhere('name', 'SEP.png');
+        $resume = $a->documents->firstWhere('name', 'Resume Medis.png');
+
+        $this->actingAs($this->koordinator)->post(route('folders.process_document', [$folder, $sep]))->assertSessionHas('ok');
+
+        $this->assertCount(5, Http::recorded(), 'Hanya SEP + tahap 2');
+        $this->assertSame(ReviewStatus::Selesai, $a->fresh()->status);
+        $this->assertEquals($resume->finished_at, $resume->fresh()->finished_at, 'File lain tidak dibaca ulang');
+        $this->assertEquals(0.006, (float) $sep->fresh()->cost_usd, 'Biaya kedua kali baca SEP dijumlahkan');
+
+        $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
+        $this->actingAs($petugas)->post(route('folders.process_document', [$folder, $sep]))->assertForbidden();
+        $this->actingAs($petugas)->post(route('folders.process_all', $folder))->assertForbidden();
     }
 
     public function test_dokumen_wajib_yang_tidak_ada_dilaporkan_aturan(): void

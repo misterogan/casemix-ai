@@ -76,13 +76,13 @@ async function pollSelesai(el) {
 
 function initPoll(root = document) {
   root.querySelectorAll('[data-poll]').forEach((el) => {
+    // Halaman verifikasi per file punya polling sendiri (initDocs)
+    if (document.querySelector('[data-docs]') && el.closest('#detail-folder')) return;
     const tick = async () => {
       if (!el.isConnected) return;
       try {
         const r = await fetch(el.dataset.poll, { headers: { Accept: 'application/json' }, cache: 'no-store' });
         const j = await r.json();
-        // data-poll-done: jumlah dokumen selesai saat halaman dimuat; bertambah = muat ulang supaya hasil per dokumen tampil
-        if (el.dataset.pollDone !== undefined && Number(j.done) > Number(el.dataset.pollDone)) return window.location.reload();
         if (!j.active) return pollSelesai(el);
       } catch (_) { /* coba lagi */ }
       setTimeout(tick, 4000);
@@ -164,9 +164,85 @@ function initCari() {
   });
 }
 
+// Verifikasi per file: <section data-docs data-status-url data-active>. Tiap 3 detik hanya item yang
+// statusnya berubah yang diganti; item yang baru selesai dibuka halus (200 ms). Berhenti saat analisa selesai.
+function initDocs() {
+  const root = document.querySelector('[data-docs]');
+  if (!root || root.dataset.active !== '1') return;
+  const list = root.querySelector('[data-docs-list]');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const buka = (el) => {
+    el.open = true;
+    if (reduce) return;
+    el.querySelector('[data-doc-body]')?.animate(
+      [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'ease-out' },
+    );
+  };
+
+  const tick = async () => {
+    let j;
+    try {
+      const r = await fetch(root.dataset.statusUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      j = await r.json();
+    } catch (_) {
+      return setTimeout(tick, 3000);
+    }
+
+    j.docs.forEach((d) => {
+      const lama = list.querySelector(`[data-doc="${d.id}"]`);
+      if (lama && lama.dataset.docStatus === d.status) return;
+      const t = document.createElement('template');
+      t.innerHTML = d.html.trim();
+      const baru = t.content.firstElementChild;
+      if (lama) {
+        const wasOpen = lama.open;
+        lama.replaceWith(baru);
+        if (d.status === 'selesai') buka(baru);
+        else if (wasOpen) baru.open = true;
+      } else {
+        list.append(baru);
+      }
+    });
+
+    const progres = root.querySelector('[data-docs-progress]');
+    if (progres) progres.textContent = `${j.done} dari ${j.total} file selesai`;
+    const bar = root.querySelector('[data-docs-bar]');
+    if (bar) {
+      bar.setAttribute('aria-valuenow', j.done);
+      bar.firstElementChild.style.width = `${j.total ? Math.round((j.done / j.total) * 100) : 0}%`;
+    }
+
+    if (j.active) return setTimeout(tick, 3000);
+
+    root.dataset.active = '0';
+    root.querySelectorAll('[data-lock]').forEach((b) => { b.disabled = false; });
+    const lanjut = root.querySelector('[data-docs-resume]');
+    if (lanjut) lanjut.hidden = !j.stuck;
+    const panel = document.getElementById('detail-folder');
+    if (panel && j.summary_html) {
+      panel.innerHTML = j.summary_html;
+      tampilkan(panel);
+      initTahap(panel);
+    }
+    const kabar = document.querySelector('[data-kabar]');
+    if (kabar) kabar.textContent = 'Pemeriksaan AI selesai. Rekomendasi keseluruhan sudah ditampilkan.';
+  };
+  setTimeout(tick, 3000);
+}
+
+// Konfirmasi sebelum kirim: <form data-konfirmasi="pesan">
+document.addEventListener('submit', (e) => {
+  const pesan = e.target.dataset?.konfirmasi;
+  if (pesan && !window.confirm(pesan)) e.preventDefault();
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   initTahap();
   initPoll();
+  initDocs();
   initCari();
 });
 

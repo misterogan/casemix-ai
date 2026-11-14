@@ -13,83 +13,41 @@
 
     <p class="sr-only" aria-live="polite" data-kabar></p>
 
-    {{-- Tahap 1: hasil baca per dokumen, tampil bertahap --}}
+    {{-- Tahap 1: satu item accordion per file; diperbarui lewat polling tanpa memuat ulang halaman --}}
     @if ($documents->isNotEmpty())
         @php($selesai = $documents->reject(fn ($d) => $d->status->isActive())->count())
+        @php($total = $documents->count())
         @php($tertahan = $documents->contains(fn ($d) => in_array($d->status->value, ['gagal', 'dibatalkan'], true)))
         @php($berjalan = (bool) $latest?->status?->isActive())
-        <section class="mt-6 max-w-[692px]" aria-labelledby="judul-dokumen">
+        <section class="mt-6 max-w-[692px]" aria-labelledby="judul-dokumen"
+                 data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
             <div class="flex items-baseline justify-between gap-3">
-                <h2 id="judul-dokumen" class="font-semibold">Dokumen</h2>
-                <p class="text-sm text-abu">{{ $selesai }} dari {{ $documents->count() }} dokumen selesai</p>
+                <h2 id="judul-dokumen" class="font-semibold">File dalam folder</h2>
+                <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
             </div>
-            @if ($berjalan)
-                <div hidden data-poll="{{ route('folders.status', $folder) }}" data-poll-done="{{ $selesai }}"></div>
-            @endif
-            <ul class="mt-3 divide-y divide-gray-200 rounded-lg border border-gray-200">
-                @foreach ($documents as $d)
-                    <li class="px-4 py-3">
-                        <div class="flex items-center gap-2">
-                            @switch($d->status->value)
-                                @case('selesai')
-                                    <span class="text-green-700" aria-label="Selesai">✓</span>
-                                    @break
-                                @case('gagal')
-                                    <span class="text-red-700" aria-label="Gagal">✕</span>
-                                    @break
-                                @case('berjalan')
-                                    <svg class="size-4 animate-spin text-abu" viewBox="0 0 24 24" fill="none" aria-label="Sedang dibaca"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-                                    @break
-                                @case('dibatalkan')
-                                    <span class="text-abu" aria-label="Tidak diproses">–</span>
-                                    @break
-                                @default
-                                    <span class="text-abu" aria-label="Menunggu">•</span>
-                            @endswitch
-                            @if (isset($linkable[$d->name]))
-                                <a href="{{ route('folders.file', [$folder, $linkable[$d->name]]) }}" target="_blank" rel="noopener" class="font-medium hover:underline">{{ $d->name }}</a>
-                            @else
-                                <span class="font-medium">{{ $d->name }}</span>
-                            @endif
-                            <span class="ml-auto text-xs text-abu">
-                                @switch($d->status->value)
-                                    @case('selesai') {{ $d->reused ? 'tidak berubah' : 'selesai' }} @break
-                                    @case('gagal') gagal @break
-                                    @case('dibatalkan') tidak diproses @break
-                                    @case('berjalan') sedang dibaca @break
-                                    @default menunggu
-                                @endswitch
-                            </span>
-                        </div>
+            <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
+                 aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
+                <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ $total ? round($selesai / $total * 100) : 0 }}%"></div>
+            </div>
 
-                        @if ($d->status->value === 'selesai' && $d->findings)
-                            <ul class="mt-2 space-y-1 pl-6 text-sm">
-                                @foreach ($d->findings as $f)
-                                    <li>
-                                        <span class="{{ $f['tingkat'] === 'kritis' ? 'text-red-700' : 'text-amber-700' }} font-medium">{{ ucfirst($f['tingkat']) }}:</span>
-                                        {{ $f['judul'] }}@if ($f['halaman']) <span class="text-abu">(hal. {{ $f['halaman'] }})</span>@endif
-                                        @if ($f['uraian'])<span class="block text-abu">{{ $f['uraian'] }}</span>@endif
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @elseif ($d->status->value === 'selesai' && $d->error)
-                            <p class="mt-1 pl-6 text-sm text-abu">{{ $d->error }}</p>
-                        @elseif ($d->status->value === 'gagal')
-                            <p class="mt-1 pl-6 text-sm text-red-700">{{ $d->error }}</p>
-                        @elseif ($d->status->value === 'dibatalkan')
-                            <p class="mt-1 pl-6 text-sm text-abu">Tidak diproses karena dokumen sebelumnya gagal</p>
-                        @endif
-                    </li>
+            <div class="mt-3 space-y-2" data-docs-list>
+                @foreach ($documents as $d)
+                    @include('folders.partials.document')
                 @endforeach
-            </ul>
-            @if ($tertahan && ! $berjalan)
-                @can('folders.analyze')
-                    <form method="POST" action="{{ route('folders.resume', $folder) }}" class="mt-3">
+            </div>
+
+            @can('folders.analyze')
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <form method="POST" action="{{ route('folders.resume', $folder) }}" data-docs-resume @unless ($tertahan) hidden @endunless>
                         @csrf
-                        <button type="submit" class="btn-primary" @disabled($blocker) @if ($blocker) title="{{ $blocker }}" @endif>Lanjutkan dari dokumen yang gagal</button>
+                        <button type="submit" class="btn-primary" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker)>Lanjutkan dari dokumen yang gagal</button>
                     </form>
-                @endcan
-            @endif
+                    <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Semua file akan dibaca ulang dan memakai token. Lanjutkan?">
+                        @csrf
+                        <button type="submit" class="btn-secondary" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang semua file</button>
+                    </form>
+                </div>
+            @endcan
         </section>
     @endif
 

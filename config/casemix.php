@@ -39,6 +39,8 @@ return [
         'render_dpi' => 110,
         'pdftoppm_binary' => env('PDFTOPPM_BINARY', 'pdftoppm'),
         'queue' => env('CASEMIX_AI_QUEUE', 'ai'),
+        // Claude: off = thinking dimatikan (token keluaran untuk jawaban), low = effort rendah
+        'thinking' => env('CASEMIX_AI_THINKING', 'off'),
     ],
 
     'budget' => [

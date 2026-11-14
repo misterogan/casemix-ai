@@ -49,6 +49,7 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             if ($blocked = $budget->runBlocker()) {
                 throw new RuntimeException($blocked);
             }
+            $req->maxTokens = min((int) $config->max_tokens, ReadFolderDocument::MAX_TOKENS);
             $res = $ai->for($config)->generate($req);
             $budget->charge($a, $res, $config->id);
             ReadFolderDocument::ensureComplete($res, $req->maxTokens);

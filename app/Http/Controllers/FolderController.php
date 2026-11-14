@@ -73,17 +73,7 @@ class FolderController extends Controller
             Audit::log('folder.analisa', $folder, 'Membuka folder pertama kali; analisa AI dimulai otomatis');
         }
 
-        $done = $latest?->status === ReviewStatus::Selesai ? $latest : $folder->analyses()->where('status', ReviewStatus::Selesai->value)->first();
-
-        $data = [
-            'folder' => $folder,
-            'latest' => $latest,
-            'done' => $done,
-            'changed' => $done && $done->fingerprint !== $folder->fingerprint,
-            'blocker' => $blocker,
-            'documents' => $latest ? $latest->documents()->get() : collect(),
-            'linkable' => collect($folder->files)->pluck('name')->flip(),
-        ];
+        $data = $this->viewData($folder, $latest, $blocker);
 
         // Dipanggil polling saat analisa selesai: hanya isi halaman, ditukar tanpa memuat ulang
         if ($request->ajax()) {
@@ -108,16 +98,66 @@ class FolderController extends Controller
         return back()->with('ok', 'Analisa ulang dimulai. Halaman diperbarui otomatis saat selesai.');
     }
 
-    public function status(FtpFolder $folder)
+    /** Dipanggil polling tiap 3 detik: status dan HTML tiap file, supaya halaman diperbarui tanpa dimuat ulang. */
+    public function status(FtpFolder $folder, AiBudget $budget)
     {
         $a = $folder->analyses()->first();
-        $docs = $a ? $a->documents()->get(['id', 'status']) : collect();
+        $data = $this->viewData($folder, $a, $this->startBlocker($budget));
+        $docs = $data['documents'];
+        $active = (bool) $a?->status?->isActive();
 
         return response()->json([
-            'active' => (bool) $a?->status?->isActive(),
+            'active' => $active,
             'done' => $docs->reject(fn (FolderDocument $d) => $d->status->isActive())->count(),
             'total' => $docs->count(),
+            'stuck' => $docs->contains(fn (FolderDocument $d) => in_array($d->status, [ReviewStatus::Gagal, ReviewStatus::Dibatalkan], true)),
+            'docs' => $docs->map(fn (FolderDocument $d) => [
+                'id' => $d->id,
+                'status' => $d->status->value,
+                'html' => view('folders.partials.document', $data + ['d' => $d, 'berjalan' => $active])->render(),
+            ])->values(),
+            'summary_html' => $active ? null : view('folders.partials.detail', $data)->render(),
         ]);
+    }
+
+    /** Baca ulang SEMUA file (tanpa memakai hasil lama), lalu periksa silang. */
+    public function processAll(Request $request, FtpFolder $folder, AiBudget $budget)
+    {
+        abort_if($folder->missing_at, 404);
+        if ($folder->analyses()->whereIn('status', [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value])->exists()) {
+            return back()->with('warn', 'Folder ini sedang dianalisa.');
+        }
+        if ($blocked = $this->startBlocker($budget)) {
+            return back()->with('warn', $blocked);
+        }
+        $this->start($folder, $request->user()->id, all: true);
+        Audit::log('folder.proses_semua', $folder, 'Meminta semua file dibaca ulang');
+
+        return back()->with('ok', 'Semua file dibaca ulang. Hasil tampil per file saat selesai.');
+    }
+
+    /** Baca ulang satu file, lalu periksa silang. File lain tidak dibaca ulang. */
+    public function processDocument(Request $request, FtpFolder $folder, FolderDocument $document, AiBudget $budget)
+    {
+        $a = $folder->analyses()->first();
+        abort_unless($a && $document->folder_analysis_id === $a->id, 404);
+        if ($a->status?->isActive()) {
+            return back()->with('warn', 'Folder ini sedang dianalisa.');
+        }
+        if ($a->documents()->whereKeyNot($document->id)->where('status', ReviewStatus::Gagal->value)->exists()) {
+            return back()->with('warn', 'Ada file lain yang gagal dibaca. Gunakan tombol Lanjutkan dari dokumen yang gagal.');
+        }
+        if ($blocked = $this->startBlocker($budget)) {
+            return back()->with('warn', $blocked);
+        }
+
+        $document->update(['status' => ReviewStatus::Antre, 'error' => null, 'reused' => false]);
+        $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
+        $folder->update(['analysis_status' => 'berjalan']);
+        Bus::chain([new ReadFolderDocument($document->id), new SynthesizeFolderAnalysis($a->id)])->onQueue(config('casemix.ai.queue'))->dispatch();
+        Audit::log('folder.proses_file', $folder, 'Meminta file dibaca ulang: ' . $document->name);
+
+        return back()->with('ok', 'File dibaca ulang. Hasil tampil saat selesai.');
     }
 
     /** Lanjutkan analisa yang berhenti: baca ulang dokumen gagal + dibatalkan, lalu periksa silang. Dokumen selesai tidak dibaca ulang. */
@@ -176,13 +216,32 @@ class FolderController extends Controller
         return $budget->startBlocker();
     }
 
-    private function start(FtpFolder $folder, int $userId): FolderAnalysis
+    /** @param bool $all true = semua file dibaca ulang; false = hanya file yang berubah */
+    private function start(FtpFolder $folder, int $userId, bool $all = false): FolderAnalysis
     {
         $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $userId]);
         $folder->update(['analysis_status' => 'antre', 'last_analysis_id' => $a->id]);
         app(FolderAnalyzer::class)->prepare($a); // daftar dokumen langsung tampil sebagai "menunggu"
+        if ($all) {
+            $a->documents()->update(['status' => ReviewStatus::Antre->value, 'reused' => false, 'summary' => null, 'findings' => null, 'finished_at' => null]);
+        }
         RunFolderAnalysis::dispatch($a->id);
 
         return $a;
+    }
+
+    private function viewData(FtpFolder $folder, ?FolderAnalysis $latest, ?string $blocker): array
+    {
+        $done = $latest?->status === ReviewStatus::Selesai ? $latest : $folder->analyses()->where('status', ReviewStatus::Selesai->value)->first();
+
+        return [
+            'folder' => $folder,
+            'latest' => $latest,
+            'done' => $done,
+            'changed' => $done && $done->fingerprint !== $folder->fingerprint,
+            'blocker' => $blocker,
+            'documents' => $latest ? $latest->documents()->get() : collect(),
+            'linkable' => collect($folder->files)->pluck('name')->flip(),
+        ];
     }
 }

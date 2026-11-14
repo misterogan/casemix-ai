@@ -21,9 +21,12 @@ class ReadFolderDocument implements ShouldQueue
     /** SEP dan dokumen tambahan: jawabannya pendek, cukup batas token kecil. */
     private const LIGHT_TYPES = ['sep', 'tambahan'];
 
-    private const LIGHT_MAX_TOKENS = 1500;
+    private const LIGHT_MAX_TOKENS = 4000;
 
-    private const RETRY_MAX_TOKENS = 3000;
+    /** Batas dokumen lain dan tahap 2 (selalu min dengan nilai provider). */
+    public const MAX_TOKENS = 6000;
+
+    private const RETRY_MAX_TOKENS = 12000;
 
     public int $tries = 1;
 
@@ -61,9 +64,7 @@ class ReadFolderDocument implements ShouldQueue
                 return;
             }
 
-            if (in_array($d->doc_type, self::LIGHT_TYPES, true)) {
-                $req->maxTokens = min((int) $config->max_tokens, self::LIGHT_MAX_TOKENS);
-            }
+            $req->maxTokens = min((int) $config->max_tokens, in_array($d->doc_type, self::LIGHT_TYPES, true) ? self::LIGHT_MAX_TOKENS : self::MAX_TOKENS);
 
             $res = $ai->for($config)->generate($req);
             $budget->charge($d, $res, $config->id); // biaya tercatat walau jawabannya gagal diolah
@@ -92,7 +93,8 @@ class ReadFolderDocument implements ShouldQueue
     public static function ensureComplete(AiResponse $res, int $maxTokens): void
     {
         if (self::truncated($res)) {
-            throw new RuntimeException("Jawaban AI terpotong karena batas $maxTokens token tercapai.");
+            throw new RuntimeException(sprintf('Jawaban AI terpotong karena batas %d token tercapai (blok: %s; output_tokens: %s; panjang teks jawaban: %d karakter).',
+                $maxTokens, implode(', ', $res->raw['block_types'] ?? []) ?: '-', $res->tokensOut ?? '-', $res->raw['text_length'] ?? mb_strlen($res->text)));
         }
     }
 

@@ -45,6 +45,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/verifikasi/{folder}/dokumen/{index}', [FolderController::class, 'file'])->whereNumber('index')->name('folders.file');
         Route::post('/verifikasi/{folder}/analisa', [FolderController::class, 'analyze'])->middleware('permission:folders.analyze')->name('folders.analyze');
         Route::post('/verifikasi/{folder}/lanjutkan', [FolderController::class, 'resume'])->middleware('permission:folders.analyze')->name('folders.resume');
+        Route::post('/verifikasi/{folder}/proses-semua', [FolderController::class, 'processAll'])->middleware('permission:folders.analyze')->name('folders.process_all');
+        Route::post('/verifikasi/{folder}/dokumen/{document}/proses', [FolderController::class, 'processDocument'])->whereNumber('document')->middleware('permission:folders.analyze')->name('folders.process_document');
     });
 
     // Modul lama: berkas klaim, impor, unggah. Mati kecuali CASEMIX_LEGACY_CLAIMS=true.
