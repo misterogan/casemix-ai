@@ -18,6 +18,13 @@ class ReadFolderDocument implements ShouldQueue
 {
     use Queueable;
 
+    /** SEP dan dokumen tambahan: jawabannya pendek, cukup batas token kecil. */
+    private const LIGHT_TYPES = ['sep', 'tambahan'];
+
+    private const LIGHT_MAX_TOKENS = 1500;
+
+    private const RETRY_MAX_TOKENS = 3000;
+
     public int $tries = 1;
 
     public int $timeout = 900;
@@ -54,10 +61,25 @@ class ReadFolderDocument implements ShouldQueue
                 return;
             }
 
+            if (in_array($d->doc_type, self::LIGHT_TYPES, true)) {
+                $req->maxTokens = min((int) $config->max_tokens, self::LIGHT_MAX_TOKENS);
+            }
+
             $res = $ai->for($config)->generate($req);
             $budget->charge($d, $res, $config->id); // biaya tercatat walau jawabannya gagal diolah
+
+            // Terpotong: coba ulang SEKALI dengan batas dua kali lipat dan jawaban lebih singkat
+            if (self::truncated($res)) {
+                if ($blocked = $budget->runBlocker()) {
+                    throw new RuntimeException($blocked);
+                }
+                $req->maxTokens = min((int) $config->max_tokens, $req->maxTokens * 2, self::RETRY_MAX_TOKENS);
+                $req->text('Jawab lebih singkat: maks 3 temuan, tiap teks maks 8 kata.');
+                $res = $ai->for($config)->generate($req);
+                $budget->charge($d, $res, $config->id); // token kedua percobaan dijumlahkan
+            }
             self::ensureComplete($res, $req->maxTokens);
-            $r =$analyzer->parseDocument($d, $res->json());
+            $r = $analyzer->parseDocument($d, $res->json());
 
             $d->update(['status' => ReviewStatus::Selesai, 'summary' => $r['summary'], 'findings' => $r['findings'], 'finished_at' => now()]);
         } catch (Throwable $e) {
@@ -69,8 +91,13 @@ class ReadFolderDocument implements ShouldQueue
     /** Jawaban yang terpotong karena batas token dianggap gagal dengan pesan jelas, walau sisanya kebetulan bisa dibaca. */
     public static function ensureComplete(AiResponse $res, int $maxTokens): void
     {
-        if (in_array($res->raw['stop_reason'] ?? null, ['max_tokens', 'length'], true)) {
+        if (self::truncated($res)) {
             throw new RuntimeException("Jawaban AI terpotong karena batas $maxTokens token tercapai.");
         }
+    }
+
+    private static function truncated(AiResponse $res): bool
+    {
+        return in_array($res->raw['stop_reason'] ?? null, ['max_tokens', 'length'], true);
     }
 }

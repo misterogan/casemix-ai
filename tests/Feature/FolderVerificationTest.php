@@ -397,7 +397,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame(ReviewStatus::Selesai, $a->fresh()->status, (string) $a->fresh()->error);
         $sent = Http::recorded()->map(fn ($p) => $p[0]->data())->values();
         $this->assertSame(
-            [['claude-haiku-5-5', 800], ['claude-sonnet-5-5', 2000], ['claude-haiku-5-5', 800], ['claude-sonnet-5-5', 2000]],
+            [['claude-haiku-5-5', 1500], ['claude-sonnet-5-5', 2000], ['claude-haiku-5-5', 1500], ['claude-sonnet-5-5', 2000]],
             $sent->map(fn ($d) => [$d['model'], $d['max_tokens']])->all(),
         );
         $prompt = fn ($i) => json_encode($sent[$i]['messages']);
@@ -407,18 +407,45 @@ class FolderVerificationTest extends TestCase
         $this->assertStringContainsString('\"isian\"', $prompt(2), 'SEP memakai model cepat tetapi tetap menyalin isian');
     }
 
-    public function test_jawaban_terpotong_dilaporkan_jelas(): void
+    /** Jawaban AI palsu dengan stop_reason tertentu (1000 token masuk, 100 keluar → US$0,003). */
+    private function reply(array $json, string $stop = 'end_turn'): array
+    {
+        return ['id' => 'x', 'model' => 'claude-sonnet-5-5', 'stop_reason' => $stop, 'usage' => ['input_tokens' => 1000, 'output_tokens' => 100],
+            'content' => [['type' => 'text', 'text' => $stop === 'max_tokens' ? '{"isian":[{"field":"dpjp","nil' : json_encode($json)]]];
+    }
+
+    public function test_terpotong_sekali_dicoba_ulang_lalu_berhasil(): void
     {
         $folder = $this->synced(['SEP.png']);
-        Http::fake(['*/v1/messages' => Http::response([
-            'id' => 'x', 'model' => 'claude-haiku-5-5', 'stop_reason' => 'max_tokens', 'usage' => ['input_tokens' => 1000, 'output_tokens' => 800],
-            'content' => [['type' => 'text', 'text' => '{"isian":[]}']],
-        ])]);
+        Http::fake(['*/v1/messages' => Http::sequence()
+            ->push($this->reply([], 'max_tokens'))
+            ->push($this->reply(['isian' => [], 'temuan' => []]))
+            ->push($this->reply(self::SILANG))]);
+
+        $a = $this->analyze($folder);
+        $doc = $a->documents->sole();
+
+        $this->assertSame(ReviewStatus::Selesai, $doc->status, (string) $doc->error);
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $sent = Http::recorded()->map(fn ($p) => $p[0]->data())->values();
+        $this->assertCount(3, $sent, '2 request untuk dokumen + tahap 2');
+        $this->assertSame([1500, 3000], [$sent[0]['max_tokens'], $sent[1]['max_tokens']], 'Coba ulang dengan batas dua kali lipat');
+        $this->assertStringContainsString('Jawab lebih singkat: maks 3 temuan', json_encode($sent[1]['messages']));
+        $this->assertSame([2000, 200], [$doc->tokens_in, $doc->tokens_out], 'Token kedua percobaan tercatat');
+        $this->assertEquals(0.006, (float) $doc->cost_usd);
+    }
+
+    public function test_terpotong_dua_kali_ditandai_gagal(): void
+    {
+        $folder = $this->synced(['SEP.png']);
+        Http::fake(['*/v1/messages' => Http::response($this->reply([], 'max_tokens'))]);
 
         $doc = $this->analyze($folder)->documents->sole();
 
+        $this->assertCount(2, Http::recorded(), 'Tepat satu kali coba ulang; tahap 2 tidak dipanggil');
         $this->assertSame(ReviewStatus::Gagal, $doc->status);
-        $this->assertSame('Jawaban AI terpotong karena batas 800 token tercapai.', $doc->error);
+        $this->assertSame('Jawaban AI terpotong karena batas 3000 token tercapai.', $doc->error);
+        $this->assertEquals(0.006, (float) $doc->cost_usd, 'Biaya kedua percobaan tercatat');
     }
 
     public function test_status_mengembalikan_jumlah_dokumen_selesai(): void
