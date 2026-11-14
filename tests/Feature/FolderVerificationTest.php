@@ -14,6 +14,7 @@ use App\Models\FtpFolder;
 use App\Models\User;
 use App\Services\Ai\AiBudget;
 use App\Services\Import\SimrsFtp;
+use App\Services\Verification\FolderAnalyzer;
 use App\Services\Verification\FolderSync;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -333,34 +334,91 @@ class FolderVerificationTest extends TestCase
         $this->assertNotSame('berubah', $folder->fresh()->state(), 'Hasil baru sesuai isi folder terkini');
     }
 
-    public function test_satu_dokumen_gagal_tidak_menghentikan_yang_lain(): void
+    public function test_dokumen_gagal_menghentikan_dokumen_berikutnya_dan_tahap_dua(): void
     {
-        $folder = $this->synced();
-        // Resume Medis dijawab bukan JSON; SEP tetap dibaca; periksa silang tetap jalan
-        $this->fakeAi('maaf, tidak bisa', ['isian' => [], 'temuan' => []], self::SILANG);
+        $folder = $this->synced(['SEP.png', 'Resume Medis.png', 'Billing.png']);
+        // Urutan: Billing berhasil, Resume Medis dijawab bukan JSON, SEP tidak diproses
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi(['biaya' => [], 'temuan' => []], 'maaf, tidak bisa', $doc, $doc, self::SILANG);
 
         $a = $this->analyze($folder);
 
-        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(2, Http::recorded(), 'Tidak ada request setelah dokumen gagal, termasuk tahap 2');
+        $st = $a->documents->pluck('status', 'name')->map->value->all();
+        $this->assertSame(['Billing.png' => 'selesai', 'Resume Medis.png' => 'gagal', 'SEP.png' => 'dibatalkan'], $st);
         $resume = $a->documents->firstWhere('name', 'Resume Medis.png');
-        $this->assertSame(ReviewStatus::Gagal, $resume->status);
         $this->assertStringContainsString('bukan JSON', $resume->error);
         $this->assertEquals(0.003, (float) $resume->cost_usd, 'Biaya tetap tercatat walau jawaban gagal diolah');
-        $this->assertSame(ReviewStatus::Selesai, $a->documents->firstWhere('name', 'SEP.png')->status);
-        $failed = collect($a->findings)->firstWhere('judul', 'Dokumen gagal dibaca AI');
-        $this->assertSame(['perhatian', 'Resume Medis.png'], [$failed['tingkat'], $failed['dokumen']]);
+        $this->assertSame(ReviewStatus::Gagal, $a->status);
+        $this->assertSame('Dihentikan: Resume Medis.png gagal dibaca. Dokumen berikutnya tidak diproses.', $a->error);
+        $this->assertSame('gagal', $folder->fresh()->state());
 
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertSee('Baca ulang dokumen ini');
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))
+            ->assertSee('Tidak diproses karena dokumen sebelumnya gagal')->assertSee('Lanjutkan dari dokumen yang gagal');
 
-        // Baca ulang satu dokumen: hanya dokumen itu, lalu periksa silang
-        Queue::fake();
-        $this->actingAs($this->koordinator)->post(route('folders.document.retry', [$folder, $resume]))->assertSessionHas('ok');
-        Queue::assertPushedWithChain(ReadFolderDocument::class, [SynthesizeFolderAnalysis::class]);
-        $this->assertSame(ReviewStatus::Antre, $resume->fresh()->status);
-        $this->assertSame('proses', $folder->fresh()->state());
+        // Lanjutkan: hanya dokumen gagal + dibatalkan, lalu tahap 2; Billing tidak dibaca ulang
+        $this->actingAs($this->koordinator)->post(route('folders.resume', $folder))->assertSessionHas('ok');
+
+        $a->refresh();
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(5, Http::recorded(), 'Resume + SEP + tahap 2');
+        $this->assertTrue($a->documents->every(fn ($d) => $d->status === ReviewStatus::Selesai));
+        $this->assertSame(1, AuditLog::where('action', 'folder.analisa_lanjut')->count());
 
         $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
-        $this->actingAs($petugas)->post(route('folders.document.retry', [$folder, $resume]))->assertForbidden();
+        $this->actingAs($petugas)->post(route('folders.resume', $folder))->assertForbidden();
+    }
+
+    public function test_lanjutkan_hanya_mengantrekan_dokumen_gagal_dan_dibatalkan(): void
+    {
+        $folder = $this->synced(['SEP.png', 'Resume Medis.png', 'Billing.png']);
+        $this->fakeAi(['biaya' => [], 'temuan' => []], 'bukan json');
+        $this->analyze($folder);
+
+        Queue::fake();
+        $this->actingAs($this->koordinator)->post(route('folders.resume', $folder))->assertSessionHas('ok');
+
+        Queue::assertPushedWithChain(ReadFolderDocument::class, [ReadFolderDocument::class, SynthesizeFolderAnalysis::class]);
+        $this->assertSame(['Billing.png' => 'selesai', 'Resume Medis.png' => 'antre', 'SEP.png' => 'antre'],
+            FolderAnalysis::sole()->documents->pluck('status', 'name')->map->value->all());
+    }
+
+    public function test_model_dan_max_tokens_per_jenis_dokumen(): void
+    {
+        $folder = $this->synced(['SEP.png', 'Resume Medis.png', 'Asesmen.png']);
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre]);
+        app(FolderAnalyzer::class)->prepare($a);
+        $a->documents()->where('name', 'Asesmen.png')->update(['doc_type' => 'tambahan']);
+        // Urutan: Asesmen (tambahan), Resume Medis, SEP, lalu tahap 2
+        $this->fakeAi(['identitas' => [], 'temuan' => []], ['isian' => [], 'temuan' => []], ['isian' => [], 'temuan' => []], self::SILANG);
+
+        RunFolderAnalysis::dispatchSync($a->id);
+
+        $this->assertSame(ReviewStatus::Selesai, $a->fresh()->status, (string) $a->fresh()->error);
+        $sent = Http::recorded()->map(fn ($p) => $p[0]->data())->values();
+        $this->assertSame(
+            [['claude-haiku-5-5', 800], ['claude-sonnet-5-5', 2000], ['claude-haiku-5-5', 800], ['claude-sonnet-5-5', 2000]],
+            $sent->map(fn ($d) => [$d['model'], $d['max_tokens']])->all(),
+        );
+        $prompt = fn ($i) => json_encode($sent[$i]['messages']);
+        $this->assertStringContainsString('dokumen pendukung', $prompt(0), 'Dokumen tambahan memakai instruksi singkat');
+        $this->assertStringNotContainsString('\"isian\"', $prompt(0));
+        $this->assertStringContainsString('\"isian\"', $prompt(1));
+        $this->assertStringContainsString('\"isian\"', $prompt(2), 'SEP memakai model cepat tetapi tetap menyalin isian');
+    }
+
+    public function test_jawaban_terpotong_dilaporkan_jelas(): void
+    {
+        $folder = $this->synced(['SEP.png']);
+        Http::fake(['*/v1/messages' => Http::response([
+            'id' => 'x', 'model' => 'claude-haiku-5-5', 'stop_reason' => 'max_tokens', 'usage' => ['input_tokens' => 1000, 'output_tokens' => 800],
+            'content' => [['type' => 'text', 'text' => '{"isian":[]}']],
+        ])]);
+
+        $doc = $this->analyze($folder)->documents->sole();
+
+        $this->assertSame(ReviewStatus::Gagal, $doc->status);
+        $this->assertSame('Jawaban AI terpotong karena batas 800 token tercapai.', $doc->error);
     }
 
     public function test_status_mengembalikan_jumlah_dokumen_selesai(): void

@@ -29,6 +29,13 @@ return [
         'max_text_chars_per_doc' => 15000,
         'max_images_total' => (int) env('CASEMIX_AI_MAX_IMAGES', 16),
         'max_pages_per_scan' => (int) env('CASEMIX_AI_MAX_PAGES', 4),
+        // Halaman scan maksimal per jenis dokumen (verifikasi folder). PDF teks tetap dikirim sebagai teks.
+        'max_pages_by_type' => [
+            'sep' => 1, 'tambahan' => 1, 'resume_medis' => 3, 'rincian_biaya' => 3,
+            'laboratorium' => 2, 'radiologi' => 2, 'laporan_operasi' => 2, 'lainnya' => 2,
+        ],
+        // Sisi terpanjang gambar hasil render scan (px)
+        'render_max_px' => (int) env('CASEMIX_AI_RENDER_MAX_PX', 1300),
         'render_dpi' => 110,
         'pdftoppm_binary' => env('PDFTOPPM_BINARY', 'pdftoppm'),
         'queue' => env('CASEMIX_AI_QUEUE', 'ai'),

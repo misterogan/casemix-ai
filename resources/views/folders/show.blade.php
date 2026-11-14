@@ -15,7 +15,8 @@
 
     {{-- Tahap 1: hasil baca per dokumen, tampil bertahap --}}
     @if ($documents->isNotEmpty())
-        @php($selesai = $documents->filter->isDone()->count())
+        @php($selesai = $documents->reject(fn ($d) => $d->status->isActive())->count())
+        @php($tertahan = $documents->contains(fn ($d) => in_array($d->status->value, ['gagal', 'dibatalkan'], true)))
         @php($berjalan = (bool) $latest?->status?->isActive())
         <section class="mt-6 max-w-[692px]" aria-labelledby="judul-dokumen">
             <div class="flex items-baseline justify-between gap-3">
@@ -39,6 +40,9 @@
                                 @case('berjalan')
                                     <svg class="size-4 animate-spin text-abu" viewBox="0 0 24 24" fill="none" aria-label="Sedang dibaca"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
                                     @break
+                                @case('dibatalkan')
+                                    <span class="text-abu" aria-label="Tidak diproses">–</span>
+                                    @break
                                 @default
                                     <span class="text-abu" aria-label="Menunggu">•</span>
                             @endswitch
@@ -51,6 +55,7 @@
                                 @switch($d->status->value)
                                     @case('selesai') {{ $d->reused ? 'tidak berubah' : 'selesai' }} @break
                                     @case('gagal') gagal @break
+                                    @case('dibatalkan') tidak diproses @break
                                     @case('berjalan') sedang dibaca @break
                                     @default menunggu
                                 @endswitch
@@ -71,18 +76,20 @@
                             <p class="mt-1 pl-6 text-sm text-abu">{{ $d->error }}</p>
                         @elseif ($d->status->value === 'gagal')
                             <p class="mt-1 pl-6 text-sm text-red-700">{{ $d->error }}</p>
-                            @can('folders.analyze')
-                                @unless ($berjalan)
-                                    <form method="POST" action="{{ route('folders.document.retry', [$folder, $d]) }}" class="mt-2 pl-6">
-                                        @csrf
-                                        <button type="submit" class="btn-secondary text-sm">Baca ulang dokumen ini</button>
-                                    </form>
-                                @endunless
-                            @endcan
+                        @elseif ($d->status->value === 'dibatalkan')
+                            <p class="mt-1 pl-6 text-sm text-abu">Tidak diproses karena dokumen sebelumnya gagal</p>
                         @endif
                     </li>
                 @endforeach
             </ul>
+            @if ($tertahan && ! $berjalan)
+                @can('folders.analyze')
+                    <form method="POST" action="{{ route('folders.resume', $folder) }}" class="mt-3">
+                        @csrf
+                        <button type="submit" class="btn-primary" @disabled($blocker) @if ($blocker) title="{{ $blocker }}" @endif>Lanjutkan dari dokumen yang gagal</button>
+                    </form>
+                @endcan
+            @endif
         </section>
     @endif
 

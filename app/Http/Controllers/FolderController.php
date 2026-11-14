@@ -115,30 +115,36 @@ class FolderController extends Controller
 
         return response()->json([
             'active' => (bool) $a?->status?->isActive(),
-            'done' => $docs->filter(fn (FolderDocument $d) => $d->isDone())->count(),
+            'done' => $docs->reject(fn (FolderDocument $d) => $d->status->isActive())->count(),
             'total' => $docs->count(),
         ]);
     }
 
-    /** Baca ulang satu dokumen (mis. gagal dibaca), lalu periksa silang lagi. Dokumen lain tidak dibaca ulang. */
-    public function retryDocument(Request $request, FtpFolder $folder, FolderDocument $document, AiBudget $budget)
+    /** Lanjutkan analisa yang berhenti: baca ulang dokumen gagal + dibatalkan, lalu periksa silang. Dokumen selesai tidak dibaca ulang. */
+    public function resume(Request $request, FtpFolder $folder, AiBudget $budget)
     {
-        $a = $document->analysis;
-        abort_unless($document->ftp_folder_id === $folder->id && $a && $a->id === $folder->analyses()->value('id'), 404);
+        $a = $folder->analyses()->first();
+        abort_unless($a, 404);
         if ($a->status?->isActive()) {
             return back()->with('warn', 'Folder ini sedang dianalisa.');
+        }
+        $pending = $a->documents()->whereIn('status', [ReviewStatus::Gagal->value, ReviewStatus::Dibatalkan->value])->get();
+        if ($pending->isEmpty()) {
+            return back()->with('warn', 'Tidak ada dokumen yang perlu dilanjutkan.');
         }
         if ($blocked = $this->startBlocker($budget)) {
             return back()->with('warn', $blocked);
         }
 
-        $document->update(['status' => ReviewStatus::Antre, 'error' => null, 'reused' => false]);
+        FolderDocument::whereKey($pending->modelKeys())->update(['status' => ReviewStatus::Antre->value, 'error' => null, 'reused' => false]);
         $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
         $folder->update(['analysis_status' => 'berjalan']);
-        Bus::chain([new ReadFolderDocument($document->id), new SynthesizeFolderAnalysis($a->id)])->onQueue(config('casemix.ai.queue'))->dispatch();
-        Audit::log('folder.baca_ulang_dokumen', $folder, 'Meminta baca ulang ' . $document->name);
+        $jobs = $pending->sortBy('file_index')->map(fn ($d) => new ReadFolderDocument($d->id))->values()->all();
+        $jobs[] = new SynthesizeFolderAnalysis($a->id);
+        Bus::chain($jobs)->onQueue(config('casemix.ai.queue'))->dispatch();
+        Audit::log('folder.analisa_lanjut', $folder, 'Melanjutkan analisa dari dokumen yang gagal (' . $pending->count() . ' dokumen)');
 
-        return back()->with('ok', 'Dokumen dibaca ulang. Halaman diperbarui otomatis saat selesai.');
+        return back()->with('ok', 'Analisa dilanjutkan. Halaman diperbarui otomatis saat selesai.');
     }
 
     /** Buka satu dokumen langsung dari FTP (tidak disimpan). Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */

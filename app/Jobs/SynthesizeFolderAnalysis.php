@@ -36,6 +36,10 @@ class SynthesizeFolderAnalysis implements ShouldQueue
         $folder = $a->folder;
 
         try {
+            // Berhenti saat gagal: tahap 2 tidak memanggil AI bila ada dokumen yang gagal dibaca
+            if ($failed = $a->documents->firstWhere('status', ReviewStatus::Gagal)) {
+                throw new RuntimeException("Dihentikan: {$failed->name} gagal dibaca. Dokumen berikutnya tidak diproses.");
+            }
             $config = $ai->defaultConfig();
             $req = $analyzer->synthesisRequest($a, $config);
             if (! $req) {
@@ -47,7 +51,8 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             }
             $res = $ai->for($config)->generate($req);
             $budget->charge($a, $res, $config->id);
-            $r = $analyzer->synthesize($a, $res->json());
+            ReadFolderDocument::ensureComplete($res, $req->maxTokens);
+            $r =$analyzer->synthesize($a, $res->json());
 
             $a->update([
                 'status' => ReviewStatus::Selesai,

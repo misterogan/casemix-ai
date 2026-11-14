@@ -84,7 +84,7 @@ class DocumentReader
 
         $process = new Process([
             config('casemix.ai.pdftoppm_binary'), '-png',
-            '-r', (string) config('casemix.ai.render_dpi'),
+            '-scale-to', (string) config('casemix.ai.render_max_px', 1300), // sisi terpanjang: token gambar kecil, tulisan tetap terbaca
             '-f', '1', '-l', (string) $maxPages,
             $path, $tmp,
         ]);

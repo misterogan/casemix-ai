@@ -34,7 +34,26 @@ class FolderAnalyzer
 {
     private const MAX_TOKENS = 2000;
 
+    private const MAX_TOKENS_SHORT = 800;
+
+    /** Jenis dokumen yang cukup dibaca model cepat dengan instruksi singkat. */
+    private const FAST_TYPES = ['sep', 'tambahan'];
+
     private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'biaya', 'ttd_dpjp'];
+
+    /** Model, batas token, dan halaman scan untuk satu dokumen menurut jenisnya. */
+    public function documentPlan(FolderDocument $d, ProviderConfig $config): array
+    {
+        $fast = in_array($d->doc_type, self::FAST_TYPES, true);
+        $pages = config('casemix.ai.max_pages_by_type', []);
+
+        return [
+            'model' => $fast ? ($config->model_fast ?: $config->model_standard) : $config->model_standard,
+            'max_tokens' => min((int) $config->max_tokens, $fast ? self::MAX_TOKENS_SHORT : self::MAX_TOKENS),
+            'pages' => (int) ($pages[$d->doc_type] ?? $pages['lainnya'] ?? config('casemix.ai.max_pages_per_scan')),
+            'short' => $d->doc_type === 'tambahan',
+        ];
+    }
 
     public function __construct(private SimrsFtp $ftp, private DocumentReader $reader, private ConsistencyChecker $rules) {}
 
@@ -88,8 +107,9 @@ class FolderAnalyzer
             }
             $abs = $disk->path($local);
 
-            $req = new AiRequest($config->model_standard, $this->systemPrompt(), min((int) $config->max_tokens, self::MAX_TOKENS));
-            $req->text($this->documentInstruction($folder, $d));
+            $plan = $this->documentPlan($d, $config);
+            $req = new AiRequest($plan['model'], $this->systemPrompt(), $plan['max_tokens']);
+            $req->text($plan['short'] ? $this->shortInstruction($folder) : $this->documentInstruction($folder, $d));
             $head = "\n=== DOKUMEN: \"{$d->name}\" (perkiraan jenis: {$d->typeLabel()}) ===";
 
             $pages = $mime === 'application/pdf' ? $this->reader->pdfPageTexts($abs) : null;
@@ -106,7 +126,7 @@ class FolderAnalyzer
             }
 
             $images = $mime === 'application/pdf'
-                ? $this->reader->renderPdf($abs, (int) config('casemix.ai.max_pages_per_scan'))
+                ? $this->reader->renderPdf($abs, $plan['pages'])
                 : [$this->reader->read($abs, $mime)['images'][0] ?? null];
             $images = array_values(array_filter($images));
             if (! $images) {
@@ -149,7 +169,7 @@ class FolderAnalyzer
         if ($read->isEmpty()) {
             return null;
         }
-        $data = $read->map(fn (FolderDocument $d) => ['dokumen' => $d->name, 'jenis' => $d->typeLabel(), 'isi' => $d->summary])->values()->all();
+        $data = $read->map(fn (FolderDocument $d) => ['dokumen' => $d->name, 'jenis' => $d->typeLabel(), 'isi' => $this->compact($d->summary)])->values()->all();
         $unread = $a->documents->reject(fn ($d) => $read->contains('id', $d->id))->pluck('name')->all();
         $folder = $a->folder;
 
@@ -178,21 +198,11 @@ TXT);
         return $req;
     }
 
-    /** Gabungkan hasil: temuan per dokumen + temuan silang + dokumen gagal + aturan E-Klaim. */
+    /** Gabungkan hasil: temuan per dokumen + temuan silang + aturan E-Klaim. */
     public function synthesize(FolderAnalysis $a, array $json): array
     {
         $docs = $a->documents;
         $names = $docs->pluck('name')->all();
-
-        $failed = $docs->where('status', ReviewStatus::Gagal)->map(fn (FolderDocument $d) => [
-            'tingkat' => 'perhatian',
-            'kategori' => 'Kelengkapan',
-            'judul' => 'Dokumen gagal dibaca AI',
-            'uraian' => mb_substr($d->name . ': ' . ($d->error ?: 'tidak diketahui') . '. Cek manual atau klik "Baca ulang dokumen ini".', 0, 600),
-            'dokumen' => $d->name,
-            'halaman' => null,
-            'sumber' => 'sistem',
-        ])->values()->all();
 
         $extracted = $this->extracted($this->readable($docs)->sortBy(fn ($d) => $this->priority($d))->flatMap(fn ($d) => $d->summary['isian'] ?? [])->all());
 
@@ -201,7 +211,6 @@ TXT);
             'findings' => array_merge(
                 $docs->flatMap(fn ($d) => $d->findings ?? [])->values()->all(),
                 $this->findings(array_slice($json['temuan'] ?? [], 0, 8), $names),
-                $failed,
                 $this->ruleFindings($a->folder, $docs, $extracted),
             ),
             'suggestions' => $this->suggestions(array_slice($json['kondisi'] ?? [], 0, 3), $names),
@@ -243,10 +252,40 @@ Baca SATU dokumen di bawah ini saja. Catat isinya untuk diperiksa silang nanti, 
 
 "isian" hanya field yang tertulis jelas (jangan menebak): tanggal_masuk, tanggal_keluar, tanggal_lahir (YYYY-MM-DD), jenis_rawat ({$opsi(Eklaim::JENIS_RAWAT)}), kelas_hak ({$opsi(Eklaim::KELAS)}), kelas_rawat ({$opsi(Eklaim::KELAS_RAWAT)}), cara_masuk ({$opsi(Eklaim::CARA_MASUK)}), cara_pulang ({$opsi(Eklaim::CARA_PULANG)}), berat_lahir (gram), rawat_intensif_hari, ventilator_jam, dpjp, diagnosis_utama (kata-kata), tarif.<komponen> hanya yang nilainya > 0 (komponen: $tarif).
 
-Jawab HANYA satu objek JSON ringkas tanpa spasi atau baris baru tambahan, tanpa ```:
+Jawab HANYA satu objek JSON dalam satu baris tanpa spasi, tanpa ```:
 {"identitas":{"nama":"","no_rm":"","no_sep":""},"isian":[{"field":"","nilai":""}],"diagnosis":[],"tindakan":[],"terapi_penting":[],"penunjang":[{"pemeriksaan":"","hasil":""}],"biaya":[{"komponen":"","nilai":0}],"ttd_dpjp":true,"temuan":[{"tingkat":"kritis|perhatian","judul":"","uraian":"","halaman":1}]}
-Batas: hanya yang tertulis di dokumen; kosongkan bagian yang tidak ada; ttd_dpjp null bila tidak relevan; maksimal 5 temuan; uraian maks 25 kata; tanpa kode ICD; tanpa nomor kartu peserta. Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. "halaman" boleh null.
+Batas: hanya yang tertulis di dokumen, jangan menyalin paragraf; lewati bagian yang tidak ada; diagnosis, tindakan, terapi_penting maks 5 item; penunjang maks 8; biaya hanya total per komponen maks 10; tiap teks maks 12 kata; temuan maks 5, uraian maks 20 kata; ttd_dpjp null bila tidak relevan; tanpa kode ICD; tanpa nomor kartu peserta. Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. "halaman" boleh null.
 TXT;
+    }
+
+    /** Dokumen tambahan (asesmen, triase, dll.): cukup identitas, tanda tangan, dan masalahnya. */
+    private function shortInstruction(FtpFolder $folder): string
+    {
+        return <<<TXT
+Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).
+Baca SATU dokumen pendukung di bawah ini. Laporkan hanya masalah di dalamnya (mis. identitas tidak sama dengan nama folder, tanda tangan/nama DPJP kosong).
+Jawab HANYA satu objek JSON dalam satu baris tanpa spasi, tanpa ```:
+{"identitas":{"nama":"","no_rm":"","no_sep":""},"ttd_dpjp":true,"temuan":[{"tingkat":"kritis|perhatian","judul":"","uraian":"","halaman":1}]}
+Batas: hanya yang tertulis; tiap teks maks 12 kata; temuan maks 5, uraian maks 20 kata; ttd_dpjp null bila tidak relevan; tanpa kode ICD; tanpa nomor kartu peserta. "halaman" boleh null.
+TXT;
+    }
+
+    /** Buang field kosong/null supaya ringkasan untuk tahap 2 sependek mungkin. */
+    private function compact(mixed $v): mixed
+    {
+        if (! is_array($v)) {
+            return $v;
+        }
+        $out = [];
+        foreach ($v as $k => $x) {
+            $x = $this->compact($x);
+            if ($x === null || $x === '' || $x === []) {
+                continue;
+            }
+            $out[$k] = $x;
+        }
+
+        return array_is_list($v) ? array_values($out) : $out;
     }
 
     // ------------------------------------------------------------ pengolahan
