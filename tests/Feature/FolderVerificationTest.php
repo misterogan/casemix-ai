@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Enums\ReviewStatus;
+use App\Jobs\ReadFolderDocument;
 use App\Jobs\RunFolderAnalysis;
+use App\Jobs\SynthesizeFolderAnalysis;
 use App\Models\AiProvider;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
@@ -84,13 +86,28 @@ class FolderVerificationTest extends TestCase
         return FtpFolder::sole();
     }
 
-    private function fakeAi(array $json): void
+    /** Jawaban AI berurutan: satu per dokumen (urut nama file), lalu periksa silang. Tiap panggilan 1000 token masuk, 100 keluar. */
+    private function fakeAi(array|string ...$replies): void
     {
-        Http::fake(['*/v1/messages' => Http::response([
-            'id' => 'x', 'model' => 'claude-sonnet-5-5', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 30000, 'output_tokens' => 2000],
-            'content' => [['type' => 'text', 'text' => json_encode($json)]],
-        ])]);
+        $seq = Http::sequence();
+        foreach ($replies as $r) {
+            $seq->push([
+                'id' => 'x', 'model' => 'claude-sonnet-5-5', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 1000, 'output_tokens' => 100],
+                'content' => [['type' => 'text', 'text' => is_string($r) ? $r : json_encode($r)]],
+            ]);
+        }
+        Http::fake(['*/v1/messages' => $seq]);
     }
+
+    private function analyze(FtpFolder $folder): FolderAnalysis
+    {
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $this->koordinator->id]);
+        RunFolderAnalysis::dispatchSync($a->id);
+
+        return $a->fresh();
+    }
+
+    private const SILANG = ['ringkasan' => 'Berkas lengkap.', 'temuan' => [], 'kondisi' => []];
 
     // ------------------------------------------------------------ sinkronisasi
 
@@ -187,7 +204,7 @@ class FolderVerificationTest extends TestCase
         Queue::fake();
         $folder = $this->synced();
 
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('AI sedang membaca');
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('AI sedang membaca')->assertSee('0 dari 2 dokumen selesai');
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk();
 
         Queue::assertPushed(RunFolderAnalysis::class, 1);
@@ -247,62 +264,120 @@ class FolderVerificationTest extends TestCase
 
     // ------------------------------------------------------------ analisa
 
-    public function test_analisa_menyimpan_rekomendasi_dengan_dokumen_dan_halaman(): void
+    public function test_hasil_per_dokumen_tersimpan_lalu_diperiksa_silang(): void
     {
         $folder = $this->synced(['SEP.png', 'Resume Medis.png', 'Billing.png']);
-        $this->fakeAi([
-            'ringkasan' => 'Dokumen wajib ada. Resume belum ditandatangani DPJP.',
-            'temuan' => [
-                ['tingkat' => 'kritis', 'kategori' => 'Kelengkapan', 'judul' => 'Resume belum ditandatangani DPJP', 'uraian' => 'Kolom tanda tangan kosong.', 'dokumen' => 'resume medis', 'halaman' => 2],
-                ['tingkat' => 'sesuai', 'kategori' => 'Identitas', 'judul' => 'Identitas sama', 'uraian' => '', 'dokumen' => 'SEP.png', 'halaman' => null],
-            ],
-            'kondisi' => [['kondisi' => 'Kemungkinan diabetes (E11.9)', 'bukti' => 'Insulin pada terapi', 'dokumen' => 'Resume Medis.png', 'halaman' => 1]],
-            'isian' => [['field' => 'tanggal_masuk', 'nilai' => '2026-11-04', 'dokumen' => 'SEP.png', 'keyakinan' => 'tinggi'],
-                ['field' => 'tanggal_keluar', 'nilai' => '2026-11-02', 'dokumen' => 'Resume Medis.png', 'keyakinan' => 'tinggi'],
-                ['field' => 'jenis_rawat', 'nilai' => 'inap', 'dokumen' => 'SEP.png', 'keyakinan' => 'tinggi']],
-        ]);
-        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $this->koordinator->id]);
+        // Urutan file menurut nama: Billing, Resume Medis, SEP, lalu periksa silang
+        $this->fakeAi(
+            ['biaya' => [['komponen' => 'kamar', 'nilai' => 500000]], 'temuan' => []],
+            ['isian' => [['field' => 'tanggal_keluar', 'nilai' => '2026-11-02']], 'diagnosis' => ['Pneumonia'],
+                'temuan' => [['tingkat' => 'kritis', 'judul' => 'Resume belum ditandatangani DPJP', 'uraian' => 'Kolom tanda tangan kosong.', 'halaman' => 2]]],
+            ['isian' => [['field' => 'tanggal_masuk', 'nilai' => '2026-11-04'], ['field' => 'jenis_rawat', 'nilai' => 'inap']], 'temuan' => []],
+            ['ringkasan' => 'Dokumen wajib ada. Resume belum ditandatangani DPJP.',
+                'temuan' => [['tingkat' => 'perhatian', 'kategori' => 'Tanggal', 'judul' => 'Tanggal keluar sebelum tanggal masuk', 'uraian' => 'SEP dan resume berbeda.', 'dokumen' => 'resume medis', 'halaman' => 1]],
+                'kondisi' => [['kondisi' => 'Kemungkinan diabetes (E11.9)', 'bukti' => 'Insulin pada terapi', 'dokumen' => 'Resume Medis.png', 'halaman' => 1]]],
+        );
 
-        RunFolderAnalysis::dispatchSync($a->id);
+        $a = $this->analyze($folder);
 
-        $a->refresh();
         $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
-        $resume = collect($a->findings)->firstWhere('judul', 'Resume belum ditandatangani DPJP');
-        $this->assertSame('Resume Medis.png', $resume['dokumen'], 'Nama dokumen dicocokkan ke file yang ada');
-        $this->assertSame(2, $resume['halaman']);
-        $this->assertSame('Kemungkinan diabetes', $a->suggestions[0]['kondisi'], 'Kode ICD dibuang');
-        $this->assertTrue(collect($a->findings)->contains(fn ($f) => $f['sumber'] === 'aturan' && str_contains($f['judul'], 'keluar')), 'Aturan E-Klaim berjalan atas data yang terbaca');
-        $this->assertFalse(collect($a->findings)->contains(fn ($f) => str_contains($f['judul'], 'belum diisi')), 'Tidak ada temuan "belum diisi" pada verifikasi folder');
-        $this->assertEquals(0.08, (float) $a->cost_usd);
+        $docs = $a->documents;
+        $this->assertSame(['Billing.png', 'Resume Medis.png', 'SEP.png'], $docs->pluck('name')->all());
+        $this->assertTrue($docs->every(fn ($d) => $d->status === ReviewStatus::Selesai && ! $d->reused));
+        $this->assertSame(['Pneumonia'], $docs[1]->summary['diagnosis'], 'Hasil baca per dokumen tersimpan');
+        $this->assertTrue($docs->every(fn ($d) => (float) $d->cost_usd === 0.003), 'Biaya tiap dokumen tercatat');
+        $this->assertEquals(0.003, (float) $a->cost_usd, 'Biaya periksa silang tercatat');
+        $this->assertEquals(0.012, app(AiBudget::class)->spent());
 
-        $folder->refresh();
-        $this->assertSame('temuan', $folder->state());
-        $this->assertSame(Storage::disk(config('casemix.storage_disk'))->allFiles('tmp'), [], 'File sementara dihapus setelah dibaca');
-        Http::assertSent(fn (HttpRequest $r) => str_contains(json_encode($r->data()), '[Halaman 1]'));
+        $resume = collect($a->findings)->firstWhere('judul', 'Resume belum ditandatangani DPJP');
+        $this->assertSame(['Resume Medis.png', 2], [$resume['dokumen'], $resume['halaman']]);
+        $this->assertSame('Resume Medis.png', collect($a->findings)->firstWhere('judul', 'Tanggal keluar sebelum tanggal masuk')['dokumen']);
+        $this->assertSame('Kemungkinan diabetes', $a->suggestions[0]['kondisi'], 'Kode ICD dibuang');
+        $this->assertTrue(collect($a->findings)->contains(fn ($f) => $f['sumber'] === 'aturan' && str_contains($f['judul'], 'keluar')), 'Aturan E-Klaim berjalan atas isian gabungan');
+        $this->assertSame('temuan', $folder->fresh()->state());
+        $this->assertSame([], Storage::disk(config('casemix.storage_disk'))->allFiles('tmp'), 'File sementara dihapus setelah dibaca');
+
+        // 3 panggilan per dokumen (masing-masing 1 gambar) + 1 periksa silang tanpa gambar
+        $sent = Http::recorded()->map(fn ($p) => json_encode($p[0]->data()))->values();
+        $this->assertCount(4, $sent);
+        $this->assertTrue($sent->take(3)->every(fn ($b) => substr_count($b, '"type":"image"') === 1 && str_contains($b, '[Halaman 1]')));
+        $this->assertStringNotContainsString('"type":"image"', $sent[3]);
+        $this->assertStringContainsString('Pneumonia', $sent[3], 'Periksa silang memakai ringkasan tahap 1');
 
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
-        Http::fake();
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertSee('Resume belum ditandatangani DPJP')->assertSee('Resume Medis.png · hal. 2')->assertSee('Konfirmasi ke DPJP');
-        Http::assertNothingSent();
+            ->assertSee('3 dari 3 dokumen selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP');
+        $this->assertCount(4, Http::recorded());
+    }
 
-        // File berubah di FTP: ditandai, tetapi tidak dianalisa ulang otomatis
-        $this->ftp->folders = [$this->ftpFolder('000001_PASIEN CONTOH_0000R0000000V000001', ['SEP.png', 'Resume Medis.png', 'Billing.png'], 1_794_100_000)];
+    public function test_analisa_ulang_hanya_membaca_file_yang_berubah(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG, $doc, self::SILANG);
+        $this->analyze($folder);
+        $this->assertCount(3, Http::recorded());
+
+        // Resume diperbaiki di DHealth: hanya file itu yang berubah
+        $f = $this->ftpFolder('000001_PASIEN CONTOH_0000R0000000V000001', ['SEP.png', 'Resume Medis.png']);
+        $f['files'][1]['modified'] = 1_794_100_000;
+        $this->ftp->folders = [$f];
         app(FolderSync::class)->run();
-        $this->assertSame('berubah', $folder->fresh()->state());
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertSee('File di folder ini berubah');
-        $this->assertSame(1, FolderAnalysis::count());
+
+        $a = $this->analyze($folder->fresh());
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(5, Http::recorded(), 'Hanya file yang berubah + periksa silang');
+        $this->assertSame(['Resume Medis.png' => false, 'SEP.png' => true], $a->documents->pluck('reused', 'name')->all());
+        $this->assertNull($a->documents->firstWhere('name', 'SEP.png')->cost_usd, 'Dokumen yang dipakai ulang tidak memakan biaya');
+        $this->assertNotSame('berubah', $folder->fresh()->state(), 'Hasil baru sesuai isi folder terkini');
+    }
+
+    public function test_satu_dokumen_gagal_tidak_menghentikan_yang_lain(): void
+    {
+        $folder = $this->synced();
+        // Resume Medis dijawab bukan JSON; SEP tetap dibaca; periksa silang tetap jalan
+        $this->fakeAi('maaf, tidak bisa', ['isian' => [], 'temuan' => []], self::SILANG);
+
+        $a = $this->analyze($folder);
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $resume = $a->documents->firstWhere('name', 'Resume Medis.png');
+        $this->assertSame(ReviewStatus::Gagal, $resume->status);
+        $this->assertStringContainsString('bukan JSON', $resume->error);
+        $this->assertEquals(0.003, (float) $resume->cost_usd, 'Biaya tetap tercatat walau jawaban gagal diolah');
+        $this->assertSame(ReviewStatus::Selesai, $a->documents->firstWhere('name', 'SEP.png')->status);
+        $failed = collect($a->findings)->firstWhere('judul', 'Dokumen gagal dibaca AI');
+        $this->assertSame(['perhatian', 'Resume Medis.png'], [$failed['tingkat'], $failed['dokumen']]);
+
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertSee('Baca ulang dokumen ini');
+
+        // Baca ulang satu dokumen: hanya dokumen itu, lalu periksa silang
+        Queue::fake();
+        $this->actingAs($this->koordinator)->post(route('folders.document.retry', [$folder, $resume]))->assertSessionHas('ok');
+        Queue::assertPushedWithChain(ReadFolderDocument::class, [SynthesizeFolderAnalysis::class]);
+        $this->assertSame(ReviewStatus::Antre, $resume->fresh()->status);
+        $this->assertSame('proses', $folder->fresh()->state());
+
+        $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
+        $this->actingAs($petugas)->post(route('folders.document.retry', [$folder, $resume]))->assertForbidden();
+    }
+
+    public function test_status_mengembalikan_jumlah_dokumen_selesai(): void
+    {
+        Queue::fake();
+        $folder = $this->synced();
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder));
+
+        $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))->assertExactJson(['active' => true, 'done' => 0, 'total' => 2]);
     }
 
     public function test_dokumen_wajib_yang_tidak_ada_dilaporkan_aturan(): void
     {
         $folder = $this->synced(['SEP.png']);
-        $this->fakeAi(['ringkasan' => 'x', 'temuan' => [], 'kondisi' => [], 'isian' => []]);
-        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre]);
+        $this->fakeAi(['isian' => [], 'temuan' => []], self::SILANG);
 
-        RunFolderAnalysis::dispatchSync($a->id);
-
-        $titles = collect($a->fresh()->findings)->pluck('judul');
+        $titles = collect($this->analyze($folder)->findings)->pluck('judul');
         $this->assertContains('Resume medis tidak ada di folder', $titles);
         $this->assertContains('Rincian biaya tidak ada di folder', $titles);
     }

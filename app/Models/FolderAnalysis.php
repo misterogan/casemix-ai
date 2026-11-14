@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ReviewStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Hasil analisa AI atas satu folder FTP, disimpan agar tidak dianalisa ulang setiap kali dibuka. */
 class FolderAnalysis extends Model
@@ -37,6 +38,11 @@ class FolderAnalysis extends Model
     public function provider(): BelongsTo
     {
         return $this->belongsTo(AiProvider::class, 'ai_provider_id');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(FolderDocument::class)->orderBy('file_index')->orderBy('id');
     }
 
     public function countBy(string $tingkat): int

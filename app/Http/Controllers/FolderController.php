@@ -3,17 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ReviewStatus;
+use App\Jobs\ReadFolderDocument;
 use App\Jobs\RunFolderAnalysis;
+use App\Jobs\SynthesizeFolderAnalysis;
 use App\Models\AiProvider;
 use App\Models\AppSetting;
 use App\Models\FolderAnalysis;
+use App\Models\FolderDocument;
 use App\Models\FtpFolder;
 use App\Services\Ai\AiBudget;
 use App\Services\Import\SimrsFtp;
+use App\Services\Verification\FolderAnalyzer;
 use App\Services\Verification\FolderSync;
 use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -76,6 +81,7 @@ class FolderController extends Controller
             'done' => $done,
             'changed' => $done && $done->fingerprint !== $folder->fingerprint,
             'blocker' => $blocker,
+            'documents' => $latest ? $latest->documents()->get() : collect(),
             'linkable' => collect($folder->files)->pluck('name')->flip(),
         ];
 
@@ -105,8 +111,34 @@ class FolderController extends Controller
     public function status(FtpFolder $folder)
     {
         $a = $folder->analyses()->first();
+        $docs = $a ? $a->documents()->get(['id', 'status']) : collect();
 
-        return response()->json(['status' => $a?->status?->value, 'active' => (bool) $a?->status?->isActive()]);
+        return response()->json([
+            'active' => (bool) $a?->status?->isActive(),
+            'done' => $docs->filter(fn (FolderDocument $d) => $d->isDone())->count(),
+            'total' => $docs->count(),
+        ]);
+    }
+
+    /** Baca ulang satu dokumen (mis. gagal dibaca), lalu periksa silang lagi. Dokumen lain tidak dibaca ulang. */
+    public function retryDocument(Request $request, FtpFolder $folder, FolderDocument $document, AiBudget $budget)
+    {
+        $a = $document->analysis;
+        abort_unless($document->ftp_folder_id === $folder->id && $a && $a->id === $folder->analyses()->value('id'), 404);
+        if ($a->status?->isActive()) {
+            return back()->with('warn', 'Folder ini sedang dianalisa.');
+        }
+        if ($blocked = $this->startBlocker($budget)) {
+            return back()->with('warn', $blocked);
+        }
+
+        $document->update(['status' => ReviewStatus::Antre, 'error' => null, 'reused' => false]);
+        $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
+        $folder->update(['analysis_status' => 'berjalan']);
+        Bus::chain([new ReadFolderDocument($document->id), new SynthesizeFolderAnalysis($a->id)])->onQueue(config('casemix.ai.queue'))->dispatch();
+        Audit::log('folder.baca_ulang_dokumen', $folder, 'Meminta baca ulang ' . $document->name);
+
+        return back()->with('ok', 'Dokumen dibaca ulang. Halaman diperbarui otomatis saat selesai.');
     }
 
     /** Buka satu dokumen langsung dari FTP (tidak disimpan). Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */
@@ -142,6 +174,7 @@ class FolderController extends Controller
     {
         $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $userId]);
         $folder->update(['analysis_status' => 'antre', 'last_analysis_id' => $a->id]);
+        app(FolderAnalyzer::class)->prepare($a); // daftar dokumen langsung tampil sebagai "menunggu"
         RunFolderAnalysis::dispatch($a->id);
 
         return $a;

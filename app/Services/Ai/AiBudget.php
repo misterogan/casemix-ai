@@ -8,6 +8,7 @@ use App\Models\AiReview;
 use App\Models\AppSetting;
 use App\Models\ClaimExtraction;
 use App\Models\FolderAnalysis;
+use App\Models\FolderDocument;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -28,7 +29,8 @@ class AiBudget
 
     /** Semua jenis pemanggilan AI yang dicatat biayanya, dengan label untuk laporan. */
     public const SOURCES = [
-        FolderAnalysis::class => 'Verifikasi folder',
+        FolderAnalysis::class => 'Verifikasi folder (periksa silang)',
+        FolderDocument::class => 'Verifikasi folder (baca dokumen)',
         AiReview::class => 'Pemeriksaan berkas',
         ClaimExtraction::class => 'Usulan isian',
     ];
@@ -86,6 +88,22 @@ class AiBudget
         $provider = $row->ai_provider_id ? AiProvider::find($row->ai_provider_id) : null;
         $row->forceFill(['cost_usd' => $this->cost($provider, $row->model, $row->tokens_in, $row->tokens_out)])->save();
         $this->auditThresholdOnce();
+    }
+
+    /** Tambahkan token satu pemanggilan ke baris (dijumlah dengan pemanggilan sebelumnya, mis. baca ulang), lalu catat biayanya. */
+    public function charge(Model $row, AiResponse $res, ?int $providerId): void
+    {
+        if ($res->tokensIn === null && $res->tokensOut === null) {
+            return;
+        }
+        $row->forceFill([
+            'ai_provider_id' => $providerId,
+            'model' => $res->model,
+            'tokens_in' => (int) $row->tokens_in + (int) $res->tokensIn,
+            'tokens_out' => (int) $row->tokens_out + (int) $res->tokensOut,
+            'finished_at' => now(),
+        ]);
+        $this->record($row);
     }
 
     public function monthStart(): Carbon
@@ -170,7 +188,7 @@ class AiBudget
         $rows = collect();
         foreach (self::SOURCES as $model => $label) {
             $rows = $rows->merge($model::query()->where('finished_at', '>=', $from)->whereNotNull('finished_at')
-                ->get(['finished_at', 'cost_usd', 'tokens_in', 'tokens_out', 'requested_by'])
+                ->get(array_merge(['finished_at', 'cost_usd', 'tokens_in', 'tokens_out'], $model === FolderDocument::class ? [] : ['requested_by']))
                 ->map(fn ($r) => ['bulan' => $r->finished_at->format('Y-m'), 'fitur' => $label, 'biaya' => (float) $r->cost_usd,
                     'token' => (int) $r->tokens_in + (int) $r->tokens_out, 'user' => $r->requested_by]));
         }

@@ -38,6 +38,11 @@ class FtpFolder extends Model
         return $this->hasMany(FolderAnalysis::class)->latest('id');
     }
 
+    public function documents(): HasMany
+    {
+        return $this->hasMany(FolderDocument::class);
+    }
+
     public function lastAnalysis(): BelongsTo
     {
         return $this->belongsTo(FolderAnalysis::class, 'last_analysis_id');

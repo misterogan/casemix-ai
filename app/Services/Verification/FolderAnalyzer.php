@@ -2,14 +2,14 @@
 
 namespace App\Services\Verification;
 
-use App\Enums\DocumentType;
+use App\Enums\ReviewStatus;
 use App\Models\AiProvider as ProviderConfig;
 use App\Models\Claim;
 use App\Models\ClaimDocument;
+use App\Models\FolderAnalysis;
+use App\Models\FolderDocument;
 use App\Models\FtpFolder;
-use App\Services\Ai\AiManager;
 use App\Services\Ai\AiRequest;
-use App\Services\Ai\AiResponse;
 use App\Services\Documents\DocumentReader;
 use App\Services\Import\DocumentGuesser;
 use App\Services\Import\SimrsFtp;
@@ -17,73 +17,84 @@ use App\Services\Rules\ConsistencyChecker;
 use App\Support\ClaimFields;
 use App\Support\Eklaim;
 use App\Support\IcdGuard;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
- * Membaca semua dokumen dalam satu folder FTP dan menghasilkan rekomendasi: apa yang kurang atau tidak cocok,
- * di dokumen dan halaman mana. Tidak ada yang diisi petugas dan tidak ada salinan yang disimpan:
- * file diunduh ke folder sementara dan dihapus setelah dibaca.
+ * Verifikasi folder FTP dalam dua tahap:
+ * 1. Setiap file dibaca AI sendiri-sendiri (satu panggilan per file); hasilnya disimpan per dokumen dan
+ *    dipakai ulang selama file tidak berubah.
+ * 2. Periksa silang antardokumen dengan satu panggilan teks dari ringkasan tahap 1 (tanpa gambar).
+ * File diunduh ke folder sementara dan dihapus setelah dibaca; tidak ada salinan yang disimpan.
  */
 class FolderAnalyzer
 {
-    /** Respons AI terakhir, agar biaya tetap tercatat walau hasilnya gagal diolah. */
-    public ?\App\Services\Ai\AiResponse $lastResponse = null;
+    private const MAX_TOKENS = 2000;
 
-    public function __construct(private SimrsFtp $ftp, private DocumentReader $reader, private AiManager $ai, private ConsistencyChecker $rules) {}
+    private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'biaya', 'ttd_dpjp'];
 
-    /** @return array{summary: string, findings: array, suggestions: array, extracted: array, response: AiResponse} */
-    public function analyze(FtpFolder $folder, ProviderConfig $config): array
+    public function __construct(private SimrsFtp $ftp, private DocumentReader $reader, private ConsistencyChecker $rules) {}
+
+    // ------------------------------------------------------------ persiapan
+
+    /** Buat baris dokumen untuk tiap file. File yang tidak berubah sejak dibaca sebelumnya memakai hasil lama tanpa AI. */
+    public function prepare(FolderAnalysis $a): void
     {
+        if ($a->documents()->exists()) {
+            return;
+        }
+        $folder = $a->folder;
+        $a->update(['fingerprint' => $folder->fingerprint, 'files_snapshot' => $folder->files]);
+
+        foreach (array_values($folder->files ?? []) as $i => $f) {
+            $fp = FolderDocument::fingerprintOf($f);
+            $prev = FolderDocument::where('ftp_folder_id', $folder->id)->where('name', $f['name'])->where('file_fingerprint', $fp)
+                ->where('status', ReviewStatus::Selesai->value)->latest('id')->first();
+
+            FolderDocument::create([
+                'folder_analysis_id' => $a->id,
+                'ftp_folder_id' => $folder->id,
+                'file_index' => $i,
+                'name' => $f['name'],
+                'file_fingerprint' => $fp,
+                'doc_type' => DocumentGuesser::type($f['name'])->value,
+                'status' => $prev ? ReviewStatus::Selesai : ReviewStatus::Antre,
+                'reused' => (bool) $prev,
+                'summary' => $prev?->summary,
+                'findings' => $prev?->findings,
+                'finished_at' => $prev ? now() : null,
+            ]);
+        }
+    }
+
+    // ------------------------------------------------------------ tahap 1: per dokumen
+
+    /** Unduh dan baca satu file menjadi permintaan AI. Null bila file bukan PDF/gambar (tidak dibaca AI). */
+    public function documentRequest(FolderDocument $d, ProviderConfig $config): ?AiRequest
+    {
+        $folder = $d->folder;
+        $f = collect($folder->files)->firstWhere('name', $d->name) ?? throw new RuntimeException('File tidak ada lagi di folder FTP.');
         $disk = Storage::disk(config('casemix.storage_disk'));
         $tmp = 'tmp/analisa/' . Str::ulid();
 
         try {
-            $docs = [];
-            foreach ($folder->files as $i => $f) {
-                $local = $this->ftp->download($f['path'], $tmp . '/' . $i . '.' . Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION)));
-                $mime = $disk->mimeType($local) ?: 'application/octet-stream';
-                if (! in_array($mime, config('casemix.upload.content_types'), true)) {
-                    continue; // bukan PDF/gambar: tidak dibaca
-                }
-                $docs[] = ['name' => $f['name'], 'type' => DocumentGuesser::type($f['name']), 'abs' => $disk->path($local), 'mime' => $mime];
+            $local = $this->ftp->download($f['path'], $tmp . '/dokumen.' . Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION)));
+            $mime = $disk->mimeType($local) ?: 'application/octet-stream';
+            if (! in_array($mime, config('casemix.upload.content_types'), true)) {
+                return null;
             }
+            $abs = $disk->path($local);
 
-            $request = $this->buildRequest($folder, $docs, $config);
-            $this->lastResponse = null;
-            $response = $this->lastResponse = $this->ai->for($config)->generate($request);
-            $json = $response->json();
+            $req = new AiRequest($config->model_standard, $this->systemPrompt(), min((int) $config->max_tokens, self::MAX_TOKENS));
+            $req->text($this->documentInstruction($folder, $d));
+            $head = "\n=== DOKUMEN: \"{$d->name}\" (perkiraan jenis: {$d->typeLabel()}) ===";
 
-            $extracted = $this->extracted($json['isian'] ?? []);
-            $ruleFindings = $this->ruleFindings($folder, $docs, $extracted);
-            $aiFindings = $this->findings($json['temuan'] ?? [], array_column($docs, 'name'));
-
-            return [
-                'summary' => IcdGuard::strip(trim((string) ($json['ringkasan'] ?? ''))),
-                'findings' => array_merge($aiFindings, $ruleFindings),
-                'suggestions' => $this->suggestions($json['kondisi'] ?? [], array_column($docs, 'name')),
-                'extracted' => $extracted,
-                'response' => $response,
-            ];
-        } finally {
-            $disk->deleteDirectory($tmp);
-        }
-    }
-
-    private function buildRequest(FtpFolder $folder, array $docs, ProviderConfig $config): AiRequest
-    {
-        $req = new AiRequest($config->model_standard, $this->systemPrompt(), $config->max_tokens);
-        $req->text($this->instruction($folder, $docs));
-
-        $imageBudget = (int) config('casemix.ai.max_images_total');
-        $maxChars = (int) config('casemix.ai.max_text_chars_per_doc');
-        $maxPages = (int) config('casemix.ai.max_pages_per_scan');
-
-        foreach ($docs as $n => $d) {
-            $head = "\n=== DOKUMEN " . ($n + 1) . ": \"{$d['name']}\" (perkiraan jenis: {$d['type']->label()}) ===";
-            $pages = $d['mime'] === 'application/pdf' ? $this->reader->pdfPageTexts($d['abs']) : null;
-
+            $pages = $mime === 'application/pdf' ? $this->reader->pdfPageTexts($abs) : null;
             if ($pages) {
+                $maxChars = (int) config('casemix.ai.max_text_chars_per_doc');
                 $text = '';
                 foreach ($pages as $p => $t) {
                     $text .= "\n[Halaman $p]\n$t";
@@ -91,25 +102,120 @@ class FolderAnalyzer
                 $cut = mb_strlen($text) > $maxChars;
                 $req->text($head . ($cut ? "\n(TERPOTONG: hanya sebagian halaman terkirim. Jangan menyimpulkan sesuatu tidak ada di dokumen ini.)" : '') . mb_substr($text, 0, $maxChars));
 
-                continue;
+                return $req;
             }
 
-            $images = $d['mime'] === 'application/pdf'
-                ? $this->reader->renderPdf($d['abs'], min($maxPages, max(0, $imageBudget)))
-                : [$this->reader->read($d['abs'], $d['mime'])['images'][0] ?? null];
+            $images = $mime === 'application/pdf'
+                ? $this->reader->renderPdf($abs, (int) config('casemix.ai.max_pages_per_scan'))
+                : [$this->reader->read($abs, $mime)['images'][0] ?? null];
             $images = array_values(array_filter($images));
-            $images = array_slice($images, 0, max(0, $imageBudget));
-            $imageBudget -= count($images);
-
-            $req->text($head . ($images ? "\n(Hasil scan. " . count($images) . ' halaman pertama terlampir sebagai gambar, berurutan dari halaman 1.)' : "\n(Tidak terkirim: batas gambar tercapai. Jangan menyimpulkan isinya.)"));
+            if (! $images) {
+                throw new RuntimeException('Isi dokumen tidak bisa dibaca (bukan teks dan tidak bisa dijadikan gambar).');
+            }
+            $req->text($head . "\n(Hasil scan. " . count($images) . ' halaman pertama terlampir sebagai gambar, berurutan dari halaman 1.)');
             foreach ($images as $p => $img) {
-                $req->text("[Halaman " . ($p + 1) . ']');
+                $req->text('[Halaman ' . ($p + 1) . ']');
                 $req->image($img['media_type'], $img['data']);
             }
+
+            return $req;
+        } finally {
+            $disk->deleteDirectory($tmp);
         }
+    }
+
+    /** @return array{summary: array, findings: array} */
+    public function parseDocument(FolderDocument $d, array $json): array
+    {
+        $findings = collect($json['temuan'] ?? [])->filter(fn ($f) => is_array($f) && filled($f['judul'] ?? null))->take(5)->map(fn ($f) => [
+            'tingkat' => ($f['tingkat'] ?? '') === 'kritis' ? 'kritis' : 'perhatian',
+            'kategori' => 'Dokumen',
+            'judul' => IcdGuard::strip(mb_substr((string) $f['judul'], 0, 200)),
+            'uraian' => IcdGuard::strip(mb_substr((string) ($f['uraian'] ?? ''), 0, 600)),
+            'dokumen' => $d->name,
+            'halaman' => $this->page($f['halaman'] ?? null),
+            'sumber' => 'ai',
+        ])->values()->all();
+
+        return ['summary' => $this->clean(Arr::only($json, self::SUMMARY_KEYS)), 'findings' => $findings];
+    }
+
+    // ------------------------------------------------------------ tahap 2: periksa silang
+
+    /** Permintaan teks saja dari ringkasan dokumen yang terbaca, atau null bila tidak ada yang terbaca. */
+    public function synthesisRequest(FolderAnalysis $a, ProviderConfig $config): ?AiRequest
+    {
+        $read = $this->readable($a->documents);
+        if ($read->isEmpty()) {
+            return null;
+        }
+        $data = $read->map(fn (FolderDocument $d) => ['dokumen' => $d->name, 'jenis' => $d->typeLabel(), 'isi' => $d->summary])->values()->all();
+        $unread = $a->documents->reject(fn ($d) => $read->contains('id', $d->id))->pluck('name')->all();
+        $folder = $a->folder;
+
+        $req = new AiRequest($config->model_standard, $this->systemPrompt(), min((int) $config->max_tokens, self::MAX_TOKENS));
+        $req->text(<<<TXT
+Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).
+Berikut ringkasan setiap dokumen (sudah dibaca terpisah). Periksa SILANG antardokumen:
+1. Identitas dan No. SEP sama di semua dokumen.
+2. Tanggal masuk/keluar konsisten.
+3. Diagnosis di resume didukung hasil penunjang.
+4. Tindakan punya laporan atau hasilnya.
+5. Biaya di rincian biaya punya bukti layanan.
+6. Kondisi dengan bukti klinis yang belum tertulis sebagai diagnosis (untuk konfirmasi DPJP).
+Masalah di dalam satu dokumen saja sudah dilaporkan; jangan diulang.
+TXT
+            . ($unread ? "\nDokumen yang TIDAK terbaca (jangan menyimpulkan isinya tidak ada): " . implode(', ', $unread) : '')
+            . "\n\nRINGKASAN DOKUMEN (JSON):\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            . <<<'TXT'
+
+
+Jawab HANYA satu objek JSON ringkas tanpa spasi atau baris baru tambahan, tanpa ```:
+{"ringkasan":"maks 2 kalimat","temuan":[{"tingkat":"kritis|perhatian","kategori":"Identitas|Tanggal|Diagnosis|Tindakan|Biaya|Kelengkapan|Lainnya","judul":"singkat","uraian":"maks 25 kata","dokumen":"nama file persis","halaman":1}],"kondisi":[{"kondisi":"...","bukti":"maks 25 kata","dokumen":"nama file persis","halaman":1}]}
+Maksimal 8 temuan dan 3 kondisi. "halaman" boleh null.
+TXT);
 
         return $req;
     }
+
+    /** Gabungkan hasil: temuan per dokumen + temuan silang + dokumen gagal + aturan E-Klaim. */
+    public function synthesize(FolderAnalysis $a, array $json): array
+    {
+        $docs = $a->documents;
+        $names = $docs->pluck('name')->all();
+
+        $failed = $docs->where('status', ReviewStatus::Gagal)->map(fn (FolderDocument $d) => [
+            'tingkat' => 'perhatian',
+            'kategori' => 'Kelengkapan',
+            'judul' => 'Dokumen gagal dibaca AI',
+            'uraian' => mb_substr($d->name . ': ' . ($d->error ?: 'tidak diketahui') . '. Cek manual atau klik "Baca ulang dokumen ini".', 0, 600),
+            'dokumen' => $d->name,
+            'halaman' => null,
+            'sumber' => 'sistem',
+        ])->values()->all();
+
+        $extracted = $this->extracted($this->readable($docs)->sortBy(fn ($d) => $this->priority($d))->flatMap(fn ($d) => $d->summary['isian'] ?? [])->all());
+
+        return [
+            'summary' => IcdGuard::strip(trim((string) ($json['ringkasan'] ?? ''))),
+            'findings' => array_merge(
+                $docs->flatMap(fn ($d) => $d->findings ?? [])->values()->all(),
+                $this->findings(array_slice($json['temuan'] ?? [], 0, 8), $names),
+                $failed,
+                $this->ruleFindings($a->folder, $docs, $extracted),
+            ),
+            'suggestions' => $this->suggestions(array_slice($json['kondisi'] ?? [], 0, 3), $names),
+            'extracted' => $extracted,
+        ];
+    }
+
+    /** Dokumen yang selesai dibaca dan punya ringkasan (bukan file yang dilewati). */
+    public function readable(Collection $docs): Collection
+    {
+        return $docs->filter(fn (FolderDocument $d) => $d->status === ReviewStatus::Selesai && is_array($d->summary))->values();
+    }
+
+    // ------------------------------------------------------------ prompt
 
     private function systemPrompt(): string
     {
@@ -126,43 +232,36 @@ Aturan wajib:
 TXT;
     }
 
-    private function instruction(FtpFolder $folder, array $docs): string
+    private function documentInstruction(FtpFolder $folder, FolderDocument $d): string
     {
         $opsi = fn (array $m) => implode(', ', array_map(fn ($k, $v) => "$k=$v", array_keys($m), $m));
         $tarif = implode(', ', array_keys(Eklaim::TARIF));
-        $list = implode("\n", array_map(fn ($d) => '- ' . $d['name'] . ' (' . $d['type']->label() . ')', $docs));
 
         return <<<TXT
 Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).
-Dokumen dalam folder:
-$list
+Baca SATU dokumen di bawah ini saja. Catat isinya untuk diperiksa silang nanti, dan laporkan masalah di dalam dokumen ini (mis. tanda tangan/nama DPJP kosong, tanggal tidak terbaca, identitas tidak sama dengan nama folder).
 
-Periksa:
-1. Kelengkapan dokumen wajib klaim (SEP, resume medis, rincian biaya) dan dokumen pendukung yang seharusnya ada menurut isi berkas (mis. hasil radiologi bila ada biaya radiologi, laporan operasi bila ada tindakan bedah).
-2. Identitas dan No. SEP sama di semua dokumen.
-3. Tanggal masuk/keluar konsisten antar dokumen.
-4. Resume medis lengkap: diagnosis, tindakan, kondisi pulang, tanda tangan dan nama DPJP.
-5. Setiap diagnosis di resume punya bukti penunjang; setiap tindakan punya laporan atau hasilnya.
-6. Biaya di rincian biaya sesuai layanan yang tercatat.
-7. Kondisi dengan bukti klinis yang belum tertulis sebagai diagnosis (untuk konfirmasi DPJP).
+"isian" hanya field yang tertulis jelas (jangan menebak): tanggal_masuk, tanggal_keluar, tanggal_lahir (YYYY-MM-DD), jenis_rawat ({$opsi(Eklaim::JENIS_RAWAT)}), kelas_hak ({$opsi(Eklaim::KELAS)}), kelas_rawat ({$opsi(Eklaim::KELAS_RAWAT)}), cara_masuk ({$opsi(Eklaim::CARA_MASUK)}), cara_pulang ({$opsi(Eklaim::CARA_PULANG)}), berat_lahir (gram), rawat_intensif_hari, ventilator_jam, dpjp, diagnosis_utama (kata-kata), tarif.<komponen> hanya yang nilainya > 0 (komponen: $tarif).
 
-Selain itu, salin data berikut bila tertulis jelas (dipakai aturan E-Klaim; jangan menebak): tanggal_masuk, tanggal_keluar (YYYY-MM-DD), jenis_rawat ({$opsi(Eklaim::JENIS_RAWAT)}), kelas_hak ({$opsi(Eklaim::KELAS)}), kelas_rawat ({$opsi(Eklaim::KELAS_RAWAT)}), cara_masuk ({$opsi(Eklaim::CARA_MASUK)}), cara_pulang ({$opsi(Eklaim::CARA_PULANG)}), tanggal_lahir, berat_lahir (gram), rawat_intensif_hari, ventilator_jam, dpjp, diagnosis_utama (kata-kata), tarif.<komponen> dari rincian biaya bila dikelompokkan jelas (komponen: $tarif).
-
-Batas panjang jawaban (wajib):
-- ringkasan maksimal 2 kalimat.
-- temuan maksimal 12: semua kritis dan perhatian, plus paling banyak 3 sesuai.
-- uraian maksimal 25 kata per temuan.
-- kondisi maksimal 3, bukti maksimal 25 kata.
-- isian hanya field yang tertulis jelas; tarif.<komponen> hanya yang nilainya > 0.
-- JSON ringkas tanpa spasi atau baris baru tambahan.
-
-Jawab HANYA satu objek JSON tanpa teks lain dan tanpa ```:
-{"ringkasan": "2-3 kalimat kondisi berkas",
- "temuan": [{"tingkat": "kritis | perhatian | sesuai", "kategori": "Kelengkapan | Identitas | Tanggal | Diagnosis | Tindakan | Biaya | Lainnya", "judul": "singkat", "uraian": "apa yang kurang/tidak cocok dan apa yang perlu dilakukan", "dokumen": "nama file persis", "halaman": 1}],
- "kondisi": [{"kondisi": "...", "bukti": "...", "dokumen": "nama file persis", "halaman": 1}],
- "isian": [{"field": "...", "nilai": "...", "dokumen": "nama file", "keyakinan": "tinggi | sedang | rendah"}]}
-Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. Sertakan juga beberapa temuan "sesuai" untuk bagian penting yang sudah benar. "halaman" boleh null.
+Jawab HANYA satu objek JSON ringkas tanpa spasi atau baris baru tambahan, tanpa ```:
+{"identitas":{"nama":"","no_rm":"","no_sep":""},"isian":[{"field":"","nilai":""}],"diagnosis":[],"tindakan":[],"terapi_penting":[],"penunjang":[{"pemeriksaan":"","hasil":""}],"biaya":[{"komponen":"","nilai":0}],"ttd_dpjp":true,"temuan":[{"tingkat":"kritis|perhatian","judul":"","uraian":"","halaman":1}]}
+Batas: hanya yang tertulis di dokumen; kosongkan bagian yang tidak ada; ttd_dpjp null bila tidak relevan; maksimal 5 temuan; uraian maks 25 kata; tanpa kode ICD; tanpa nomor kartu peserta. Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. "halaman" boleh null.
 TXT;
+    }
+
+    // ------------------------------------------------------------ pengolahan
+
+    /** SEP lebih dipercaya untuk data administrasi, lalu resume, lalu rincian biaya. */
+    private function priority(FolderDocument $d): int
+    {
+        $l = mb_strtolower($d->typeLabel());
+
+        return match (true) {
+            str_contains($l, 'sep') => 0,
+            str_contains($l, 'resume') => 1,
+            str_contains($l, 'biaya') || str_contains($l, 'rincian') => 2,
+            default => 3,
+        };
     }
 
     private function extracted(array $items): array
@@ -182,13 +281,13 @@ TXT;
     }
 
     /** Aturan E-Klaim dijalankan atas data yang terbaca dari dokumen; berkas sementara tidak disimpan. */
-    private function ruleFindings(FtpFolder $folder, array $docs, array $extracted): array
+    private function ruleFindings(FtpFolder $folder, Collection $docs, array $extracted): array
     {
         $claim = new Claim(['nama_pasien' => $folder->nama_pasien, 'no_rm' => $folder->no_rm ?? '-', 'no_sep' => $folder->no_sep, 'jenis_rawat' => $folder->jenis_rawat]);
         foreach ($extracted as $field => $v) {
             ClaimFields::apply($claim, $field, $v);
         }
-        $claim->setRelation('documents', collect($docs)->map(fn ($d) => new ClaimDocument(['type' => $d['type']->value, 'original_name' => $d['name']])));
+        $claim->setRelation('documents', $docs->map(fn ($d) => new ClaimDocument(['type' => $d->doc_type, 'original_name' => $d->name]))->values());
 
         return array_map(fn ($f) => $f + ['dokumen' => null, 'halaman' => null, 'sumber' => 'aturan'], $this->rules->check($claim, fromDocuments: true));
     }
@@ -201,7 +300,7 @@ TXT;
             'judul' => IcdGuard::strip(mb_substr((string) $f['judul'], 0, 200)),
             'uraian' => IcdGuard::strip(mb_substr((string) ($f['uraian'] ?? ''), 0, 1000)),
             'dokumen' => $this->matchName($f['dokumen'] ?? null, $names),
-            'halaman' => is_numeric($f['halaman'] ?? null) && (int) $f['halaman'] > 0 ? (int) $f['halaman'] : null,
+            'halaman' => $this->page($f['halaman'] ?? null),
             'sumber' => 'ai',
         ])->values()->all();
     }
@@ -212,8 +311,25 @@ TXT;
             'kondisi' => IcdGuard::strip(mb_substr((string) $s['kondisi'], 0, 200)),
             'bukti' => IcdGuard::strip(mb_substr((string) ($s['bukti'] ?? ''), 0, 600)),
             'dokumen' => $this->matchName($s['dokumen'] ?? null, $names),
-            'halaman' => is_numeric($s['halaman'] ?? null) && (int) $s['halaman'] > 0 ? (int) $s['halaman'] : null,
+            'halaman' => $this->page($s['halaman'] ?? null),
         ])->values()->all();
+    }
+
+    private function page(mixed $v): ?int
+    {
+        return is_numeric($v) && (int) $v > 0 ? (int) $v : null;
+    }
+
+    /** Semua teks dari AI dipotong dan dibersihkan dari kode ICD sebelum disimpan. */
+    private function clean(array $data): array
+    {
+        array_walk_recursive($data, function (&$v) {
+            if (is_string($v)) {
+                $v = IcdGuard::strip(mb_substr($v, 0, 500));
+            }
+        });
+
+        return $data;
     }
 
     /** Nama file yang disebut AI dicocokkan ke nama file yang benar-benar ada, supaya tautannya bisa dibuka. */

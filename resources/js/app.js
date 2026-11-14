@@ -81,6 +81,8 @@ function initPoll(root = document) {
       try {
         const r = await fetch(el.dataset.poll, { headers: { Accept: 'application/json' }, cache: 'no-store' });
         const j = await r.json();
+        // data-poll-done: jumlah dokumen selesai saat halaman dimuat; bertambah = muat ulang supaya hasil per dokumen tampil
+        if (el.dataset.pollDone !== undefined && Number(j.done) > Number(el.dataset.pollDone)) return window.location.reload();
         if (!j.active) return pollSelesai(el);
       } catch (_) { /* coba lagi */ }
       setTimeout(tick, 4000);
