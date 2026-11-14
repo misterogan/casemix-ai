@@ -13,45 +13,69 @@
 
     <p class="sr-only" aria-live="polite" data-kabar></p>
 
-    {{-- Tahap 1: satu item accordion per file; diperbarui lewat polling tanpa memuat ulang halaman --}}
-    @if ($documents->isNotEmpty())
-        @php($selesai = $documents->reject(fn ($d) => $d->status->isActive())->count())
-        @php($total = $documents->count())
-        @php($tertahan = $documents->contains(fn ($d) => in_array($d->status->value, ['gagal', 'dibatalkan'], true)))
-        @php($berjalan = (bool) $latest?->status?->isActive())
-        <section class="mt-6 max-w-[692px]" aria-labelledby="judul-dokumen"
-                 data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
-            <div class="flex items-baseline justify-between gap-3">
-                <h2 id="judul-dokumen" class="font-semibold">File dalam folder</h2>
-                <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
-            </div>
-            <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
-                 aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
-                <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ $total ? round($selesai / $total * 100) : 0 }}%"></div>
-            </div>
+    @php
+        $berjalan = (bool) $latest?->status?->isActive();
+        $selesai = $documents->reject(fn ($d) => $d->status->isActive())->count();
+        $total = $documents->count();
+        $kunci = $berjalan && ! $blocker; // tombol yang dibuka JS saat analisa selesai
+    @endphp
 
-            <div class="mt-3 space-y-2" data-docs-list>
-                @foreach ($documents as $d)
-                    @include('folders.partials.document')
-                @endforeach
+    {{-- Satu kolom: kepala → progres → rekomendasi keseluruhan → daftar file --}}
+    <div class="mt-6 max-w-[960px] space-y-6" data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
+        <header class="flex flex-wrap items-start justify-between gap-4" data-kepala>
+            <div class="min-w-0">
+                <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
+                <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}</h1>
+                <p class="num mt-1 text-sm text-abu">
+                    RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$folder->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }} · {{ $folder->file_count }} dokumen
+                    @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
+                </p>
             </div>
-
             @can('folders.analyze')
-                <div class="mt-3 flex flex-wrap gap-2">
-                    <form method="POST" action="{{ route('folders.resume', $folder) }}" data-docs-resume @unless ($tertahan) hidden @endunless>
-                        @csrf
-                        <button type="submit" class="btn-primary" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker)>Lanjutkan dari dokumen yang gagal</button>
-                    </form>
-                    <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Semua file akan dibaca ulang dan memakai token. Lanjutkan?">
-                        @csrf
-                        <button type="submit" class="btn-secondary" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang semua file</button>
-                    </form>
-                </div>
+                @unless ($folder->missing_at)
+                    <div class="flex flex-wrap gap-2">
+                        <form method="POST" action="{{ route('folders.analyze', $folder) }}">
+                            @csrf
+                            <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>Analisa ulang dengan AI</button>
+                        </form>
+                        @if ($total)
+                            <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Semua file akan dibaca ulang dan memakai token. Lanjutkan?">
+                                @csrf
+                                <button type="submit" class="btn-secondary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang semua file</button>
+                            </form>
+                        @endif
+                        <form method="POST" action="{{ route('folders.resynthesize', $folder) }}" data-resynth{{ $canResynth ? '' : ' hidden' }}>
+                            @csrf
+                            <button type="submit" class="btn-secondary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Ulangi rekomendasi keseluruhan</button>
+                        </form>
+                    </div>
+                @endunless
             @endcan
-        </section>
-    @endif
+        </header>
 
-    <div id="detail-folder" class="mt-6">
-        @include('folders.partials.detail')
+        @if ($total)
+            <div>
+                <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
+                <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
+                     aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
+                    <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
+                </div>
+            </div>
+        @endif
+
+        <div id="detail-folder">
+            @include('folders.partials.detail')
+        </div>
+
+        @if ($total)
+            <section aria-labelledby="judul-file">
+                <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
+                <div class="mt-3 space-y-2" data-docs-list>
+                    @foreach ($documents as $d)
+                        @include('folders.partials.document')
+                    @endforeach
+                </div>
+            </section>
+        @endif
     </div>
 </x-app-layout>

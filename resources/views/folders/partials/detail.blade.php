@@ -1,4 +1,4 @@
-{{-- Isi halaman hasil verifikasi satu folder. Dipakai halaman penuh dan ditukar oleh polling saat analisa selesai. --}}
+{{-- Panel rekomendasi keseluruhan satu folder. Dipakai halaman penuh dan ditukar oleh polling saat analisa selesai. --}}
 @php
     $active = $latest?->status?->isActive();
     $failed = $latest?->status === \App\Enums\ReviewStatus::Gagal;
@@ -12,34 +12,10 @@
     };
     $tahap = ['Mengunduh dokumen dari FTP…', 'Membaca dokumen…', 'Menyusun rekomendasi…'];
     $lewat = $active && $latest->created_at ? (int) abs($latest->created_at->diffInSeconds(now())) : 0;
-    $jenisFile = fn (string $name) => match (strtolower(pathinfo($name, PATHINFO_EXTENSION))) {
-        'pdf' => 'pdf',
-        'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic' => 'gambar',
-        default => 'berkas',
-    };
+    $fileTertahan = collect($documents ?? [])->contains(fn ($d) => in_array($d->status->value, ['gagal', 'dibatalkan'], true));
 @endphp
 
-<header class="flex flex-wrap items-start justify-between gap-4">
-    <div class="min-w-0">
-        <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
-        <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}</h1>
-        <p class="num mt-1 text-sm text-abu">
-            RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$folder->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }} · {{ $folder->file_count }} dokumen
-            @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
-        </p>
-    </div>
-    @can('folders.analyze')
-        @unless ($folder->missing_at)
-            <form method="POST" action="{{ route('folders.analyze', $folder) }}">
-                @csrf
-                <button type="submit" class="btn-primary" @disabled($active || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>Analisa ulang dengan AI</button>
-            </form>
-        @endunless
-    @endcan
-</header>
-
-<div class="mt-6 grid gap-8 lg:grid-cols-[1fr_300px]">
-    <div class="min-w-0 space-y-4">
+<div class="space-y-4">
         @if ($folder->missing_at)
             <p class="rounded-lg border border-garis-g bg-white px-4 py-3 text-sm text-abu">Folder ini sudah tidak ada di FTP sejak {{ $folder->missing_at->translatedFormat('d M Y H:i') }}. Hasil analisa terakhir tetap ditampilkan.</p>
         @endif
@@ -55,19 +31,30 @@
         <section class="panel overflow-hidden border-garis-g" aria-labelledby="hasil">
             @if ($active)<div class="bar-tak-tentu" aria-hidden="true"></div>@endif
             <div class="panel-head border-garis-g">
-                <h2 id="hasil" class="panel-title text-arang">Rekomendasi AI</h2>
+                <h2 id="hasil" class="panel-title text-arang">Rekomendasi keseluruhan</h2>
                 @if ($done)<span class="text-xs text-abu">{{ $done->finished_at->translatedFormat('d M Y H:i') }} · {{ $done->requester?->name ?? 'Sistem' }}</span>@endif
             </div>
 
             @if ($active)
-                <div class="border-b border-garis-g px-5 py-5"
-                     data-poll="{{ route('folders.status', $folder) }}" data-poll-swap="#detail-folder" data-poll-partial="{{ route('folders.show', $folder) }}">
+                <div class="border-b border-garis-g px-5 py-5">
                     <p class="text-[15px] font-medium text-biru-aktif" aria-live="polite" data-tahap='@json($tahap)' data-lewat="{{ $lewat }}">{{ $tahap[min(count($tahap) - 1, intdiv($lewat, 8))] }}</p>
                     <p class="mt-1 text-sm text-abu">AI sedang membaca {{ $folder->file_count }} dokumen di folder ini. Biasanya 1–3 menit; hasil muncul di sini tanpa memuat ulang halaman.</p>
                 </div>
             @endif
             @if ($failed && ! $active)
-                <div class="border-b border-garis-g px-5 py-3 text-sm text-kritis"><p class="font-semibold">Analisa terakhir gagal.</p><p class="mt-0.5">{{ $latest->error }}</p></div>
+                <div class="border-b border-garis-g px-5 py-3 text-sm text-kritis" data-gagal>
+                    @if ($fileTertahan)
+                        <p class="font-semibold">Analisa terakhir gagal.</p><p class="mt-0.5">{{ $latest->error }}</p>
+                        @can('folders.analyze')
+                            <form method="POST" action="{{ route('folders.resume', $folder) }}" class="mt-3">
+                                @csrf
+                                <button type="submit" class="btn-primary" @disabled($blocker) @if ($blocker) title="{{ $blocker }}" @endif>Lanjutkan dari dokumen yang gagal</button>
+                            </form>
+                        @endcan
+                    @else
+                        <p>Semua file berhasil dibaca. Rekomendasi keseluruhan gagal dibuat: {{ rtrim((string) $latest->error, '.') }}. Klik <em>Ulangi rekomendasi keseluruhan</em> (file tidak dibaca ulang).</p>
+                    @endif
+                </div>
             @endif
 
             @if ($done)
@@ -139,34 +126,4 @@
         </section>
 
         <p class="text-xs text-abu">AI hanya memberi rekomendasi dan tidak memberi kode ICD. Perbaikan dokumen dilakukan di Enigma oleh yang berwenang; setelah itu folder ini akan tertanda <em>File berubah</em> pada sinkronisasi berikutnya.</p>
-    </div>
-
-    <aside>
-        <section class="panel border-garis-g">
-            <div class="panel-head border-garis-g"><h2 class="panel-title text-arang">Dokumen di folder</h2><span class="num text-xs text-abu">{{ $folder->file_count }}</span></div>
-            <ul class="py-1">
-                @foreach ($folder->files as $i => $file)
-                    @php $jenis = $jenisFile($file['name']); @endphp
-                    <li>
-                        <a href="{{ route('folders.file', [$folder, $i]) }}" target="_blank" rel="noopener"
-                           class="group flex items-center gap-3 px-4 py-2 transition-colors duration-150 hover:bg-abu-muda">
-                            @if ($jenis === 'pdf')
-                                <svg class="size-5 shrink-0 text-kritis" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 2h8l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" fill="currentColor" opacity=".12"/><path d="M6 2h8l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z M14 2v5h5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><text x="12" y="17" text-anchor="middle" font-size="5.5" font-weight="700" fill="currentColor" font-family="sans-serif">PDF</text></svg>
-                            @elseif ($jenis === 'gambar')
-                                <svg class="size-5 shrink-0 text-biru" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 9" stroke-linejoin="round"/></svg>
-                            @else
-                                <svg class="size-5 shrink-0 text-abu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 2h8l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z M14 2v5h5" stroke-linejoin="round"/></svg>
-                            @endif
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm text-tautan group-hover:underline">{{ $file['name'] }}</span>
-                                <span class="num block text-xs text-abu">{{ \App\Services\Import\DocumentGuesser::type($file['name'])->label() }} · {{ number_format($file['size'] / 1024) }} KB</span>
-                            </span>
-                            <span class="text-xs text-abu" aria-hidden="true">↗</span>
-                        </a>
-                    </li>
-                @endforeach
-            </ul>
-            <p class="border-t border-garis-g px-4 py-2.5 text-xs text-abu">Dibuka langsung dari FTP Enigma, tidak disalin.</p>
-        </section>
-    </aside>
 </div>

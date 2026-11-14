@@ -111,6 +111,7 @@ class FolderController extends Controller
             'done' => $docs->reject(fn (FolderDocument $d) => $d->status->isActive())->count(),
             'total' => $docs->count(),
             'stuck' => $docs->contains(fn (FolderDocument $d) => in_array($d->status, [ReviewStatus::Gagal, ReviewStatus::Dibatalkan], true)),
+            'can_resynth' => $data['canResynth'],
             'docs' => $docs->map(fn (FolderDocument $d) => [
                 'id' => $d->id,
                 'status' => $d->status->value,
@@ -118,6 +119,29 @@ class FolderController extends Controller
             ])->values(),
             'summary_html' => $active ? null : view('folders.partials.detail', $data)->render(),
         ]);
+    }
+
+    /** Ulangi tahap 2 saja (rekomendasi keseluruhan) untuk analisa terakhir. File TIDAK dibaca ulang. */
+    public function resynthesize(Request $request, FtpFolder $folder, AiBudget $budget)
+    {
+        $a = $folder->analyses()->first();
+        abort_unless($a, 404);
+        if ($a->status?->isActive()) {
+            return back()->with('warn', 'Folder ini sedang dianalisa.');
+        }
+        if (! $this->canResynth($a)) {
+            return back()->with('warn', 'Rekomendasi keseluruhan hanya bisa diulang bila semua file sudah selesai dibaca dan hasilnya belum ada.');
+        }
+        if ($blocked = $this->startBlocker($budget)) {
+            return back()->with('warn', $blocked);
+        }
+
+        $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
+        $folder->update(['analysis_status' => 'berjalan']);
+        SynthesizeFolderAnalysis::dispatch($a->id);
+        Audit::log('folder.ulang_rekomendasi', $folder, 'Meminta rekomendasi keseluruhan dibuat ulang (file tidak dibaca ulang)');
+
+        return back()->with('ok', 'Rekomendasi keseluruhan sedang dibuat ulang.');
     }
 
     /** Baca ulang SEMUA file (tanpa memakai hasil lama), lalu periksa silang. */
@@ -242,6 +266,18 @@ class FolderController extends Controller
             'blocker' => $blocker,
             'documents' => $latest ? $latest->documents()->get() : collect(),
             'linkable' => collect($folder->files)->pluck('name')->flip(),
+            'canResynth' => $latest ? $this->canResynth($latest) : false,
         ];
+    }
+
+    /** Semua file analisa terakhir selesai dibaca, tetapi tahap 2 gagal atau belum ada hasilnya. */
+    private function canResynth(FolderAnalysis $a): bool
+    {
+        if ($a->status?->isActive() || $a->status === ReviewStatus::Selesai) {
+            return false;
+        }
+        $docs = $a->documents()->get(['id', 'status']);
+
+        return $docs->isNotEmpty() && $docs->every(fn (FolderDocument $d) => $d->status === ReviewStatus::Selesai);
     }
 }

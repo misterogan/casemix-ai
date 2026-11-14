@@ -170,6 +170,7 @@ function initDocs() {
   const root = document.querySelector('[data-docs]');
   if (!root || root.dataset.active !== '1') return;
   const list = root.querySelector('[data-docs-list]');
+  if (!list) return;
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const buka = (el) => {
@@ -197,7 +198,9 @@ function initDocs() {
       const t = document.createElement('template');
       t.innerHTML = d.html.trim();
       const baru = t.content.firstElementChild;
-      if (lama) {
+      if (!baru || baru.tagName !== 'DETAILS') return;
+      // Hanya isi di dalam container daftar yang diganti; tidak pernah di luar daftar (mis. di atas kepala halaman)
+      if (lama && list.contains(lama)) {
         const wasOpen = lama.open;
         lama.replaceWith(baru);
         if (d.status === 'selesai') buka(baru);
@@ -219,8 +222,8 @@ function initDocs() {
 
     root.dataset.active = '0';
     root.querySelectorAll('[data-lock]').forEach((b) => { b.disabled = false; });
-    const lanjut = root.querySelector('[data-docs-resume]');
-    if (lanjut) lanjut.hidden = !j.stuck;
+    const ulangi = root.querySelector('[data-resynth]');
+    if (ulangi) ulangi.hidden = !j.can_resynth;
     const panel = document.getElementById('detail-folder');
     if (panel && j.summary_html) {
       panel.innerHTML = j.summary_html;

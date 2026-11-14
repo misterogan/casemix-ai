@@ -307,7 +307,9 @@ class FolderVerificationTest extends TestCase
 
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP');
+            ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP')
+            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-docs-progress', 'Rekomendasi keseluruhan', 'File (3)', 'data-docs-list', 'data-doc='], false)
+            ->assertSee('Buka dokumen')->assertDontSee('Dokumen di folder');
         $this->assertCount(4, Http::recorded());
     }
 
@@ -354,7 +356,10 @@ class FolderVerificationTest extends TestCase
         $this->assertSame('gagal', $folder->fresh()->state());
 
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))
-            ->assertSee('Tidak diproses karena dokumen sebelumnya gagal')->assertSee('Lanjutkan dari dokumen yang gagal');
+            ->assertSee('Tidak diproses karena dokumen sebelumnya gagal')->assertSee('Lanjutkan dari dokumen yang gagal')
+            ->assertSee('data-resynth hidden', false);
+        $this->actingAs($this->koordinator)->post(route('folders.resynthesize', $folder))->assertSessionHas('warn');
+        $this->assertCount(2, Http::recorded(), 'Ulangi rekomendasi ditolak bila ada file gagal');
 
         // Lanjutkan: hanya dokumen gagal + dibatalkan, lalu tahap 2; Billing tidak dibaca ulang
         $this->actingAs($this->koordinator)->post(route('folders.resume', $folder))->assertSessionHas('ok');
@@ -516,6 +521,35 @@ class FolderVerificationTest extends TestCase
         $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
         $this->actingAs($petugas)->post(route('folders.process_document', [$folder, $sep]))->assertForbidden();
         $this->actingAs($petugas)->post(route('folders.process_all', $folder))->assertForbidden();
+    }
+
+    public function test_ulangi_rekomendasi_hanya_memanggil_tahap_dua_tanpa_membaca_file(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        // Kedua file terbaca, tahap 2 dijawab bukan JSON → gagal; lalu diulang dan berhasil
+        $this->fakeAi($doc, $doc, 'maaf', self::SILANG);
+        $a = $this->analyze($folder);
+        $this->assertSame(ReviewStatus::Gagal, $a->status);
+
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
+            ->assertSee('Semua file berhasil dibaca. Rekomendasi keseluruhan gagal dibuat:')
+            ->assertSee('(file tidak dibaca ulang)', false)
+            ->assertSee('Ulangi rekomendasi keseluruhan')->assertDontSee('data-resynth hidden', false)
+            ->assertDontSee('Lanjutkan dari dokumen yang gagal');
+        $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))->assertJson(['can_resynth' => true]);
+        $unduhan = count($this->ftp->downloads);
+
+        $this->actingAs($this->koordinator)->post(route('folders.resynthesize', $folder))->assertSessionHas('ok');
+
+        $this->assertCount(4, Http::recorded(), 'Hanya satu panggilan AI (tahap 2)');
+        $this->assertSame($unduhan, count($this->ftp->downloads), 'File tidak dibaca ulang');
+        $this->assertSame(ReviewStatus::Selesai, $a->fresh()->status, (string) $a->fresh()->error);
+        $this->assertSame(1, AuditLog::where('action', 'folder.ulang_rekomendasi')->count());
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertSee('data-resynth hidden', false)->assertSee('Berkas lengkap.');
+
+        $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
+        $this->actingAs($petugas)->post(route('folders.resynthesize', $folder))->assertForbidden();
     }
 
     public function test_dokumen_wajib_yang_tidak_ada_dilaporkan_aturan(): void
