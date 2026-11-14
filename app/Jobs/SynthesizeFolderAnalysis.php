@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Enums\ReviewStatus;
+use App\Http\Controllers\Admin\SettingController;
+use App\Services\Ai\AiRequest;
 use App\Models\FolderAnalysis;
 use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
@@ -50,6 +52,10 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 throw new RuntimeException($blocked);
             }
             $req->maxTokens = min((int) $config->max_tokens, ReadFolderDocument::MAX_TOKENS);
+            $saranKondisi = SettingController::conditionSuggestionsOn();
+            if (! $saranKondisi) {
+                self::withoutConditions($req);
+            }
             $res = $ai->for($config)->generate($req);
             $budget->charge($a, $res, $config->id);
             ReadFolderDocument::ensureComplete($res, $req->maxTokens);
@@ -59,7 +65,7 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 'status' => ReviewStatus::Selesai,
                 'summary' => $r['summary'],
                 'findings' => $r['findings'],
-                'suggestions' => $r['suggestions'],
+                'suggestions' => $saranKondisi ? $r['suggestions'] : [], // mati: "kondisi" dari AI diabaikan
                 'extracted' => $r['extracted'],
                 'error' => null,
                 'finished_at' => now(),
@@ -77,6 +83,24 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             $folder->update(['analysis_status' => 'gagal']);
             Audit::system('folder.analisa_gagal', $folder, 'Analisa AI gagal: ' . mb_substr($e->getMessage(), 0, 180), $a->requested_by);
             report($e);
+        }
+    }
+
+    /**
+     * Saran kondisi dimatikan: hapus permintaan "kondisi" dari instruksi tahap 2 dan skema JSON-nya,
+     * sehingga AI hanya memeriksa kelengkapan dan konsistensi dokumen (administratif).
+     */
+    private static function withoutConditions(AiRequest $req): void
+    {
+        $req->system = preg_replace('/^\d+\. Kondisi yang punya bukti klinis[^\n]*\n/m', '', $req->system);
+        foreach ($req->parts as $i => $p) {
+            if (($p['type'] ?? null) !== 'text') {
+                continue;
+            }
+            $t = preg_replace('/^\d+\. Kondisi dengan bukti klinis[^\n]*\n/m', '', $p['text']);
+            $t = preg_replace('/,"kondisi":\[.*?\]\}(?=\r?\n)/', '}', $t);
+            $t = str_replace(' dan 3 kondisi', '', $t);
+            $req->parts[$i]['text'] = $t;
         }
     }
 }

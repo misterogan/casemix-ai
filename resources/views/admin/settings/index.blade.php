@@ -23,5 +23,22 @@
                 @foreach ($app as $k => $v)<dt class="text-tinta-3">{{ $k }}</dt><dd class="num">{{ $v }}</dd>@endforeach
             </dl>
         </section>
+
+        <section class="panel lg:col-span-2" aria-labelledby="judul-analisa">
+            <div class="panel-head"><h2 id="judul-analisa" class="panel-title">Analisa AI</h2></div>
+            <form method="POST" action="{{ route('admin.settings.analysis') }}" class="space-y-4 px-5 py-4 text-sm">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="saran_kondisi" value="0">
+                <label class="flex items-start gap-3">
+                    <input type="checkbox" name="saran_kondisi" value="1" class="mt-0.5 size-4" @checked($conditionSuggestions) aria-describedby="ket-saran-kondisi">
+                    <span>
+                        <span class="font-medium">Tampilkan saran kondisi yang belum tertulis sebagai diagnosis (untuk dikonfirmasi ke DPJP)</span>
+                        <span id="ket-saran-kondisi" class="mt-0.5 block text-tinta-3">Bila mati, AI hanya memeriksa kelengkapan dan konsistensi dokumen (administratif).</span>
+                    </span>
+                </label>
+                <button type="submit" class="btn-primary">Simpan</button>
+            </form>
+        </section>
     </div>
 </x-app-layout>

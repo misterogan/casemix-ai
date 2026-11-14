@@ -103,5 +103,6 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::put('anggaran-ai', [AiBudgetController::class, 'update'])->name('budget.update');
         Route::get('pengaturan', [SettingController::class, 'index'])->name('settings.index');
         Route::post('pengaturan/uji-ftp', [SettingController::class, 'testFtp'])->name('settings.ftp');
+        Route::put('pengaturan/analisa', [SettingController::class, 'updateAnalysis'])->name('settings.analysis');
     });
 });

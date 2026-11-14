@@ -267,6 +267,7 @@ class FolderVerificationTest extends TestCase
 
     public function test_hasil_per_dokumen_tersimpan_lalu_diperiksa_silang(): void
     {
+        AppSetting::put(\App\Http\Controllers\Admin\SettingController::KEY_CONDITION_SUGGESTIONS, true, null); // saran kondisi dinyalakan untuk tes ini
         $folder = $this->synced(['SEP.png', 'Resume Medis.png', 'Billing.png']);
         // Urutan file menurut nama: Billing, Resume Medis, SEP, lalu periksa silang
         $this->fakeAi(

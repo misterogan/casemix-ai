@@ -57,7 +57,9 @@
             {{-- Kiri: rekomendasi keseluruhan. Kepala panel menempel saat isinya digulir. --}}
             <div id="detail-folder" data-scroll-kiri
                  class="min-w-0 lg:min-h-0 lg:pr-1 [scrollbar-width:thin] [scrollbar-color:var(--color-gray-300)_transparent] lg:overflow-y-auto lg:overscroll-contain lg:[&_section.panel]:overflow-visible lg:[&_.panel-head]:sticky lg:[&_.panel-head]:top-0 lg:[&_.panel-head]:z-10 lg:[&_.panel-head]:rounded-t-lg lg:[&_.panel-head]:bg-white">
-                @include('folders.partials.detail')
+                {{-- Saran kondisi mati: saran yang sudah tersimpan di hasil lama juga tidak ditampilkan --}}
+                @include('folders.partials.detail', ['done' => $done && ! \App\Http\Controllers\Admin\SettingController::conditionSuggestionsOn()
+                    ? (clone $done)->setAttribute('suggestions', []) : $done])
             </div>
 
             @if ($total)
