@@ -27,6 +27,9 @@ use Illuminate\Support\Str;
  */
 class FolderAnalyzer
 {
+    /** Respons AI terakhir, agar biaya tetap tercatat walau hasilnya gagal diolah. */
+    public ?\App\Services\Ai\AiResponse $lastResponse = null;
+
     public function __construct(private SimrsFtp $ftp, private DocumentReader $reader, private AiManager $ai, private ConsistencyChecker $rules) {}
 
     /** @return array{summary: string, findings: array, suggestions: array, extracted: array, response: AiResponse} */
@@ -47,7 +50,8 @@ class FolderAnalyzer
             }
 
             $request = $this->buildRequest($folder, $docs, $config);
-            $response = $this->ai->for($config)->generate($request);
+            $this->lastResponse = null;
+            $response = $this->lastResponse = $this->ai->for($config)->generate($request);
             $json = $response->json();
 
             $extracted = $this->extracted($json['isian'] ?? []);
@@ -143,6 +147,14 @@ Periksa:
 7. Kondisi dengan bukti klinis yang belum tertulis sebagai diagnosis (untuk konfirmasi DPJP).
 
 Selain itu, salin data berikut bila tertulis jelas (dipakai aturan E-Klaim; jangan menebak): tanggal_masuk, tanggal_keluar (YYYY-MM-DD), jenis_rawat ({$opsi(Eklaim::JENIS_RAWAT)}), kelas_hak ({$opsi(Eklaim::KELAS)}), kelas_rawat ({$opsi(Eklaim::KELAS_RAWAT)}), cara_masuk ({$opsi(Eklaim::CARA_MASUK)}), cara_pulang ({$opsi(Eklaim::CARA_PULANG)}), tanggal_lahir, berat_lahir (gram), rawat_intensif_hari, ventilator_jam, dpjp, diagnosis_utama (kata-kata), tarif.<komponen> dari rincian biaya bila dikelompokkan jelas (komponen: $tarif).
+
+Batas panjang jawaban (wajib):
+- ringkasan maksimal 2 kalimat.
+- temuan maksimal 12: semua kritis dan perhatian, plus paling banyak 3 sesuai.
+- uraian maksimal 25 kata per temuan.
+- kondisi maksimal 3, bukti maksimal 25 kata.
+- isian hanya field yang tertulis jelas; tarif.<komponen> hanya yang nilainya > 0.
+- JSON ringkas tanpa spasi atau baris baru tambahan.
 
 Jawab HANYA satu objek JSON tanpa teks lain dan tanpa ```:
 {"ringkasan": "2-3 kalimat kondisi berkas",

@@ -42,6 +42,7 @@ class RunFolderAnalysis implements ShouldQueue, ShouldBeUnique
         $a->update(['status' => ReviewStatus::Berjalan, 'started_at' => now(), 'fingerprint' => $folder->fingerprint, 'files_snapshot' => $folder->files]);
         $folder->update(['analysis_status' => 'berjalan', 'last_analysis_id' => $a->id]);
 
+        $config = null;
         try {
             if ($blocked = $budget->runBlocker()) {
                 throw new \RuntimeException($blocked);
@@ -72,6 +73,16 @@ class RunFolderAnalysis implements ShouldQueue, ShouldBeUnique
             Audit::system('folder.analisa_selesai', $folder, sprintf('Analisa AI selesai: %d kritis, %d perhatian', $a->countBy('kritis'), $a->countBy('perhatian')), $a->requested_by, ['analisa' => $a->id]);
         } catch (Throwable $e) {
             $a->update(['status' => ReviewStatus::Gagal, 'error' => mb_substr($e->getMessage(), 0, 2000), 'finished_at' => now()]);
+            $res = $analyzer->lastResponse;
+            if ($res && ($res->tokensIn !== null || $res->tokensOut !== null)) {
+                $a->update([
+                    'ai_provider_id' => $config?->id,
+                    'model' => $res->model,
+                    'tokens_in' => $res->tokensIn,
+                    'tokens_out' => $res->tokensOut,
+                ]);
+                $budget->record($a);
+            }
             $folder->update(['analysis_status' => 'gagal']);
             Audit::system('folder.analisa_gagal', $folder, 'Analisa AI gagal: ' . mb_substr($e->getMessage(), 0, 180), $a->requested_by);
             report($e);
