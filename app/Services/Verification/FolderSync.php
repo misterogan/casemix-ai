@@ -58,7 +58,7 @@ class FolderSync
                 $stats['folders']++;
             }
 
-            // Folder yang tidak ada lagi (dipindah atau dihapus DHealth): tandai, jangan hapus hasil analisanya.
+            // Folder yang tidak ada lagi (dipindah atau dihapus Enigma): tandai, jangan hapus hasil analisanya.
             $stats['hilang'] = FtpFolder::whereNotIn('id', $seen ?: [0])->whereNull('missing_at')->update(['missing_at' => $now]);
 
             AppSetting::put(self::KEY_LAST, ['at' => $now->toIso8601String(), 'ok' => true] + $stats);

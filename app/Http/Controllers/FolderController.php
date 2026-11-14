@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-/** Verifikasi berkas langsung dari folder FTP DHealth: tanpa pengisian, hanya rekomendasi AI. */
+/** Verifikasi berkas langsung dari folder FTP Enigma: tanpa pengisian, hanya rekomendasi AI. */
 class FolderController extends Controller
 {
     public function index(Request $request)

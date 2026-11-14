@@ -18,10 +18,10 @@
         <h1 class="text-[26px] leading-8 font-normal text-arang">Verifikasi berkas</h1>
         <p class="mt-1 text-xs text-abu">
             @if ($syncAt)
-                Daftar folder dari FTP DHealth diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
+                Daftar folder dari FTP Enigma diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
                 @if (! ($lastSync['ok'] ?? true))<span class="text-kritis"> · gagal terhubung ke FTP, dicoba lagi jam berikutnya</span>@endif
             @else
-                Daftar folder dari FTP DHealth diperbarui otomatis tiap jam · belum pernah tersinkron
+                Daftar folder dari FTP Enigma diperbarui otomatis tiap jam · belum pernah tersinkron
             @endif
         </p>
 
@@ -52,7 +52,7 @@
                 @if ($aktif)<a href="{{ route('folders.index') }}" class="btn-ghost">Hapus filter</a>@endif
             </div>
         </form>
-        <p class="hint">Tanggal mengacu pada tanggal di FTP (waktu file terakhir diperbarui di DHealth).</p>
+        <p class="hint">Tanggal mengacu pada tanggal di FTP (waktu file terakhir diperbarui di Enigma).</p>
 
         <div class="mt-6">
             <p class="num text-sm text-abu" aria-live="polite">
@@ -70,7 +70,7 @@
                         <p class="mt-1 text-sm text-abu">Periksa No. SEP, perlebar rentang tanggal, atau hapus filter.</p>
                     @else
                         <p class="text-arang">Belum ada folder.</p>
-                        <p class="mt-1 text-sm text-abu">Folder pasien dari FTP DHealth akan muncul setelah sinkronisasi otomatis berikutnya.</p>
+                        <p class="mt-1 text-sm text-abu">Folder pasien dari FTP Enigma akan muncul setelah sinkronisasi otomatis berikutnya.</p>
                     @endif
                 </div>
             @else

@@ -21,7 +21,7 @@
 
 <header class="flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0">
-        <p class="truncate text-sm text-url">FTP DHealth › {{ $folder->name }}</p>
+        <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
         <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}</h1>
         <p class="num mt-1 text-sm text-abu">
             RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$folder->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }} · {{ $folder->file_count }} dokumen
@@ -45,7 +45,7 @@
         @endif
         @if ($changed && ! $active)
             <p class="rounded-lg border border-stempel/25 bg-[#ECE9F7] px-4 py-3 text-sm text-stempel">
-                <strong>File di folder ini berubah</strong> sejak dianalisa pada {{ $done->finished_at->translatedFormat('d M Y H:i') }}. Kalau dokumen sudah diperbaiki di DHealth, klik <em>Analisa ulang dengan AI</em>.
+                <strong>File di folder ini berubah</strong> sejak dianalisa pada {{ $done->finished_at->translatedFormat('d M Y H:i') }}. Kalau dokumen sudah diperbaiki di Enigma, klik <em>Analisa ulang dengan AI</em>.
             </p>
         @endif
         @if ($blocker && ! $done && ! $active)
@@ -138,7 +138,7 @@
             @endif
         </section>
 
-        <p class="text-xs text-abu">AI hanya memberi rekomendasi dan tidak memberi kode ICD. Perbaikan dokumen dilakukan di DHealth oleh yang berwenang; setelah itu folder ini akan tertanda <em>File berubah</em> pada sinkronisasi berikutnya.</p>
+        <p class="text-xs text-abu">AI hanya memberi rekomendasi dan tidak memberi kode ICD. Perbaikan dokumen dilakukan di Enigma oleh yang berwenang; setelah itu folder ini akan tertanda <em>File berubah</em> pada sinkronisasi berikutnya.</p>
     </div>
 
     <aside>
@@ -166,7 +166,7 @@
                     </li>
                 @endforeach
             </ul>
-            <p class="border-t border-garis-g px-4 py-2.5 text-xs text-abu">Dibuka langsung dari FTP DHealth, tidak disalin.</p>
+            <p class="border-t border-garis-g px-4 py-2.5 text-xs text-abu">Dibuka langsung dari FTP Enigma, tidak disalin.</p>
         </section>
     </aside>
 </div>

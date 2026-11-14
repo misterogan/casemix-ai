@@ -10,7 +10,7 @@ class SyncFtpFolders extends Command
 {
     protected $signature = 'casemix:sync-ftp';
 
-    protected $description = 'Perbarui daftar folder pasien dari FTP DHealth (berjalan otomatis tiap jam)';
+    protected $description = 'Perbarui daftar folder pasien dari FTP Enigma (berjalan otomatis tiap jam)';
 
     public function handle(SimrsFtp $ftp, FolderSync $sync): int
     {

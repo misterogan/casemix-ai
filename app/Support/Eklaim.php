@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * Pilihan field formulir E-Klaim (mengacu panduan E-Klaim SIMRS DHealth, Juni 2023).
+ * Pilihan field formulir E-Klaim (mengacu panduan E-Klaim SIMRS Enigma, Juni 2023).
  * Sesuaikan dengan referensi E-Klaim yang berlaku di rumah sakit.
  */
 class Eklaim

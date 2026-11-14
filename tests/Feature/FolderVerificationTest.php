@@ -101,7 +101,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame(['folders' => 2, 'baru' => 2, 'berubah' => 0, 'hilang' => 0], $s);
         $fp = FtpFolder::where('no_rm', '000001')->value('fingerprint');
 
-        // Folder A dapat file baru, folder B dipindahkan DHealth
+        // Folder A dapat file baru, folder B dipindahkan Enigma
         $this->ftp->folders = [$this->ftpFolder('000001_A_0000R0000000V000001', ['SEP.pdf', 'Hasil Radiologi.pdf'])];
         $s = app(FolderSync::class)->run();
 

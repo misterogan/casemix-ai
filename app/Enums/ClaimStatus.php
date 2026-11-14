@@ -4,7 +4,7 @@ namespace App\Enums;
 
 /**
  * Status berkas di Casemix AI. Nilai di database tetap (belum_koreksi, sudah_koreksi) agar data lama aman,
- * tetapi labelnya sengaja berbeda dari status E-Klaim DHealth: di DHealth "Sudah Koreksi" berarti koding
+ * tetapi labelnya sengaja berbeda dari status E-Klaim Enigma: di Enigma "Sudah Koreksi" berarti koding
  * sudah disimpan, sedangkan di sini artinya berkas sudah diperiksa AI.
  */
 enum ClaimStatus: string

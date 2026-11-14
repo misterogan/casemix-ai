@@ -8,7 +8,7 @@
     ])->filter()->implode(' · ');
 @endphp
 <li class="py-4">
-    <p class="truncate text-sm leading-5 text-url">FTP DHealth › {{ $f->name }}</p>
+    <p class="truncate text-sm leading-5 text-url">FTP Enigma › {{ $f->name }}</p>
     <h3 class="mt-0.5 truncate">
         <a href="{{ route('folders.show', ($q ?? '') !== '' ? [$f, 'q' => $q] : $f) }}" class="judul-g">{{ $f->nama_pasien ?: $f->name }}</a>
     </h3>

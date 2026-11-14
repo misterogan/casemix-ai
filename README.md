@@ -73,7 +73,7 @@ Dokumen susulan dari FTP untuk SEP yang berkasnya sudah **Disetujui** tidak dite
 
 Tidak ada pengisian data. Koordinator casemix membuka **Verifikasi berkas**:
 
-1. **Daftar folder** pasien dari FTP DHealth, terbaru di atas, bisa dicari (nama, No. RM, No. SEP) dan disaring per status: *Belum dianalisa*, *Sedang dianalisa*, *Ada temuan*, *Tidak ada temuan*, *File berubah*, *Analisa gagal*. Daftar ini indeks di database, diperbarui **otomatis tiap jam** (`casemix:sync-ftp` lewat jadwal Laravel); tidak ada tombol sinkron manual. Folder yang hilang dari FTP disembunyikan, hasil analisanya tetap tersimpan.
+1. **Daftar folder** pasien dari FTP Enigma, terbaru di atas, bisa dicari (nama, No. RM, No. SEP) dan disaring per status: *Belum dianalisa*, *Sedang dianalisa*, *Ada temuan*, *Tidak ada temuan*, *File berubah*, *Analisa gagal*. Daftar ini indeks di database, diperbarui **otomatis tiap jam** (`casemix:sync-ftp` lewat jadwal Laravel); tidak ada tombol sinkron manual. Folder yang hilang dari FTP disembunyikan, hasil analisanya tetap tersimpan.
 2. **Klik folder**: bila belum pernah dianalisa, analisa AI dimulai otomatis dan halaman menampilkan proses sampai selesai. AI membaca semua dokumen (PDF teks per halaman, scan sebagai gambar) dan memberi **rekomendasi**: ringkasan, temuan kritis/perhatian/sesuai dengan **nama dokumen dan halamannya** (klik untuk membuka PDF di halaman itu), dan kondisi untuk dikonfirmasi ke DPJP. Aturan E-Klaim (LOS, kelas, ICU, biaya tanpa bukti, dokumen wajib) dijalankan atas data yang terbaca AI dari dokumen.
 3. **Hasil disimpan.** Membuka folder lagi menampilkan hasil tersimpan tanpa memanggil AI. Bila file di FTP berubah (sidik nama + ukuran + waktu ubah), folder ditandai *File berubah*; analisa ulang dijalankan Koordinator dengan tombol **Analisa ulang dengan AI**.
 4. **Tidak ada salinan.** File diunduh sementara untuk dibaca AI lalu dihapus; dokumen yang dibuka Koordinator diambil langsung dari FTP. Setiap pembukaan dokumen dan analisa tercatat di Riwayat aktivitas.
@@ -103,9 +103,9 @@ Angka di aplikasi adalah perkiraan dari token yang tercatat (pemanggilan yang ga
 
 ## Status
 
-Label sengaja **berbeda** dari status E-Klaim DHealth. Di DHealth, "Sudah Koreksi" berarti koding ICD sudah disimpan di Edit Koreksi; di Casemix AI artinya berkas sudah diperiksa. Nilai di database tidak berubah (`belum_koreksi`, `sudah_koreksi`).
+Label sengaja **berbeda** dari status E-Klaim Enigma. Di Enigma, "Sudah Koreksi" berarti koding ICD sudah disimpan di Edit Koreksi; di Casemix AI artinya berkas sudah diperiksa. Nilai di database tidak berubah (`belum_koreksi`, `sudah_koreksi`).
 
-| Status | Kapan | Langkah di DHealth sesudahnya |
+| Status | Kapan | Langkah di Enigma sesudahnya |
 |---|---|---|
 | No. SEP belum ada | SEP kosong | Buat SEP (batal bayar, edit pendaftaran) |
 | Perlu Dilengkapi | Dokumen wajib (SEP, resume medis, rincian biaya) belum lengkap | Lengkapi dokumen di unit asalnya |
@@ -146,4 +146,4 @@ Adapter yang sudah ada:
 - Temuan kritis **tidak memblokir** persetujuan. Koordinator tetap bisa menyetujui, tetapi diberi peringatan dan jumlah temuan kritis yang masih terbuka dicatat di audit log.
 - `DocumentClassifier` (pemilahan dokumen dengan AI) belum dipakai; impor saat ini hanya membaca nama folder dan nama file.
 - Adapter AI: OpenAI-compatible dan Anthropic. Bedrock/Vertex bisa ditambahkan kemudian.
-- Integrasi API SIMRS DHealth (membaca status E-Klaim, menarik data formulir E-Klaim agar tidak perlu dibaca dari dokumen) belum dibuat karena dokumentasi dari vendor belum tersedia.
+- Integrasi API SIMRS Enigma (membaca status E-Klaim, menarik data formulir E-Klaim agar tidak perlu dibaca dari dokumen) belum dibuat karena dokumentasi dari vendor belum tersedia.

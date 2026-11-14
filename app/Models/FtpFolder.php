@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Satu folder pasien di FTP DHealth, seperti terlihat pada sinkronisasi terakhir. */
+/** Satu folder pasien di FTP Enigma, seperti terlihat pada sinkronisasi terakhir. */
 class FtpFolder extends Model
 {
     protected $guarded = ['id'];

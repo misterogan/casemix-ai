@@ -70,7 +70,7 @@ class ConsistencyChecker
     {
         foreach ($c->missingRequiredDocuments() as $t) {
             $this->add(Severity::Kritis, 'Kelengkapan', $this->fromDocuments ? "{$t->label()} tidak ada di folder" : "{$t->label()} belum diunggah",
-                $this->fromDocuments ? 'Dokumen wajib untuk verifikasi Vedika. Lengkapi di DHealth.' : 'Dokumen wajib untuk verifikasi Vedika.');
+                $this->fromDocuments ? 'Dokumen wajib untuk verifikasi Vedika. Lengkapi di Enigma.' : 'Dokumen wajib untuk verifikasi Vedika.');
         }
     }
 

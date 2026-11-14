@@ -28,7 +28,7 @@
                 <p class="mt-1 text-sm text-abu">Coba kata kunci atau filter lain. Periksa ejaan nama, atau cari dengan No. RM / No. SEP.</p>
             @else
                 <p class="text-arang">Belum ada folder.</p>
-                <p class="mt-1 text-sm text-abu">Folder pasien dari FTP DHealth akan muncul setelah sinkronisasi otomatis berikutnya.</p>
+                <p class="mt-1 text-sm text-abu">Folder pasien dari FTP Enigma akan muncul setelah sinkronisasi otomatis berikutnya.</p>
             @endif
         </div>
     @else
