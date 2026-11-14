@@ -166,20 +166,55 @@ function initCari() {
 
 // Verifikasi per file: <section data-docs data-status-url data-active>. Tiap 3 detik hanya item yang
 // statusnya berubah yang diganti; item yang baru selesai dibuka halus (200 ms). Berhenti saat analisa selesai.
+// ≥1024px: dua panel setinggi sisa layar (kepala halaman tidak ikut digulir). <1024px: tinggi otomatis.
+function aturTinggiPanel(root) {
+  const grid = root.querySelector('[data-panel-grid]');
+  if (!grid) return;
+  const lebar = window.matchMedia('(min-width: 1024px)');
+  const atur = () => {
+    if (!lebar.matches) return grid.style.removeProperty('--tinggi-panel');
+    const atas = grid.getBoundingClientRect().top + window.scrollY;
+    grid.style.setProperty('--tinggi-panel', `${Math.max(320, window.innerHeight - atas - 24)}px`);
+  };
+  atur();
+  window.addEventListener('resize', atur);
+}
+
 function initDocs() {
   const root = document.querySelector('[data-docs]');
-  if (!root || root.dataset.active !== '1') return;
+  if (!root) return;
+  aturTinggiPanel(root);
+  if (root.dataset.active !== '1') return;
   const list = root.querySelector('[data-docs-list]');
   if (!list) return;
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Jangan menggulir otomatis bila pengguna baru saja (3 detik) menggulir daftar ini sendiri
+  let terakhirDigulir = 0;
+  ['wheel', 'touchmove', 'pointerdown', 'keydown'].forEach((ev) =>
+    list.addEventListener(ev, () => { terakhirDigulir = Date.now(); }, { passive: true }));
+
+  // Gulir HANYA container daftar (bukan halaman) agar item terlihat, setara block: 'nearest'
+  const tampakkan = (el) => {
+    if (Date.now() - terakhirDigulir < 3000 || list.scrollHeight <= list.clientHeight) return;
+    const pad = parseFloat(getComputedStyle(list).scrollPaddingTop) || 0;
+    const atas = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    const bawah = atas + el.offsetHeight;
+    let tujuan = null;
+    if (atas - pad < list.scrollTop) tujuan = atas - pad;
+    else if (bawah > list.scrollTop + list.clientHeight) tujuan = Math.min(atas - pad, bawah - list.clientHeight + pad);
+    if (tujuan !== null) list.scrollTo({ top: tujuan, behavior: reduce ? 'auto' : 'smooth' });
+  };
+
   const buka = (el) => {
     el.open = true;
-    if (reduce) return;
-    el.querySelector('[data-doc-body]')?.animate(
-      [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }],
-      { duration: 200, easing: 'ease-out' },
-    );
+    if (!reduce) {
+      el.querySelector('[data-doc-body]')?.animate(
+        [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 200, easing: 'ease-out' },
+      );
+    }
+    tampakkan(el);
   };
 
   const tick = async () => {
@@ -192,6 +227,9 @@ function initDocs() {
       return setTimeout(tick, 3000);
     }
 
+    // Posisi gulir dipertahankan saat isi diganti (tidak melompat ke atas)
+    const posisiDaftar = list.scrollTop;
+    const baruSelesai = [];
     j.docs.forEach((d) => {
       const lama = list.querySelector(`[data-doc="${d.id}"]`);
       if (lama && lama.dataset.docStatus === d.status) return;
@@ -203,12 +241,14 @@ function initDocs() {
       if (lama && list.contains(lama)) {
         const wasOpen = lama.open;
         lama.replaceWith(baru);
-        if (d.status === 'selesai') buka(baru);
+        if (d.status === 'selesai') baruSelesai.push(baru);
         else if (wasOpen) baru.open = true;
       } else {
         list.append(baru);
       }
     });
+    list.scrollTop = posisiDaftar;
+    baruSelesai.forEach(buka);
 
     const progres = root.querySelector('[data-docs-progress]');
     if (progres) progres.textContent = `${j.done} dari ${j.total} file selesai`;
@@ -226,7 +266,9 @@ function initDocs() {
     if (ulangi) ulangi.hidden = !j.can_resynth;
     const panel = document.getElementById('detail-folder');
     if (panel && j.summary_html) {
+      const posisiPanel = panel.scrollTop;
       panel.innerHTML = j.summary_html;
+      panel.scrollTop = posisiPanel;
       tampilkan(panel);
       initTahap(panel);
     }

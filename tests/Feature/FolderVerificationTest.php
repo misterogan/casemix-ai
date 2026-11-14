@@ -308,7 +308,7 @@ class FolderVerificationTest extends TestCase
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
             ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP')
-            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-docs-progress', 'Rekomendasi keseluruhan', 'File (3)', 'data-docs-list', 'data-doc='], false)
+            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-panel-grid', 'Rekomendasi keseluruhan', 'File (3)', 'data-docs-progress', 'data-docs-list', 'data-doc='], false)
             ->assertSee('Buka dokumen')->assertDontSee('Dokumen di folder');
         $this->assertCount(4, Http::recorded());
     }

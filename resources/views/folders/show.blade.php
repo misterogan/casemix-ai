@@ -20,8 +20,8 @@
         $kunci = $berjalan && ! $blocker; // tombol yang dibuka JS saat analisa selesai
     @endphp
 
-    {{-- Satu kolom: kepala → progres → rekomendasi keseluruhan → daftar file --}}
-    <div class="mt-6 max-w-[960px] space-y-6" data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
+    {{-- Kepala tetap di atas. ≥1024px: dua panel setinggi layar, masing-masing scroll sendiri. <1024px: satu kolom, scroll halaman biasa. --}}
+    <div class="mt-6 space-y-6" data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
         <header class="flex flex-wrap items-start justify-between gap-4" data-kepala>
             <div class="min-w-0">
                 <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
@@ -53,29 +53,33 @@
             @endcan
         </header>
 
-        @if ($total)
-            <div>
-                <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
-                <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
-                     aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
-                    <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
-                </div>
+        <div @class(['grid gap-6 lg:min-h-0 lg:h-[var(--tinggi-panel,calc(100vh-16rem))]', 'lg:grid-cols-2' => $total]) data-panel-grid>
+            {{-- Kiri: rekomendasi keseluruhan. Kepala panel menempel saat isinya digulir. --}}
+            <div id="detail-folder" data-scroll-kiri
+                 class="min-w-0 lg:min-h-0 lg:pr-1 [scrollbar-width:thin] [scrollbar-color:var(--color-gray-300)_transparent] lg:overflow-y-auto lg:overscroll-contain lg:[&_section.panel]:overflow-visible lg:[&_.panel-head]:sticky lg:[&_.panel-head]:top-0 lg:[&_.panel-head]:z-10 lg:[&_.panel-head]:rounded-t-lg lg:[&_.panel-head]:bg-white">
+                @include('folders.partials.detail')
             </div>
-        @endif
 
-        <div id="detail-folder">
-            @include('folders.partials.detail')
+            @if ($total)
+                {{-- Kanan: daftar file. Kepala (judul + progres) tetap, daftar di bawahnya digulir. --}}
+                <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white lg:min-h-0" aria-labelledby="judul-file">
+                    <div class="shrink-0 rounded-t-lg lg:sticky lg:top-0 lg:z-10 border-b border-gray-200 bg-white px-4 py-3">
+                        <div class="flex items-baseline justify-between gap-3">
+                            <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
+                            <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
+                        </div>
+                        <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
+                             aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
+                            <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-2 p-3 scroll-pt-3 scroll-pb-3 lg:min-h-0 lg:flex-1 [scrollbar-width:thin] [scrollbar-color:var(--color-gray-300)_transparent] lg:overflow-y-auto lg:overscroll-contain" data-docs-list>
+                        @foreach ($documents as $d)
+                            @include('folders.partials.document')
+                        @endforeach
+                    </div>
+                </section>
+            @endif
         </div>
-
-        @if ($total)
-            <section aria-labelledby="judul-file">
-                <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
-                <div class="mt-3 space-y-2" data-docs-list>
-                    @foreach ($documents as $d)
-                        @include('folders.partials.document')
-                    @endforeach
-                </div>
-            </section>
-        @endif
     </div>
 </x-app-layout>
