@@ -1,74 +1,54 @@
 @php
-    $tone = ['belum' => 'tone-neutral', 'proses' => 'tone-neutral', 'temuan' => 'tone-warn', 'lengkap' => 'tone-ok', 'berubah' => 'tone-done', 'gagal' => 'tone-crit'];
     $syncAt = $lastSync['at'] ?? null;
+    $mode = $q !== '' ? 'hasil' : 'beranda';
 @endphp
 <x-app-layout title="Verifikasi berkas">
-    <x-page-header title="Verifikasi berkas" subtitle="Folder pasien dari FTP DHealth. Klik folder untuk melihat rekomendasi AI: apa yang kurang dan di dokumen mana.">
-        <x-slot:meta>
-            <p class="mt-2 text-xs text-tinta-3">
-                @if ($syncAt)
-                    Daftar diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
-                    @if (! ($lastSync['ok'] ?? true))<span class="text-kritis"> · gagal terhubung ke FTP, dicoba lagi jam berikutnya</span>@endif
-                @else
-                    Daftar diperbarui otomatis tiap jam · belum pernah tersinkron
-                @endif
-            </p>
-        </x-slot:meta>
-    </x-page-header>
+    <div class="mx-auto max-w-[720px]" data-cari-wadah data-mode="{{ $mode }}">
+        <h1 class="cari-judul">Verifikasi berkas</h1>
 
-    <div class="flex flex-wrap items-end gap-1 overflow-x-auto" role="tablist" aria-label="Filter status">
-        <a href="{{ route('folders.index', request()->except('status', 'page')) }}"
-           @class(['folder-tab', 'bg-white! border-garis!' => $state]) role="tab" aria-selected="{{ $state ? 'false' : 'true' }}">Semua</a>
-        @foreach (\App\Models\FtpFolder::STATUSES as $k => $label)
-            <a href="{{ route('folders.index', array_merge(request()->except('page'), ['status' => $k])) }}"
-               @class(['folder-tab', 'bg-white! border-garis! font-medium! text-tinta-2!' => $state !== $k])
-               role="tab" aria-selected="{{ $state === $k ? 'true' : 'false' }}">{{ $label }} <span class="num text-tinta-3">{{ $counts[$k] }}</span></a>
-        @endforeach
-    </div>
-
-    <section class="panel rounded-tl-none">
-        <form method="GET" class="flex flex-wrap items-end gap-3 border-b border-garis px-4 py-3">
+        {{-- Tetap bekerja tanpa JavaScript: Enter dan tombol Cari mengirim GET biasa --}}
+        <form method="GET" action="{{ route('folders.index') }}" role="search" data-cari-form>
             @if ($state)<input type="hidden" name="status" value="{{ $state }}">@endif
-            <div class="min-w-60 flex-1">
-                <label for="q" class="sr-only">Cari</label>
-                <input id="q" name="q" value="{{ $q }}" class="field" placeholder="Cari nama pasien, No. RM, atau No. SEP">
+            <div class="cari">
+                <button type="submit" class="cari-ikon" aria-label="Cari">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+                </button>
+                <label for="q" class="sr-only">Cari folder pasien</label>
+                <input id="q" name="q" type="search" value="{{ $q }}" class="cari-input"
+                       placeholder="Cari No. SEP, No. RM, atau nama pasien" autocomplete="off" spellcheck="false"
+                       @if ($q === '') autofocus @endif data-cari-input>
+                <a href="{{ route('folders.index', $state ? ['status' => $state] : []) }}" class="cari-hapus"
+                   aria-label="Hapus kata kunci" data-cari-hapus @if ($q === '') hidden @endif>
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+                </a>
             </div>
-            <button class="btn-secondary">Cari</button>
-            @if ($q !== '')<a href="{{ route('folders.index', $state ? ['status' => $state] : []) }}" class="btn-ghost">Hapus pencarian</a>@endif
+            <div class="cari-tombol"><button type="submit" class="btn-secondary rounded-full px-5">Cari</button></div>
         </form>
 
-        @if ($folders->isEmpty())
-            <x-empty-state title="Tidak ada folder di sini"
-                           text="{{ $q !== '' || $state ? 'Coba kata kunci atau filter lain.' : 'Folder pasien dari FTP DHealth akan muncul setelah sinkronisasi otomatis berikutnya.' }}"/>
-        @else
-            <ul class="divide-y divide-garis">
-                @foreach ($folders as $f)
-                    @php $s = $f->state(); @endphp
-                    <li>
-                        <a href="{{ route('folders.show', $f) }}" class="group block px-5 py-4 hover:bg-giok-muda/40">
-                            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                                <p class="text-[17px] font-semibold text-giok group-hover:underline">{{ $f->nama_pasien ?: $f->name }}</p>
-                                <span class="badge {{ $tone[$s] }}">
-                                    @if ($s === 'temuan')
-                                        {{ $f->kritis_count ? $f->kritis_count . ' kritis' : '' }}{{ $f->kritis_count && $f->perhatian_count ? ' · ' : '' }}{{ $f->perhatian_count ? $f->perhatian_count . ' perhatian' : '' }}
-                                    @else
-                                        {{ \App\Models\FtpFolder::STATUSES[$s] }}
-                                    @endif
-                                </span>
-                            </div>
-                            <p class="num mt-0.5 text-sm text-tinta-2">
-                                RM {{ $f->no_rm ?: '—' }} · SEP {{ $f->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$f->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }}
-                            </p>
-                            <p class="mt-0.5 text-xs text-tinta-3">
-                                {{ $f->file_count }} dokumen · diperbarui di FTP {{ $f->files_modified_at?->translatedFormat('d M Y H:i') }}
-                                @if ($f->analyzed_at) · dianalisa {{ $f->analyzed_at->translatedFormat('d M H:i') }}@endif
-                                · <span class="font-mono">{{ $f->name }}</span>
-                            </p>
-                        </a>
-                    </li>
-                @endforeach
-            </ul>
-            <div class="border-t border-garis px-4 py-3">{{ $folders->links() }}</div>
-        @endif
-    </section>
+        <p class="cari-meta">
+            @if ($syncAt)
+                Daftar folder dari FTP DHealth diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
+                @if (! ($lastSync['ok'] ?? true))<span class="text-kritis"> · gagal terhubung ke FTP, dicoba lagi jam berikutnya</span>@endif
+            @else
+                Daftar folder dari FTP DHealth diperbarui otomatis tiap jam · belum pernah tersinkron
+            @endif
+        </p>
+
+        <div class="mt-6" data-hasil aria-busy="false">
+            @include('folders.partials.results')
+        </div>
+
+        {{-- Kerangka saat memuat: setinggi baris hasil asli supaya tata letak tidak bergeser --}}
+        <template data-kerangka>
+            <p class="sr-only">Memuat hasil…</p>
+            @for ($i = 0; $i < 4; $i++)
+                <div class="animate-pulse py-4 motion-reduce:animate-none" aria-hidden="true">
+                    <div class="flex h-5 items-center"><div class="h-3 w-56 max-w-full rounded-full bg-abu-muda"></div></div>
+                    <div class="mt-0.5 flex h-[26px] items-center"><div class="h-4 w-72 max-w-full rounded-full bg-[#E8EAED]"></div></div>
+                    <div class="mt-0.5 flex h-5 items-center"><div class="h-3 w-[26rem] max-w-full rounded-full bg-abu-muda"></div></div>
+                    <div class="mt-2 h-[26px] w-48 rounded-full bg-abu-muda"></div>
+                </div>
+            @endfor
+        </template>
+    </div>
 </x-app-layout>

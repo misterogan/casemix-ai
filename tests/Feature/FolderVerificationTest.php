@@ -125,7 +125,7 @@ class FolderVerificationTest extends TestCase
     {
         $this->synced();
         $this->actingAs($this->koordinator)->get('/')->assertRedirect(route('folders.index'));
-        $this->actingAs($this->koordinator)->get(route('folders.index', ['q' => '000001']))->assertOk()->assertSee('PASIEN CONTOH')->assertSee('Belum dianalisa');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['q' => '000001']))->assertOk()->assertSee('PASIEN CONTOH')->assertSee('Belum diperiksa AI');
         $this->actingAs($this->koordinator)->get(route('folders.index', ['q' => 'tidak ada']))->assertOk()->assertDontSee('PASIEN CONTOH');
     }
 
@@ -226,7 +226,7 @@ class FolderVerificationTest extends TestCase
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         Http::fake();
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertSee('Resume belum ditandatangani DPJP')->assertSee('Resume Medis.png, hal. 2')->assertSee('Konfirmasi ke DPJP');
+            ->assertSee('Resume belum ditandatangani DPJP')->assertSee('Resume Medis.png · hal. 2')->assertSee('Konfirmasi ke DPJP');
         Http::assertNothingSent();
 
         // File berubah di FTP: ditandai, tetapi tidak dianalisa ulang otomatis

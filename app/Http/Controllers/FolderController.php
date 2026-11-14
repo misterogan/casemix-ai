@@ -25,21 +25,27 @@ class FolderController extends Controller
         $state = $request->query('status');
         $state = array_key_exists((string) $state, FtpFolder::STATUSES) ? $state : null;
 
-        $folders = FtpFolder::query()
+        $base = fn () => FtpFolder::query()
             ->whereNull('missing_at')
             ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('nama_pasien', 'like', "%$q%")
-                ->orWhere('no_rm', 'like', "%$q%")->orWhere('no_sep', 'like', "%$q%")->orWhere('name', 'like', "%$q%")))
-            ->state($state)
-            ->orderByDesc('files_modified_at')->orderByDesc('id')
-            ->paginate(25)->withQueryString();
+                ->orWhere('no_rm', 'like', "%$q%")->orWhere('no_sep', 'like', "%$q%")->orWhere('name', 'like', "%$q%")));
 
-        return view('folders.index', [
-            'folders' => $folders,
+        $data = [
+            'folders' => $base()->state($state)->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
             'q' => $q,
             'state' => $state,
-            'counts' => collect(FtpFolder::STATUSES)->map(fn ($l, $k) => FtpFolder::whereNull('missing_at')->state($k)->count()),
+            // Jumlah per tab mengikuti kata kunci yang sedang dicari
+            'counts' => collect(FtpFolder::STATUSES)->map(fn ($l, $k) => $base()->state($k)->count()),
+            'total' => $base()->count(),
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
-        ]);
+        ];
+
+        // Pencarian langsung: hanya daftar hasil, tanpa kerangka halaman
+        if ($request->ajax()) {
+            return response()->view('folders.partials.results', $data)->header('Vary', 'X-Requested-With');
+        }
+
+        return view('folders.index', $data);
     }
 
     /** Dibuka pertama kali: analisa AI dimulai otomatis. Berikutnya: hasil tersimpan, tanpa memanggil AI. */
@@ -55,14 +61,21 @@ class FolderController extends Controller
 
         $done = $latest?->status === ReviewStatus::Selesai ? $latest : $folder->analyses()->where('status', ReviewStatus::Selesai->value)->first();
 
-        return view('folders.show', [
+        $data = [
             'folder' => $folder,
             'latest' => $latest,
             'done' => $done,
             'changed' => $done && $done->fingerprint !== $folder->fingerprint,
             'blocker' => $blocker,
             'linkable' => collect($folder->files)->pluck('name')->flip(),
-        ]);
+        ];
+
+        // Dipanggil polling saat analisa selesai: hanya isi halaman, ditukar tanpa memuat ulang
+        if ($request->ajax()) {
+            return response()->view('folders.partials.detail', $data)->header('Vary', 'X-Requested-With');
+        }
+
+        return view('folders.show', $data);
     }
 
     public function analyze(Request $request, FtpFolder $folder, AiBudget $budget)

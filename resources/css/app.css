@@ -38,6 +38,20 @@
   --color-waspada-muda: #FCF1DC;
   --color-sesuai: #2B7A4B;
   --color-sesuai-muda: #E6F3EA;
+
+  /* Gaya Google untuk verifikasi berkas */
+  --color-biru: #1A73E8;
+  --color-biru-tua: #1765CC;
+  --color-biru-muda: #E8F0FE;
+  --color-biru-aktif: #1967D2;
+  --color-tautan: #1A0DAB;
+  --color-tautan-lama: #681DA8;
+  --color-url: #188038;
+  --color-arang: #202124;
+  --color-abu: #5F6368;
+  --color-abu-muda: #F1F3F4;
+  --color-garis-g: #DADCE0;
+  --color-latar: #FFFFFF;
 }
 
 @layer base {
@@ -52,9 +66,9 @@
 
   /* Tombol — Tailwind v4 tidak bisa @apply kelas buatan sendiri, jadi dasar tombol digabung lewat selektor */
   .btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .btn-stamp {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-semibold transition duration-150 disabled:cursor-not-allowed disabled:opacity-45;
   }
-  .btn-primary { @apply bg-giok text-white hover:bg-giok-tua; }
+  .btn-primary { @apply rounded-full bg-biru px-5 text-white hover:bg-biru-tua hover:shadow-[0_1px_2px_rgba(60,64,67,.3)]; }
   .btn-secondary { @apply border border-garis-tua bg-white text-tinta hover:border-tinta-3; }
   .btn-ghost { @apply px-2.5 text-tinta-2 hover:bg-black/5 hover:text-tinta; }
   .btn-danger { @apply border border-kritis/30 bg-white text-kritis hover:bg-kritis-muda; }
@@ -107,4 +121,63 @@
     .stamp-enter { animation: stamp-in .32s cubic-bezier(.2,.9,.3,1.3) both; }
   }
   @keyframes stamp-in { from { transform: rotate(-14deg) scale(1.35); opacity: 0; } to { transform: rotate(-6deg) scale(1); opacity: .9; } }
+
+  /* Fokus keyboard: cincin biru 2px */
+  :focus-visible { outline-color: var(--color-biru); }
+
+  /* Kotak pencarian berbentuk pil */
+  .cari { @apply flex h-11 w-full items-center gap-1 rounded-full border border-garis-g bg-white pr-2 pl-1 transition-[box-shadow,border-color,height,max-width] duration-200; }
+  .cari:hover { box-shadow: 0 1px 6px rgba(32, 33, 36, .18); border-color: transparent; }
+  .cari:focus-within { box-shadow: 0 0 0 2px var(--color-biru), 0 1px 6px rgba(32, 33, 36, .18); border-color: transparent; }
+  .cari-input { @apply h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-base text-arang placeholder:text-abu focus:outline-none; }
+  .cari-input::-webkit-search-cancel-button { appearance: none; }
+  .cari-ikon, .cari-hapus { @apply grid size-9 shrink-0 place-items-center rounded-full text-abu transition-colors duration-150 hover:bg-abu-muda hover:text-arang; }
+  .cari-judul { @apply mb-7 text-center text-[30px] leading-9 font-normal text-arang; }
+  .cari-tombol { @apply mt-7 flex justify-center; }
+  .cari-meta { @apply mt-5 text-center text-xs text-abu; }
+  [data-cari-wadah] { padding-top: 9vh; transition: padding-top .2s ease; }
+  [data-cari-wadah][data-mode=beranda] .cari { @apply mx-auto h-[52px] max-w-[584px]; }
+  [data-cari-wadah][data-mode=hasil] { padding-top: 0; }
+  [data-cari-wadah][data-mode=hasil] .cari-judul { @apply sr-only; }
+  [data-cari-wadah][data-mode=hasil] .cari-tombol { display: none; }
+  [data-cari-wadah][data-mode=hasil] .cari-meta { @apply mt-2 text-left; }
+
+  /* Tab filter dengan garis bawah biru */
+  .tabs-g { @apply flex gap-1 overflow-x-auto border-b border-garis-g whitespace-nowrap; }
+  .tab-g { @apply relative inline-flex items-center gap-1.5 rounded-t-md px-3 pt-2 pb-3 text-sm text-abu transition-colors duration-150 hover:text-arang; }
+  .tab-g.is-aktif { @apply font-medium text-biru-aktif; }
+  .tab-g.is-aktif::after { content: ''; @apply absolute inset-x-2 bottom-0 h-[3px] rounded-t-full bg-biru; }
+
+  /* Hasil seperti hasil pencarian */
+  .judul-g { @apply text-[20px] leading-[26px] text-tautan visited:text-tautan-lama hover:underline focus-visible:underline; }
+  .tautan-g { @apply font-medium text-tautan hover:underline; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs leading-4 font-medium whitespace-nowrap; }
+  .chip-kritis { @apply border-kritis/25 bg-kritis-muda text-kritis; }
+  .chip-waspada { @apply border-waspada/25 bg-waspada-muda text-waspada; }
+  .chip-sesuai { @apply border-sesuai/25 bg-sesuai-muda text-sesuai; }
+  .chip-belum { @apply border-dashed border-[#9AA0A6] bg-white text-abu; }
+  .chip-berubah { @apply border-stempel/25 bg-[#ECE9F7] text-stempel; }
+  .chip-proses { @apply border-biru/25 bg-biru-muda text-biru-aktif; }
+
+  /* Paginasi */
+  .halaman-g { @apply flex flex-wrap items-center justify-center gap-1 py-8 text-sm; }
+  .halaman-g-no { @apply grid h-9 min-w-9 place-items-center rounded-full px-2 transition-colors duration-150; }
+  .halaman-g-ujung { @apply rounded-full px-3 py-2 font-medium text-tautan transition-colors duration-150 hover:bg-abu-muda; }
+
+  /* Kartu temuan */
+  .kartu-temuan { @apply rounded-lg border border-l-4 border-garis-g bg-white px-4 py-3; }
+
+  /* Bilah progres tak tentu */
+  .bar-tak-tentu { @apply relative h-[3px] overflow-hidden bg-biru-muda; }
+  .bar-tak-tentu::before { content: ''; @apply absolute inset-y-0 w-2/5 bg-biru; animation: tak-tentu 1.4s ease-in-out infinite; }
+  @keyframes tak-tentu { from { left: -40%; } to { left: 100%; } }
+
+  /* Pergantian konten */
+  .muncul { animation: muncul .2s ease-out both; }
+  @keyframes muncul { from { opacity: 0; } to { opacity: 1; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    .bar-tak-tentu::before { animation: none !important; left: 0; width: 100%; opacity: .6; }
+  }
 }
