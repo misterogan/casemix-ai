@@ -11,6 +11,7 @@
             default => null,
         },
         ['sudah' => 'Sudah diperiksa AI', 'belum' => 'Belum diperiksa AI'][$filters['periksa']] ?? null,
+        ['siap' => 'Siap diajukan', 'belum_siap' => 'Belum siap'][$filters['kesiapan']] ?? null,
     ]));
 @endphp
 <x-app-layout title="Verifikasi berkas">
@@ -26,7 +27,7 @@
         </p>
 
         {{-- Satu-satunya isian di halaman ini: filter pencarian (GET) --}}
-        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_auto] lg:items-end">
+        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto] lg:items-end">
             <div>
                 <label for="sep" class="label">No. SEP</label>
                 <input id="sep" name="sep" value="{{ $filters['sep'] }}" maxlength="30" class="field num" placeholder="Contoh 0030R0011126V000143" autocomplete="off" spellcheck="false" autofocus>
@@ -45,6 +46,14 @@
                     <option value="">Semua</option>
                     <option value="sudah" @selected($filters['periksa'] === 'sudah')>Sudah diperiksa AI</option>
                     <option value="belum" @selected($filters['periksa'] === 'belum')>Belum diperiksa AI</option>
+                </select>
+            </div>
+            <div>
+                <label for="kesiapan" class="label">Status folder</label>
+                <select id="kesiapan" name="kesiapan" class="field">
+                    <option value="">Semua</option>
+                    <option value="siap" @selected($filters['kesiapan'] === 'siap')>Siap diajukan</option>
+                    <option value="belum_siap" @selected($filters['kesiapan'] === 'belum_siap')>Belum siap</option>
                 </select>
             </div>
             <div class="flex items-center gap-2 sm:col-span-2 lg:col-span-1">

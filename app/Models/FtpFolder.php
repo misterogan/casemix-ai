@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\VerificationRubric;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,8 +16,8 @@ class FtpFolder extends Model
     public const STATUSES = [
         'belum' => 'Belum dianalisa',
         'proses' => 'Sedang dianalisa',
-        'temuan' => 'Ada temuan',
-        'lengkap' => 'Tidak ada temuan',
+        'temuan' => 'Belum siap',
+        'lengkap' => 'Siap diajukan',
         'berubah' => 'File berubah',
         'gagal' => 'Analisa gagal',
     ];
@@ -30,6 +31,7 @@ class FtpFolder extends Model
             'last_seen_at' => 'datetime',
             'missing_at' => 'datetime',
             'analyzed_at' => 'datetime',
+            'rubric_kurang' => 'integer',
         ];
     }
 
@@ -41,6 +43,41 @@ class FtpFolder extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(FolderDocument::class);
+    }
+
+    public function rubricItems(): HasMany
+    {
+        return $this->hasMany(RubricItem::class);
+    }
+
+    public function conditionSuggestions(): HasMany
+    {
+        return $this->hasMany(ConditionSuggestion::class)->orderBy('id');
+    }
+
+    /** Hitung ulang jumlah butir wajib yang kurang; ini satu-satunya penentu status Siap diajukan. */
+    public function recomputeReadiness(): int
+    {
+        $n = $this->rubricItems()->where('status', 'kurang')->get(['kode'])
+            ->filter(fn (RubricItem $i) => VerificationRubric::required($i->kode))->count();
+        $this->update(['rubric_kurang' => $n]);
+
+        return $n;
+    }
+
+    /** null bila rubrik belum dinilai. */
+    public function ready(): ?bool
+    {
+        return $this->rubric_kurang === null ? null : $this->rubric_kurang === 0;
+    }
+
+    public function readinessLabel(): ?string
+    {
+        return match ($this->ready()) {
+            null => null,
+            true => 'Siap diajukan',
+            false => "Belum siap ({$this->rubric_kurang} butir kurang)",
+        };
     }
 
     public function lastAnalysis(): BelongsTo
@@ -56,7 +93,7 @@ class FtpFolder extends Model
         return hash('sha256', implode("\n", $parts));
     }
 
-    /** Status yang ditampilkan: belum | proses | temuan | lengkap | berubah | gagal */
+    /** Status yang ditampilkan: belum | proses | temuan (belum siap) | lengkap (siap diajukan) | berubah | gagal */
     public function state(): string
     {
         return match (true) {
@@ -64,6 +101,7 @@ class FtpFolder extends Model
             in_array($this->analysis_status, ['antre', 'berjalan'], true) => 'proses',
             $this->analysis_status === 'gagal' => 'gagal',
             $this->analyzed_fingerprint !== $this->fingerprint => 'berubah',
+            $this->rubric_kurang !== null => $this->rubric_kurang > 0 ? 'temuan' : 'lengkap',
             ($this->kritis_count + $this->perhatian_count) > 0 => 'temuan',
             default => 'lengkap',
         };
@@ -76,10 +114,8 @@ class FtpFolder extends Model
             'proses' => $q->whereIn('analysis_status', ['antre', 'berjalan']),
             'gagal' => $q->where('analysis_status', 'gagal'),
             'berubah' => $q->where('analysis_status', 'selesai')->whereColumn('analyzed_fingerprint', '!=', 'fingerprint'),
-            'temuan' => $q->where('analysis_status', 'selesai')->whereColumn('analyzed_fingerprint', 'fingerprint')
-                ->whereRaw('(kritis_count + perhatian_count) > 0'),
-            'lengkap' => $q->where('analysis_status', 'selesai')->whereColumn('analyzed_fingerprint', 'fingerprint')
-                ->where('kritis_count', 0)->where('perhatian_count', 0),
+            'temuan' => $q->where('analysis_status', 'selesai')->whereColumn('analyzed_fingerprint', 'fingerprint')->where('rubric_kurang', '>', 0),
+            'lengkap' => $q->where('analysis_status', 'selesai')->whereColumn('analyzed_fingerprint', 'fingerprint')->where('rubric_kurang', 0),
             default => $q,
         };
     }

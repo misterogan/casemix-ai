@@ -18,10 +18,13 @@
         $selesai = $documents->reject(fn ($d) => $d->status->isActive())->count();
         $total = $documents->count();
         $kunci = $berjalan && ! $blocker; // tombol yang dibuka JS saat analisa selesai
+        $siap = $folder->ready();
+        $menunggu = $saranOn ? $suggestions->whereIn('status', ['baru', 'ditanyakan'])->count() : 0;
+        $tautan = fn (?string $dok, ?int $hal) => $dok !== null && isset($linkable[$dok]) ? route('folders.file', [$folder, $linkable[$dok]]) . ($hal ? '#page=' . $hal : '') : null;
     @endphp
 
-    {{-- Kepala tetap di atas. ≥1024px: dua panel setinggi layar, masing-masing scroll sendiri. <1024px: satu kolom, scroll halaman biasa. --}}
-    <div class="mt-6 space-y-6" data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
+    {{-- Urutan: kepala → status → Daftar periksa → Saran DPJP → detail analisa → file. Halaman dimuat ulang saat analisa selesai. --}}
+    <div class="mt-6 space-y-6" data-docs data-muat-ulang="1" data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
         <header class="flex flex-wrap items-start justify-between gap-4" data-kepala>
             <div class="min-w-0">
                 <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
@@ -30,14 +33,20 @@
                     RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$folder->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }} · {{ $folder->file_count }} dokumen
                     @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
                 </p>
+                @if ($menunggu)
+                    <p class="mt-1 text-sm font-medium text-purple-800">Saran DPJP: {{ $menunggu }} menunggu tindak lanjut</p>
+                @endif
             </div>
             @can('folders.analyze')
                 @unless ($folder->missing_at)
                     <div class="flex flex-wrap gap-2">
-                        <form method="POST" action="{{ route('folders.analyze', $folder) }}">
-                            @csrf
-                            <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>Analisa ulang dengan AI</button>
-                        </form>
+                        {{-- Siap diajukan: analisa ulang disembunyikan kecuali ada file berubah --}}
+                        @unless ($siap === true && ! $changed && ! $berjalan)
+                            <form method="POST" action="{{ route('folders.analyze', $folder) }}">
+                                @csrf
+                                <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>Analisa ulang dengan AI</button>
+                            </form>
+                        @endunless
                         @if ($total)
                             <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Semua file akan dibaca ulang dan memakai token. Lanjutkan?">
                                 @csrf
@@ -53,35 +62,108 @@
             @endcan
         </header>
 
-        <div @class(['grid gap-6 lg:min-h-0 lg:h-[var(--tinggi-panel,calc(100vh-16rem))]', 'lg:grid-cols-2' => $total]) data-panel-grid>
-            {{-- Kiri: rekomendasi keseluruhan. Kepala panel menempel saat isinya digulir. --}}
-            <div id="detail-folder" data-scroll-kiri
-                 class="min-w-0 lg:min-h-0 lg:pr-1 [scrollbar-width:thin] [scrollbar-color:var(--color-gray-300)_transparent] lg:overflow-y-auto lg:overscroll-contain lg:[&_section.panel]:overflow-visible lg:[&_.panel-head]:sticky lg:[&_.panel-head]:top-0 lg:[&_.panel-head]:z-10 lg:[&_.panel-head]:rounded-t-lg lg:[&_.panel-head]:bg-white">
-                {{-- Saran kondisi mati: saran yang sudah tersimpan di hasil lama juga tidak ditampilkan --}}
-                @include('folders.partials.detail', ['done' => $done && ! \App\Http\Controllers\Admin\SettingController::conditionSuggestionsOn()
-                    ? (clone $done)->setAttribute('suggestions', []) : $done])
+        {{-- Status besar: hanya dari Daftar periksa (saran DPJP tidak ikut menentukan) --}}
+        @if ($siap !== null)
+            <div @class(['rounded-lg border px-5 py-4', 'border-green-300 bg-green-50' => $siap, 'border-red-300 bg-red-50' => ! $siap]) data-status-folder>
+                <p @class(['text-xl font-semibold', 'text-green-800' => $siap, 'text-red-800' => ! $siap])>
+                    {{ $siap ? 'Siap diajukan' : 'Belum siap · ' . $folder->rubric_kurang . ' butir kurang' }}
+                </p>
+                @if ($changed)<p class="mt-1 text-sm text-abu">File berubah sejak analisa terakhir. Klik Analisa ulang untuk menilai butir terkait.</p>@endif
             </div>
+        @endif
 
-            @if ($total)
-                {{-- Kanan: daftar file. Kepala (judul + progres) tetap, daftar di bawahnya digulir. --}}
-                <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white lg:min-h-0" aria-labelledby="judul-file">
-                    <div class="shrink-0 rounded-t-lg lg:sticky lg:top-0 lg:z-10 border-b border-gray-200 bg-white px-4 py-3">
-                        <div class="flex items-baseline justify-between gap-3">
-                            <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
-                            <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
-                        </div>
-                        <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
-                             aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
-                            <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
-                        </div>
+        {{-- Daftar periksa: 14 butir tetap per kelompok --}}
+        <section class="panel" aria-labelledby="judul-periksa" data-daftar-periksa>
+            <div class="panel-head border-b border-gray-200 px-4 py-3">
+                <h2 id="judul-periksa" class="font-semibold text-arang">Daftar periksa</h2>
+            </div>
+            <div class="divide-y divide-gray-100">
+                @foreach ($rubric as $kelompok => $butir)
+                    <div class="px-4 py-3">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-abu">{{ $kelompok }}</h3>
+                        <ul class="mt-2 space-y-2">
+                            @foreach ($butir as $i)
+                                @php
+                                    [$ikon, $warna, $teks] = match ($i->status) {
+                                        'lengkap' => ['✓', 'text-green-700', 'Lengkap'],
+                                        'kurang' => ['✕', 'text-red-700', 'Kurang'],
+                                        'tidak_berlaku' => ['–', 'text-gray-500', 'Tidak berlaku'],
+                                        'diterima' => ['✓', 'text-blue-700', 'Diterima'],
+                                        default => ['○', 'text-gray-400', 'Belum dinilai'],
+                                    };
+                                    $url = $tautan($i->dokumen, $i->halaman);
+                                @endphp
+                                <li class="flex items-start gap-3" data-butir="{{ $i->kode }}" data-butir-status="{{ $i->status ?? 'belum' }}">
+                                    <span class="mt-0.5 w-4 shrink-0 text-center font-bold {{ $warna }}" aria-hidden="true">{{ $ikon }}</span>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="text-sm text-arang">{{ $i->label() }}<span class="sr-only">: {{ $teks }}</span>
+                                            @unless ($i->required())<span class="text-xs text-abu">(bila ada)</span>@endunless
+                                        </p>
+                                        @if ($i->catatan || $i->dokumen)
+                                            <p class="text-xs text-abu">{{ $i->catatan }}
+                                                @if ($url) · <a href="{{ $url }}" target="_blank" rel="noopener" class="text-url underline">{{ $i->dokumen }}@if ($i->halaman) hal. {{ $i->halaman }}@endif</a>
+                                                @elseif ($i->dokumen) · {{ $i->dokumen }}@endif
+                                            </p>
+                                        @endif
+                                        @if ($i->status === 'diterima')
+                                            <p class="text-xs text-blue-800">Diterima: {{ $i->accepted_reason }}</p>
+                                        @endif
+                                    </div>
+                                    @can('folders.analyze')
+                                        @if ($i->status === 'kurang')
+                                            <details class="shrink-0">
+                                                <summary class="btn-ghost cursor-pointer text-sm">Terima</summary>
+                                                <form method="POST" action="{{ route('folders.rubric.accept', [$folder, $i->kode]) }}" class="mt-2 w-64 space-y-2">
+                                                    @csrf
+                                                    <label for="alasan-{{ $i->kode }}" class="label">Alasan menerima</label>
+                                                    <input id="alasan-{{ $i->kode }}" name="alasan" required minlength="3" maxlength="500" class="field">
+                                                    <button type="submit" class="btn-secondary">Terima butir</button>
+                                                </form>
+                                            </details>
+                                        @elseif ($i->status === 'diterima')
+                                            <form method="POST" action="{{ route('folders.rubric.unaccept', [$folder, $i->kode]) }}" class="shrink-0">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn-ghost text-sm">Batalkan</button>
+                                            </form>
+                                        @endif
+                                    @endcan
+                                </li>
+                            @endforeach
+                        </ul>
                     </div>
-                    <div class="space-y-2 p-3 scroll-pt-3 scroll-pb-3 lg:min-h-0 lg:flex-1 [scrollbar-width:thin] [scrollbar-color:var(--color-gray-300)_transparent] lg:overflow-y-auto lg:overscroll-contain" data-docs-list>
-                        @foreach ($documents as $d)
-                            @include('folders.partials.document')
-                        @endforeach
-                    </div>
-                </section>
-            @endif
+                @endforeach
+            </div>
+        </section>
+
+        @if ($saranOn)
+            @include('folders.partials.suggestions')
+        @endif
+
+        {{-- Detail analisa: progres, ringkasan, galat --}}
+        <div id="detail-folder" class="min-w-0">
+            @include('folders.partials.detail', ['done' => $done ? (clone $done)->setAttribute('suggestions', []) : null])
         </div>
+
+        @if ($total)
+            {{-- Accordion file: detail per dokumen --}}
+            <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white" aria-labelledby="judul-file">
+                <div class="shrink-0 rounded-t-lg border-b border-gray-200 bg-white px-4 py-3">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
+                        <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
+                    </div>
+                    <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
+                         aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
+                        <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
+                    </div>
+                </div>
+                <div class="space-y-2 p-3" data-docs-list>
+                    @foreach ($documents as $d)
+                        @include('folders.partials.document')
+                    @endforeach
+                </div>
+            </section>
+        @endif
     </div>
 </x-app-layout>

@@ -261,6 +261,8 @@ function initDocs() {
     if (j.active) return setTimeout(tick, 3000);
 
     root.dataset.active = '0';
+    // Daftar periksa dan saran DPJP dirender di server: muat ulang halaman agar status terbaru tampil
+    if (root.dataset.muatUlang === '1' && j.summary_html) return window.location.reload();
     root.querySelectorAll('[data-lock]').forEach((b) => { b.disabled = false; });
     const ulangi = root.querySelector('[data-resynth]');
     if (ulangi) ulangi.hidden = !j.can_resynth;
@@ -296,6 +298,31 @@ document.addEventListener('change', (e) => {
   const prefix = e.target.dataset?.checkAll;
   if (!prefix) return;
   document.querySelectorAll(`input[type=checkbox][name^="${prefix}"]`).forEach((c) => { if (!c.disabled) c.checked = e.target.checked; });
+});
+
+// Salin teks ke clipboard: <button data-salin="teks" data-salin-ok="Tersalin">
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-salin]');
+  if (!b) return;
+  const teks = b.dataset.salin;
+  try {
+    await navigator.clipboard.writeText(teks);
+  } catch (_) {
+    const t = Object.assign(document.createElement('textarea'), { value: teks });
+    t.setAttribute('readonly', '');
+    t.style.position = 'fixed';
+    t.style.opacity = '0';
+    document.body.append(t);
+    t.select();
+    document.execCommand('copy');
+    t.remove();
+  }
+  const label = b.dataset.label ?? b.textContent;
+  b.dataset.label = label;
+  b.textContent = b.dataset.salinOk || 'Tersalin';
+  const kabar = document.querySelector('[data-kabar]');
+  if (kabar) kabar.textContent = 'Pesan untuk DPJP tersalin.';
+  setTimeout(() => { b.textContent = label; }, 2000);
 });
 
 // Tutup notifikasi

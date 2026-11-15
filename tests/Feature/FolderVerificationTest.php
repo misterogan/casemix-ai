@@ -9,6 +9,7 @@ use App\Jobs\SynthesizeFolderAnalysis;
 use App\Models\AiProvider;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Models\ConditionSuggestion;
 use App\Models\FolderAnalysis;
 use App\Models\FtpFolder;
 use App\Models\User;
@@ -16,6 +17,7 @@ use App\Services\Ai\AiBudget;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
 use App\Services\Verification\FolderSync;
+use App\Support\VerificationRubric;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -109,6 +111,13 @@ class FolderVerificationTest extends TestCase
     }
 
     private const SILANG = ['ringkasan' => 'Berkas lengkap.', 'temuan' => [], 'kondisi' => []];
+
+    /** Jawaban tahap 2 berupa rubrik: semua butir AI lengkap kecuali yang disebut. */
+    private function rubrik(array $kurang = [], array $extra = []): array
+    {
+        return ['ringkasan' => 'Berkas diperiksa.', 'rubrik' => array_map(fn ($k) => ['kode' => $k, 'status' => in_array($k, $kurang, true) ? 'kurang' : 'lengkap',
+            'catatan' => in_array($k, $kurang, true) ? 'Tidak ada tanda tangan DPJP.' : null, 'dokumen' => 'Resume Medis.png', 'halaman' => 1], VerificationRubric::aiCodes())] + $extra;
+    }
 
     // ------------------------------------------------------------ sinkronisasi
 
@@ -275,9 +284,7 @@ class FolderVerificationTest extends TestCase
             ['isian' => [['field' => 'tanggal_keluar', 'nilai' => '2026-11-02']], 'diagnosis' => ['Pneumonia'],
                 'temuan' => [['tingkat' => 'kritis', 'judul' => 'Resume belum ditandatangani DPJP', 'uraian' => 'Kolom tanda tangan kosong.', 'halaman' => 2]]],
             ['isian' => [['field' => 'tanggal_masuk', 'nilai' => '2026-11-04'], ['field' => 'jenis_rawat', 'nilai' => 'inap']], 'temuan' => []],
-            ['ringkasan' => 'Dokumen wajib ada. Resume belum ditandatangani DPJP.',
-                'temuan' => [['tingkat' => 'perhatian', 'kategori' => 'Tanggal', 'judul' => 'Tanggal keluar sebelum tanggal masuk', 'uraian' => 'SEP dan resume berbeda.', 'dokumen' => 'resume medis', 'halaman' => 1]],
-                'kondisi' => [['kondisi' => 'Kemungkinan diabetes (E11.9)', 'bukti' => 'Insulin pada terapi', 'dokumen' => 'Resume Medis.png', 'halaman' => 1]]],
+            $this->rubrik(['res_ttd_dpjp'], ['kondisi' => [['kondisi' => 'Kemungkinan diabetes (E11.9)', 'bukti' => 'Insulin pada terapi', 'dokumen' => 'Resume Medis.png', 'halaman' => 1]]]),
         );
 
         $a = $this->analyze($folder);
@@ -293,8 +300,13 @@ class FolderVerificationTest extends TestCase
 
         $resume = collect($a->findings)->firstWhere('judul', 'Resume belum ditandatangani DPJP');
         $this->assertSame(['Resume Medis.png', 2], [$resume['dokumen'], $resume['halaman']]);
-        $this->assertSame('Resume Medis.png', collect($a->findings)->firstWhere('judul', 'Tanggal keluar sebelum tanggal masuk')['dokumen']);
-        $this->assertSame('Kemungkinan diabetes', $a->suggestions[0]['kondisi'], 'Kode ICD dibuang');
+        $this->assertEqualsCanonicalizing(VerificationRubric::codes(), $folder->rubricItems()->pluck('kode')->all(), '14 butir rubrik tersimpan');
+        $this->assertCount(14, VerificationRubric::codes());
+        $this->assertSame('kurang', $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->value('status'));
+        $this->assertSame('kurang', $folder->rubricItems()->where('kode', 'aturan_eklaim')->value('status'), 'Aturan E-Klaim mengisi butir aturan');
+        $this->assertSame('lengkap', $folder->rubricItems()->where('kode', 'dok_biaya')->value('status'), 'Billing.png terbaca sebagai rincian biaya');
+        $this->assertSame('Kemungkinan diabetes', ConditionSuggestion::sole()->kondisi, 'Kode ICD dibuang');
+        $this->assertSame(2, $folder->fresh()->rubric_kurang);
         $this->assertTrue(collect($a->findings)->contains(fn ($f) => $f['sumber'] === 'aturan' && str_contains($f['judul'], 'keluar')), 'Aturan E-Klaim berjalan atas isian gabungan');
         $this->assertSame('temuan', $folder->fresh()->state());
         $this->assertSame([], Storage::disk(config('casemix.storage_disk'))->allFiles('tmp'), 'File sementara dihapus setelah dibaca');
@@ -308,8 +320,8 @@ class FolderVerificationTest extends TestCase
 
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Konfirmasi ke DPJP')
-            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-panel-grid', 'Rekomendasi keseluruhan', 'File (3)', 'data-docs-progress', 'data-docs-list', 'data-doc='], false)
+            ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Belum siap · 2 butir kurang')
+            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-status-folder', 'Daftar periksa', 'Saran untuk dikonfirmasi ke DPJP', 'File (3)', 'data-docs-progress', 'data-docs-list', 'data-doc='], false)
             ->assertSee('Buka dokumen')->assertDontSee('Dokumen di folder');
         $this->assertCount(4, Http::recorded());
     }
@@ -561,5 +573,215 @@ class FolderVerificationTest extends TestCase
         $titles = collect($this->analyze($folder)->findings)->pluck('judul');
         $this->assertContains('Resume medis tidak ada di folder', $titles);
         $this->assertContains('Rincian biaya tidak ada di folder', $titles);
+        $this->assertSame(['dok_biaya' => 'kurang', 'dok_resume' => 'kurang', 'dok_sep' => 'lengkap'],
+            $folder->rubricItems()->whereIn('kode', VerificationRubric::RULE_CODES)->where('kode', 'like', 'dok_%')->orderBy('kode')->pluck('status', 'kode')->all());
+    }
+
+    // ------------------------------------------------------------ rubrik konvergen
+
+    private function saranOn(bool $on = true): void
+    {
+        AppSetting::put(\App\Http\Controllers\Admin\SettingController::KEY_CONDITION_SUGGESTIONS, $on, null);
+    }
+
+    /** Teks instruksi tahap 2 (request terakhir). */
+    private function lastPrompt(): string
+    {
+        $d = Http::recorded()->last()[0]->data();
+
+        return json_encode($d['messages'], JSON_UNESCAPED_UNICODE) . json_encode($d['system'] ?? '', JSON_UNESCAPED_UNICODE);
+    }
+
+    private function butirDiminta(string $prompt): array
+    {
+        preg_match_all('/- ([a-z_]+): /', $prompt, $m);
+
+        return $m[1];
+    }
+
+    private const DOC = ['isian' => [], 'temuan' => []];
+
+    private const LENGKAP = ['SEP.png', 'Resume Medis.png', 'Billing.png'];
+
+    public function test_butir_terkunci_tidak_dikirim_ulang_ke_ai(): void
+    {
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik(['res_ttd_dpjp']),
+            ['ringkasan' => 'x', 'rubrik' => [['kode' => 'res_ttd_dpjp', 'status' => 'lengkap'], ['kode' => 'id_sep', 'status' => 'kurang'], ['kode' => 'kode_asing', 'status' => 'kurang']]]);
+        $this->analyze($folder);
+        $this->assertSame(VerificationRubric::aiCodes(), $this->butirDiminta($this->lastPrompt()), 'Analisa pertama: semua butir AI dinilai');
+
+        $a = $this->analyze($folder->fresh());
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(5, Http::recorded(), 'File tidak berubah tidak dibaca ulang; satu panggilan tahap 2');
+        $this->assertSame(['res_ttd_dpjp'], $this->butirDiminta($this->lastPrompt()), 'Hanya butir kurang yang dikirim');
+        $this->assertSame('lengkap', $folder->rubricItems()->where('kode', 'id_sep')->value('status'), 'Butir terkunci tidak diubah walau AI menjawabnya');
+        $this->assertSame(0, $folder->rubricItems()->where('kode', 'kode_asing')->count(), 'Kode di luar rubrik diabaikan');
+        $this->assertSame('lengkap', $folder->fresh()->state());
+        $this->assertTrue($folder->fresh()->ready());
+    }
+
+    public function test_perubahan_satu_file_hanya_menilai_butir_terkait(): void
+    {
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik(), self::DOC, $this->rubrik());
+        $this->analyze($folder);
+
+        // SEP diperbarui di Enigma
+        $f = $this->ftpFolder('000001_PASIEN CONTOH_0000R0000000V000001', self::LENGKAP);
+        $f['files'][0]['modified'] = 1_794_100_000;
+        $this->ftp->folders = [$f];
+        app(FolderSync::class)->run();
+        $this->assertSame('berubah', $folder->fresh()->state());
+
+        $a = $this->analyze($folder->fresh());
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(6, Http::recorded(), 'SEP dibaca ulang + tahap 2');
+        $this->assertSame(['id_nama_rm', 'id_sep', 'res_tanggal'], $this->butirDiminta($this->lastPrompt()), 'Hanya butir bersumber SEP');
+    }
+
+    public function test_semua_butir_terkunci_tidak_ada_request_ai(): void
+    {
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik());
+        $this->analyze($folder);
+        $this->assertCount(4, Http::recorded());
+
+        $a = $this->analyze($folder->fresh());
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(4, Http::recorded(), 'Tidak ada request AI');
+        $this->assertNull($a->cost_usd);
+        $this->assertTrue($folder->fresh()->ready());
+    }
+
+    public function test_status_siap_diajukan_tidak_dipengaruhi_saran(): void
+    {
+        $this->saranOn();
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik([], ['kondisi' => [['kondisi' => 'Hipokalemia', 'bukti' => 'Kalium 2,9', 'dokumen' => 'Resume Medis.png', 'halaman' => 2]]]));
+        $this->analyze($folder);
+
+        $this->assertSame(1, ConditionSuggestion::where('status', 'baru')->count());
+        $this->assertTrue($folder->fresh()->ready());
+        $this->assertSame(0, $folder->fresh()->rubric_kurang);
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
+            ->assertSee('Siap diajukan')->assertSee('Saran DPJP: 1 menunggu tindak lanjut')
+            ->assertSee('Saran untuk dikonfirmasi ke DPJP')->assertSee('Bukan bagian daftar periksa dan tidak menghalangi status Siap diajukan.')
+            ->assertDontSee('Analisa ulang dengan AI');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['kesiapan' => 'siap']))->assertOk()->assertSee('PASIEN CONTOH');
+        $this->actingAs($this->koordinator)->get(route('folders.index', ['kesiapan' => 'belum_siap']))->assertOk()->assertDontSee('PASIEN CONTOH');
+    }
+
+    public function test_terima_butir_butuh_alasan_dan_diaudit(): void
+    {
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik(['res_ttd_dpjp']));
+        $this->analyze($folder);
+        $this->assertSame(1, $folder->fresh()->rubric_kurang);
+        $url = route('folders.rubric.accept', [$folder, 'res_ttd_dpjp']);
+
+        $this->actingAs($this->koordinator)->post($url, ['alasan' => ''])->assertSessionHasErrors('alasan');
+        $this->assertSame('kurang', $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->value('status'));
+
+        $this->actingAs($this->koordinator)->post($url, ['alasan' => 'TTD elektronik di DHealth'])->assertSessionHas('ok');
+        $item = $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->sole();
+        $this->assertSame(['diterima', 'TTD elektronik di DHealth', $this->koordinator->id], [$item->status, $item->accepted_reason, $item->accepted_by]);
+        $this->assertTrue($folder->fresh()->ready());
+        $this->assertSame(1, AuditLog::where('action', 'folder.rubrik_terima')->count());
+
+        $this->actingAs($this->koordinator)->delete($url)->assertSessionHas('ok');
+        $this->assertSame('kurang', $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->value('status'));
+        $this->assertFalse($folder->fresh()->ready());
+        $this->assertSame(1, AuditLog::where('action', 'folder.rubrik_batal_terima')->count());
+
+        $this->actingAs($this->koordinator)->post(route('folders.rubric.accept', [$folder, 'bukan_butir']), ['alasan' => 'abc'])->assertNotFound();
+        $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
+        $this->actingAs($petugas)->post($url, ['alasan' => 'abc'])->assertForbidden();
+    }
+
+    public function test_saran_mati_tidak_diminta_dan_tidak_ditampilkan(): void
+    {
+        $this->saranOn(false);
+        $folder = $this->synced(self::LENGKAP);
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik([], ['kondisi' => [['kondisi' => 'Hipokalemia', 'bukti' => 'Kalium 2,9']]]));
+        $this->analyze($folder);
+
+        $this->assertStringNotContainsString('kondisi', $this->lastPrompt());
+        $this->assertSame(0, ConditionSuggestion::count());
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
+            ->assertDontSee('Saran untuk dikonfirmasi ke DPJP')->assertDontSee('Saran DPJP:');
+    }
+
+    public function test_saran_maks_tiga_dan_yang_sudah_dijawab_tidak_muncul_lagi(): void
+    {
+        $this->saranOn();
+        $folder = $this->synced(self::LENGKAP);
+        $kondisi = collect(['Hipokalemia', 'Anemia', 'Hipertensi', 'Gagal ginjal', 'Sepsis'])
+            ->map(fn ($k) => ['kondisi' => $k, 'bukti' => "Bukti $k", 'dokumen' => 'Resume Medis.png', 'halaman' => 1])->all();
+        $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik([], ['kondisi' => $kondisi]), $this->rubrik([], ['kondisi' => $kondisi]));
+        $this->analyze($folder);
+
+        $this->assertStringContainsString('kondisi', $this->lastPrompt());
+        $this->assertSame(['Hipokalemia', 'Anemia', 'Hipertensi'], ConditionSuggestion::orderBy('id')->pluck('kondisi')->all());
+        ConditionSuggestion::where('kondisi', 'Hipokalemia')->update(['status' => 'tidak_relevan']);
+        ConditionSuggestion::where('kondisi', 'Anemia')->update(['status' => 'disetujui']);
+
+        // Dokumen tidak berubah: saran tidak diminta lagi, tidak ada request
+        $this->analyze($folder->fresh());
+        $this->assertCount(4, Http::recorded());
+
+        // Dipaksa meminta saran lagi (dokumen tetap sama): yang sudah dijawab tidak dibuat ulang
+        $folder->fresh()->update(['suggestions_fingerprint' => null]);
+        $this->analyze($folder->fresh());
+        $this->assertCount(5, Http::recorded());
+        $this->assertStringContainsString('JANGAN diusulkan lagi', $this->lastPrompt());
+        $this->assertSame(1, ConditionSuggestion::where('kondisi', 'Hipokalemia')->count());
+        $this->assertSame(1, ConditionSuggestion::where('kondisi', 'Anemia')->count());
+        $this->assertLessThanOrEqual(3, ConditionSuggestion::where('status', 'baru')->count());
+    }
+
+    public function test_ubah_status_saran_diaudit_dan_divalidasi(): void
+    {
+        $this->saranOn();
+        $folder = $this->synced(self::LENGKAP);
+        $s = $folder->conditionSuggestions()->create(['kondisi' => 'Hipokalemia', 'bukti' => 'Kalium 2,9', 'dokumen' => 'Resume Medis.png', 'halaman' => 2, 'status' => 'baru']);
+        $url = route('folders.suggestion.status', [$folder, $s]);
+
+        $this->actingAs($this->koordinator)->post($url, ['status' => 'ngawur'])->assertSessionHasErrors('status');
+        $this->actingAs($this->koordinator)->post($url, ['status' => 'ditanyakan'])->assertSessionHas('ok');
+        $this->actingAs($this->koordinator)->post($url, ['status' => 'tidak_disetujui', 'catatan' => 'Sudah dikoreksi'])->assertSessionHas('ok');
+
+        $s->refresh();
+        $this->assertSame(['tidak_disetujui', 'Sudah dikoreksi', $this->koordinator->id], [$s->status, $s->catatan_respons, $s->updated_by]);
+        $this->assertNotNull($s->responded_at);
+        $logs = AuditLog::where('action', 'folder.saran_status')->orderBy('id')->get();
+        $this->assertCount(2, $logs);
+        $this->assertStringContainsString('Sudah ditanyakan ke DPJP → DPJP tidak setuju', $logs[1]->description);
+
+        $lain = $this->folder('LAIN');
+        $this->actingAs($this->koordinator)->post(route('folders.suggestion.status', [$lain, $s]), ['status' => 'baru'])->assertNotFound();
+        $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
+        $this->actingAs($petugas)->post($url, ['status' => 'baru'])->assertForbidden();
+    }
+
+    public function test_teks_salin_memuat_identitas_bukti_dan_halaman(): void
+    {
+        $this->saranOn();
+        $folder = $this->synced(self::LENGKAP);
+        $s = $folder->conditionSuggestions()->create(['kondisi' => 'Hipokalemia', 'bukti' => 'Kalium 2,9 mmol/L', 'dokumen' => 'Resume Medis.png', 'halaman' => 2, 'status' => 'disetujui']);
+
+        $teks = $s->dpjpMessage($folder);
+        foreach (['PASIEN CONTOH', 'RM 000001', 'SEP 0000R0000000V000001', 'Resume Medis.png hal. 2', 'Kalium 2,9 mmol/L', 'kondisi Hipokalemia'] as $bagian) {
+            $this->assertStringContainsString($bagian, $teks);
+        }
+        Queue::fake(); // folder belum dianalisa: jangan jalankan analisa otomatis
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
+            ->assertSee('Salin pesan untuk DPJP')->assertSee($teks)
+            ->assertSee('Tunggu resume diperbarui di DHealth')
+            ->assertSee('Jangan menambahkan diagnosis di Edit Koreksi DHealth tanpa tertulis di resume oleh DPJP.')
+            ->assertDontSee('Saran DPJP:');
     }
 }

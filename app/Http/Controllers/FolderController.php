@@ -8,14 +8,17 @@ use App\Jobs\RunFolderAnalysis;
 use App\Jobs\SynthesizeFolderAnalysis;
 use App\Models\AiProvider;
 use App\Models\AppSetting;
+use App\Models\ConditionSuggestion;
 use App\Models\FolderAnalysis;
 use App\Models\FolderDocument;
 use App\Models\FtpFolder;
+use App\Models\RubricItem;
 use App\Services\Ai\AiBudget;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
 use App\Services\Verification\FolderSync;
 use App\Support\Audit;
+use App\Support\VerificationRubric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -32,6 +35,7 @@ class FolderController extends Controller
             'dari' => ['nullable', 'date'],
             'sampai' => ['nullable', 'date'],
             'periksa' => ['nullable', 'in:sudah,belum'],
+            'kesiapan' => ['nullable', 'in:siap,belum_siap'],
         ]);
 
         $sep = strtoupper(preg_replace('/\s+/', '', (string) ($v['sep'] ?? '')));
@@ -41,13 +45,16 @@ class FolderController extends Controller
             [$dari, $sampai] = [$sampai->copy()->startOfDay(), $dari->copy()->endOfDay()];
         }
         $periksa = $v['periksa'] ?? '';
+        $kesiapan = $v['kesiapan'] ?? '';
 
         // Filter No. SEP dan tanggal; status pemeriksaan ditambahkan terpisah supaya jumlah per status bisa dihitung
         $base = fn () => FtpFolder::query()
             ->whereNull('missing_at')
             ->when($sep !== '', fn ($w) => $w->where('no_sep', 'like', "%$sep%"))
             ->when($dari, fn ($w) => $w->where('files_modified_at', '>=', $dari))
-            ->when($sampai, fn ($w) => $w->where('files_modified_at', '<=', $sampai));
+            ->when($sampai, fn ($w) => $w->where('files_modified_at', '<=', $sampai))
+            ->when($kesiapan === 'siap', fn ($w) => $w->where('rubric_kurang', 0))
+            ->when($kesiapan === 'belum_siap', fn ($w) => $w->where('rubric_kurang', '>', 0));
         $byStatus = fn ($w, string $p) => match ($p) {
             'sudah' => $w->where('analysis_status', 'selesai'),
             'belum' => $w->whereNull('analysis_status'),
@@ -56,7 +63,7 @@ class FolderController extends Controller
 
         return view('folders.index', [
             'folders' => $byStatus($base(), $periksa)->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
-            'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa],
+            'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa, 'kesiapan' => $kesiapan],
             'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
         ]);
@@ -211,6 +218,56 @@ class FolderController extends Controller
         return back()->with('ok', 'Analisa dilanjutkan. Halaman diperbarui otomatis saat selesai.');
     }
 
+    /** Koordinator menerima butir yang kurang (alasan wajib). Butir diterima dianggap tidak menghalangi Siap diajukan. */
+    public function acceptRubric(Request $request, FtpFolder $folder, string $kode)
+    {
+        abort_unless(in_array($kode, VerificationRubric::codes(), true), 404);
+        $v = $request->validate(['alasan' => ['required', 'string', 'min:3', 'max:500']]);
+        $item = $folder->rubricItems()->where('kode', $kode)->firstOrFail();
+        if ($item->status !== 'kurang') {
+            return back()->with('warn', 'Hanya butir berstatus Kurang yang bisa diterima.');
+        }
+        $item->update(['status' => 'diterima', 'accepted_by' => $request->user()->id, 'accepted_reason' => $v['alasan'], 'accepted_at' => now()]);
+        $folder->recomputeReadiness();
+        Audit::log('folder.rubrik_terima', $folder, 'Menerima butir "' . $item->label() . '": ' . $v['alasan'], ['kode' => $kode, 'alasan' => $v['alasan']]);
+
+        return back()->with('ok', 'Butir "' . $item->label() . '" diterima.');
+    }
+
+    public function unacceptRubric(Request $request, FtpFolder $folder, string $kode)
+    {
+        abort_unless(in_array($kode, VerificationRubric::codes(), true), 404);
+        $item = $folder->rubricItems()->where('kode', $kode)->where('status', 'diterima')->firstOrFail();
+        $alasan = $item->accepted_reason;
+        $item->update(['status' => 'kurang', 'accepted_by' => null, 'accepted_reason' => null, 'accepted_at' => null]);
+        $folder->recomputeReadiness();
+        Audit::log('folder.rubrik_batal_terima', $folder, 'Membatalkan penerimaan butir "' . $item->label() . '"', ['kode' => $kode, 'alasan_lama' => $alasan]);
+
+        return back()->with('ok', 'Penerimaan butir "' . $item->label() . '" dibatalkan.');
+    }
+
+    /** Catat tindak lanjut saran DPJP. Tidak memengaruhi status Siap diajukan. */
+    public function suggestionStatus(Request $request, FtpFolder $folder, ConditionSuggestion $suggestion)
+    {
+        abort_unless($suggestion->ftp_folder_id === $folder->id, 404);
+        $v = $request->validate([
+            'status' => ['required', 'in:' . implode(',', array_keys(ConditionSuggestion::STATUSES))],
+            'catatan' => ['nullable', 'string', 'max:500'],
+        ]);
+        $lama = $suggestion->status;
+        $suggestion->update([
+            'status' => $v['status'],
+            'catatan_respons' => $v['catatan'] ?? $suggestion->catatan_respons,
+            'updated_by' => $request->user()->id,
+            'responded_at' => in_array($v['status'], ConditionSuggestion::ANSWERED, true) ? now() : $suggestion->responded_at,
+        ]);
+        Audit::log('folder.saran_status', $folder, sprintf('Saran "%s": %s → %s', $suggestion->kondisi,
+            ConditionSuggestion::STATUSES[$lama] ?? $lama, ConditionSuggestion::STATUSES[$v['status']]),
+            ['saran' => $suggestion->id, 'dari' => $lama, 'ke' => $v['status'], 'catatan' => $v['catatan'] ?? null]);
+
+        return back()->with('ok', 'Tindak lanjut saran dicatat.');
+    }
+
     /** Buka satu dokumen langsung dari FTP (tidak disimpan). Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */
     public function file(FtpFolder $folder, int $index, SimrsFtp $ftp)
     {
@@ -257,6 +314,8 @@ class FolderController extends Controller
     private function viewData(FtpFolder $folder, ?FolderAnalysis $latest, ?string $blocker): array
     {
         $done = $latest?->status === ReviewStatus::Selesai ? $latest : $folder->analyses()->where('status', ReviewStatus::Selesai->value)->first();
+        $saranOn = (bool) AppSetting::get('ai_condition_suggestions', false);
+        $rubric = $folder->rubricItems()->get()->keyBy('kode');
 
         return [
             'folder' => $folder,
@@ -267,6 +326,11 @@ class FolderController extends Controller
             'documents' => $latest ? $latest->documents()->get() : collect(),
             'linkable' => collect($folder->files)->pluck('name')->flip(),
             'canResynth' => $latest ? $this->canResynth($latest) : false,
+            // Daftar periksa: 14 butir tetap, urut sesuai rubrik, dikelompokkan
+            'rubric' => collect(VerificationRubric::codes())->map(fn ($k) => $rubric->get($k) ?? new RubricItem(['kode' => $k, 'status' => null]))
+                ->groupBy(fn (RubricItem $i) => VerificationRubric::group($i->kode)),
+            'saranOn' => $saranOn,
+            'suggestions' => $saranOn ? $folder->conditionSuggestions()->get() : collect(),
         ];
     }
 
