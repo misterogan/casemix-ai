@@ -1,6 +1,7 @@
-<x-app-layout :title="$folder->nama_pasien ?: $folder->name">
+<x-app-layout :title="$folder->nama_pasien ?: $folder->name" :full-height="true">
+<div class="flex h-full min-h-0 flex-col">
     {{-- Pencarian kecil: kembali ke daftar dengan kata kunci --}}
-    <form method="GET" action="{{ route('folders.index') }}" role="search" class="max-w-[692px]">
+    <form method="GET" action="{{ route('folders.index') }}" role="search" class="max-w-[692px] shrink-0">
         <div class="cari">
             <button type="submit" class="cari-ikon" aria-label="Cari">
                 <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
@@ -24,8 +25,8 @@
     @endphp
 
     {{-- Urutan: kepala → status → Daftar periksa → Saran DPJP → detail analisa → file. Halaman dimuat ulang saat analisa selesai. --}}
-    <div class="mt-6 space-y-6" data-docs data-muat-ulang="1" data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
-        <header class="flex flex-wrap items-start justify-between gap-4" data-kepala>
+    <div class="mt-6 flex min-h-0 flex-1 flex-col gap-6" data-docs data-muat-ulang="1" data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
+        <header class="flex shrink-0 flex-wrap items-start justify-between gap-4" data-kepala>
             <div class="min-w-0">
                 <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
                 <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}</h1>
@@ -64,7 +65,7 @@
 
         {{-- Status besar: hanya dari Daftar periksa (saran DPJP tidak ikut menentukan) --}}
         @if ($siap !== null)
-            <div @class(['rounded-lg border px-5 py-4', 'border-green-300 bg-green-50' => $siap, 'border-red-300 bg-red-50' => ! $siap]) data-status-folder>
+            <div @class(['shrink-0 rounded-lg border px-5 py-4', 'border-green-300 bg-green-50' => $siap, 'border-red-300 bg-red-50' => ! $siap]) data-status-folder>
                 <p @class(['text-xl font-semibold', 'text-green-800' => $siap, 'text-red-800' => ! $siap])>
                     {{ $siap ? 'Siap diajukan' : 'Belum siap · ' . $folder->rubric_kurang . ' butir kurang' }}
                 </p>
@@ -73,7 +74,7 @@
         @endif
 
         {{-- lg+: dua panel setinggi layar, masing-masing scroll sendiri --}}
-        <div class="grid gap-6 lg:h-[calc(100vh-220px)] lg:min-h-0 lg:grid-cols-2">
+        <div class="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-2">
         <div class="min-h-0 space-y-6 lg:overflow-y-auto lg:overscroll-contain">
         {{-- Daftar periksa: 14 butir tetap per kelompok --}}
         <section class="panel" aria-labelledby="judul-periksa" data-daftar-periksa>
@@ -174,4 +175,5 @@
         </div>
         </div>
     </div>
+</div>
 </x-app-layout>

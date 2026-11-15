@@ -1,3 +1,4 @@
+@props(['title' => null, 'fullHeight' => false])
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -29,9 +30,9 @@
     ];
 @endphp
 
-<div class="lg:grid lg:grid-cols-[248px_1fr]">
+<div @class(['lg:grid lg:grid-cols-[248px_1fr]', 'lg:h-screen lg:overflow-hidden' => $fullHeight])>
     {{-- Sidebar: terang seperti Google Drive --}}
-    <aside class="border-b border-garis-g bg-white text-arang lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-r lg:border-b-0">
+    <aside class="border-b border-garis-g bg-white text-arang lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:border-b-0">
         <div class="flex items-center justify-between px-5 py-5 lg:block">
             <a href="{{ route('home') }}" class="block rounded-md">
                 <span class="flex items-center gap-2.5">
@@ -46,7 +47,7 @@
             </a>
         </div>
 
-        <nav class="space-y-0.5 pr-3 pb-4 lg:pb-24" aria-label="Menu utama">
+        <nav class="space-y-0.5 pr-3 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto" aria-label="Menu utama">
             @foreach ($nav as $item)
                 @can($item['can'])
                     @php $active = request()->routeIs($item['match']); @endphp
@@ -78,7 +79,7 @@
             @endcan
         </nav>
 
-        <div class="border-t border-garis-g px-5 py-4 lg:absolute lg:inset-x-0 lg:bottom-0 lg:bg-white">
+        <div class="shrink-0 border-t border-garis-g bg-white px-5 py-4">
             <div class="flex items-center gap-3">
                 <span class="grid size-9 place-items-center rounded-full bg-biru text-sm font-bold text-white">{{ auth()->user()->initials() }}</span>
                 <div class="min-w-0 flex-1">
@@ -97,8 +98,8 @@
     </aside>
 
     {{-- Konten --}}
-    <main class="min-w-0">
-        <div class="mx-auto max-w-[1320px] px-5 py-6 lg:px-8 lg:py-8">
+    <main @class(['flex min-h-screen min-w-0 flex-col', 'lg:h-screen' => $fullHeight])>
+        <div @class(['mx-auto w-full max-w-[1320px] flex-1 px-5 py-6 lg:px-8 lg:py-8', 'flex min-h-0 flex-col lg:overflow-hidden' => $fullHeight])>
             <x-ai-budget-banner/>
 
             @if (session('ok') || session('warn') || $errors->any())
@@ -126,8 +127,15 @@
                 </div>
             @endif
 
-            {{ $slot }}
+            @if ($fullHeight)
+                <div class="min-h-0 flex-1">{{ $slot }}</div>
+            @else
+                {{ $slot }}
+            @endif
         </div>
+        <footer class="mt-auto shrink-0 border-t border-garis-g px-5 py-3 text-center text-xs text-abu lg:px-8">
+            Casemix AI · RS Serenapita · © 2026 Enigma Works Indonesia
+        </footer>
     </main>
 </div>
 </body>
