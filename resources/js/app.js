@@ -329,3 +329,50 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-dismiss]')) e.target.closest('[data-flash]')?.remove();
 });
+
+// Pratinjau dokumen dalam modal: <a href="..." data-preview="nama file">. Klik tengah/Ctrl tetap membuka tab.
+let pratinjau;
+function modalPratinjau() {
+  if (pratinjau) return pratinjau;
+  pratinjau = document.createElement('dialog');
+  pratinjau.className = 'p-0 rounded-lg shadow-xl backdrop:bg-black/50';
+  pratinjau.style.cssText = 'width:90vw;height:90vh;max-width:none;max-height:none';
+  pratinjau.innerHTML = `<div class="flex h-full flex-col bg-white">
+    <div class="flex items-center gap-3 border-b px-4 py-2">
+      <h2 class="min-w-0 flex-1 truncate font-medium" data-judul></h2>
+      <a data-tab target="_blank" rel="noopener" class="text-sm hover:underline">Buka di tab baru ↗</a>
+      <button type="button" data-tutup class="rounded border px-3 py-1 text-sm hover:bg-gray-100">Tutup</button>
+    </div>
+    <div class="min-h-0 flex-1 bg-gray-100" data-isi></div>
+  </div>`;
+  pratinjau.addEventListener('click', (e) => {
+    if (e.target === pratinjau || e.target.closest('[data-tutup]')) pratinjau.close();
+  });
+  pratinjau.addEventListener('close', () => { pratinjau.querySelector('[data-isi]').replaceChildren(); });
+  document.body.append(pratinjau);
+  return pratinjau;
+}
+
+document.addEventListener('click', async (e) => {
+  const a = e.target.closest('a[data-preview]');
+  if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  const d = modalPratinjau();
+  const href = a.href;
+  d.querySelector('[data-judul]').textContent = a.dataset.preview || a.textContent.trim();
+  d.querySelector('[data-tab]').href = href;
+  const isi = d.querySelector('[data-isi]');
+  const nama = (a.dataset.preview || '').toLowerCase();
+  let gambar = /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(nama);
+  if (!gambar && !/\.pdf$/.test(nama)) {
+    try {
+      const r = await fetch(href.split('#')[0], { method: 'HEAD', credentials: 'same-origin' });
+      gambar = (r.headers.get('Content-Type') || '').startsWith('image/');
+    } catch (_) { /* anggap PDF */ }
+  }
+  const el = gambar
+    ? Object.assign(document.createElement('img'), { src: href, alt: a.dataset.preview || '', className: 'mx-auto h-full w-full object-contain' })
+    : Object.assign(document.createElement('iframe'), { src: href, title: a.dataset.preview || 'Dokumen', className: 'h-full w-full border-0' });
+  isi.replaceChildren(el);
+  if (!d.open) d.showModal();
+});

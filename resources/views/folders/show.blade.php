@@ -104,7 +104,7 @@
                                         </p>
                                         @if ($i->catatan || $i->dokumen)
                                             <p class="text-xs text-abu">{{ $i->catatan }}
-                                                @if ($url) · <a href="{{ $url }}" target="_blank" rel="noopener" class="text-url underline">{{ $i->dokumen }}@if ($i->halaman) hal. {{ $i->halaman }}@endif</a>
+                                                @if ($url) · <a href="{{ $url }}" data-preview="{{ $i->dokumen }}" target="_blank" rel="noopener" class="text-url underline">{{ $i->dokumen }}@if ($i->halaman) hal. {{ $i->halaman }}@endif</a>
                                                 @elseif ($i->dokumen) · {{ $i->dokumen }}@endif
                                             </p>
                                         @endif

@@ -63,7 +63,7 @@
                         {{ $f['judul'] }}
                         @if ($f['halaman'] ?? null)
                             @if ($idx !== null)
-                                <a href="{{ route('folders.file', [$folder, $idx]) }}#page={{ $f['halaman'] }}" target="_blank" rel="noopener" class="text-abu hover:underline">hal. {{ $f['halaman'] }} ↗</a>
+                                <a href="{{ route('folders.file', [$folder, $idx]) }}#page={{ $f['halaman'] }}" data-preview="{{ $d->name }}" target="_blank" rel="noopener" class="text-abu hover:underline">hal. {{ $f['halaman'] }} ↗</a>
                             @else
                                 <span class="text-abu">hal. {{ $f['halaman'] }}</span>
                             @endif
@@ -91,7 +91,7 @@
 
         <div class="flex flex-wrap items-center gap-3">
             @if ($idx !== null)
-                <a href="{{ route('folders.file', [$folder, $idx]) }}" target="_blank" rel="noopener" class="hover:underline">Buka dokumen ↗</a>
+                <a href="{{ route('folders.file', [$folder, $idx]) }}" data-preview="{{ $d->name }}" target="_blank" rel="noopener" class="hover:underline">Buka dokumen ↗</a>
             @endif
             @can('folders.analyze')
                 <form method="POST" action="{{ route('folders.process_document', [$folder, $d]) }}">

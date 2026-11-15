@@ -101,7 +101,7 @@
                                         <p class="font-semibold text-arang">{{ $s['kondisi'] }}</p>
                                         <p class="mt-1 text-sm text-abu"><span class="font-medium text-arang">Bukti:</span> {{ $s['bukti'] }}</p>
                                         @if (! empty($s['dokumen']))
-                                            <p class="mt-2 text-sm">@if ($url)<a href="{{ $url }}" target="_blank" rel="noopener" class="tautan-g">{{ $s['dokumen'] }}@if (! empty($s['halaman'])) · hal. {{ $s['halaman'] }}@endif ↗</a>@else<span class="text-abu">{{ $s['dokumen'] }}</span>@endif</p>
+                                            <p class="mt-2 text-sm">@if ($url)<a href="{{ $url }}" data-preview="{{ $s['dokumen'] }}" target="_blank" rel="noopener" class="tautan-g">{{ $s['dokumen'] }}@if (! empty($s['halaman'])) · hal. {{ $s['halaman'] }}@endif ↗</a>@else<span class="text-abu">{{ $s['dokumen'] }}</span>@endif</p>
                                         @endif
                                     </li>
                                 @endforeach

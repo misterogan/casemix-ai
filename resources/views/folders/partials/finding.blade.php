@@ -12,7 +12,7 @@
     @if (! empty($f['dokumen']))
         <p class="mt-2 text-sm">
             @if ($url)
-                <a href="{{ $url }}" target="_blank" rel="noopener" class="tautan-g">{{ $f['dokumen'] }}@if (! empty($f['halaman'])) · hal. {{ $f['halaman'] }}@endif ↗</a>
+                <a href="{{ $url }}" data-preview="{{ $f['dokumen'] }}" target="_blank" rel="noopener" class="tautan-g">{{ $f['dokumen'] }}@if (! empty($f['halaman'])) · hal. {{ $f['halaman'] }}@endif ↗</a>
             @else
                 <span class="text-abu">{{ $f['dokumen'] }}@if (! empty($f['halaman'])) · hal. {{ $f['halaman'] }}@endif</span>
             @endif

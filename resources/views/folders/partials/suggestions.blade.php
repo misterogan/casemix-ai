@@ -30,14 +30,14 @@
                     </div>
                     @if ($s->bukti)
                         <p class="mt-1 text-sm text-abu">Bukti: “{{ $s->bukti }}”
-                            @if ($url) · <a href="{{ $url }}" target="_blank" rel="noopener" class="text-url underline">{{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}</a>
+                            @if ($url) · <a href="{{ $url }}" data-preview="{{ $s->dokumen }}" target="_blank" rel="noopener" class="text-url underline">{{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}</a>
                             @elseif ($s->dokumen) · {{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}@endif
                         </p>
                     @endif
 
                     <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-purple-900/70">Langkah tindak lanjut</p>
                     <ol class="mt-1 list-decimal space-y-2 pl-5 text-sm text-arang">
-                        <li>Cek bukti di dokumen @if ($url)(<a href="{{ $url }}" target="_blank" rel="noopener" class="text-url underline">buka {{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}</a>)@endif.</li>
+                        <li>Cek bukti di dokumen @if ($url)(<a href="{{ $url }}" data-preview="{{ $s->dokumen }}" target="_blank" rel="noopener" class="text-url underline">buka {{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}</a>)@endif.</li>
                         <li>
                             Hubungi DPJP.
                             <div class="mt-1 flex flex-wrap gap-2">
