@@ -84,7 +84,7 @@ class ConditionSuggestionToggleTest extends TestCase
         $this->assertStringContainsString('"kondisi"', $this->sentPrompt());
         $this->assertSame('Kemungkinan anemia', $a->suggestions[0]['kondisi']);
         $this->actingAs($this->koordinator)->get(route('folders.show', $this->folder))->assertOk()
-            ->assertSee('Kondisi yang belum tertulis sebagai diagnosis')->assertSee('Kemungkinan anemia');
+            ->assertSee('Kemungkinan belum tercatat di resume')->assertSee('Kemungkinan anemia');
     }
 
     public function test_dimatikan_menyembunyikan_saran_lama(): void

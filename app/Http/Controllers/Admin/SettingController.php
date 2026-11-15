@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
+use App\Models\FtpFolder;
 use App\Services\Import\SimrsFtp;
 use App\Support\Audit;
 use Illuminate\Http\Request;
@@ -51,6 +52,9 @@ class SettingController extends Controller
         $baru = $request->boolean('saran_kondisi');
         AppSetting::put(self::KEY_CONDITION_SUGGESTIONS, $baru, $request->user()->id);
 
+        if (! $lama && $baru) { // dicek ulang di analisa berikut walau semua butir rubrik terkunci
+            FtpFolder::query()->whereNotNull('suggestions_fingerprint')->update(['suggestions_fingerprint' => null]);
+        }
         if ($lama !== $baru) {
             Audit::log('admin.saran_kondisi', null, 'Saran kondisi ' . ($baru ? 'dinyalakan' : 'dimatikan'),
                 ['perubahan' => ['saran_kondisi' => ['lama' => $lama, 'baru' => $baru]]]);

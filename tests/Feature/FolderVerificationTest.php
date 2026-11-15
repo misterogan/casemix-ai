@@ -715,17 +715,17 @@ class FolderVerificationTest extends TestCase
             ->assertDontSee('Kemungkinan belum tercatat di resume')->assertDontSee('Saran DPJP:');
     }
 
-    public function test_saran_maks_tiga_dan_yang_sudah_dijawab_tidak_muncul_lagi(): void
+    public function test_saran_maks_lima_dan_yang_sudah_dijawab_tidak_muncul_lagi(): void
     {
         $this->saranOn();
         $folder = $this->synced(self::LENGKAP);
-        $kondisi = collect(['Hipokalemia', 'Anemia', 'Hipertensi', 'Gagal ginjal', 'Sepsis'])
+        $kondisi = collect(['Hipokalemia', 'Anemia', 'Hipertensi', 'Gagal ginjal', 'Sepsis', 'Asites'])
             ->map(fn ($k) => ['kondisi' => $k, 'bukti' => "Bukti $k", 'dokumen' => 'Resume Medis.png', 'halaman' => 1])->all();
         $this->fakeAi(self::DOC, self::DOC, self::DOC, $this->rubrik([], ['kondisi' => $kondisi]), $this->rubrik([], ['kondisi' => $kondisi]));
         $this->analyze($folder);
 
         $this->assertStringContainsString('kondisi', $this->lastPrompt());
-        $this->assertSame(['Hipokalemia', 'Anemia', 'Hipertensi'], ConditionSuggestion::orderBy('id')->pluck('kondisi')->all());
+        $this->assertSame(['Hipokalemia', 'Anemia', 'Hipertensi', 'Gagal ginjal', 'Sepsis'], ConditionSuggestion::orderBy('id')->pluck('kondisi')->all());
         ConditionSuggestion::where('kondisi', 'Hipokalemia')->update(['status' => 'tidak_relevan']);
         ConditionSuggestion::where('kondisi', 'Anemia')->update(['status' => 'disetujui']);
 
@@ -740,7 +740,7 @@ class FolderVerificationTest extends TestCase
         $this->assertStringContainsString('JANGAN diusulkan lagi', $this->lastPrompt());
         $this->assertSame(1, ConditionSuggestion::where('kondisi', 'Hipokalemia')->count());
         $this->assertSame(1, ConditionSuggestion::where('kondisi', 'Anemia')->count());
-        $this->assertLessThanOrEqual(3, ConditionSuggestion::where('status', 'baru')->count());
+        $this->assertLessThanOrEqual(5, ConditionSuggestion::where('status', 'baru')->count());
     }
 
     public function test_ubah_status_saran_diaudit_dan_divalidasi(): void

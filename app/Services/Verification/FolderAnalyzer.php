@@ -2,6 +2,7 @@
 
 namespace App\Services\Verification;
 
+use App\Http\Controllers\Admin\SettingController;
 use App\Enums\ReviewStatus;
 use App\Models\AiProvider as ProviderConfig;
 use App\Models\Claim;
@@ -39,7 +40,12 @@ class FolderAnalyzer
     /** Jenis dokumen yang cukup dibaca model cepat dengan instruksi singkat. */
     private const FAST_TYPES = ['sep', 'tambahan'];
 
-    private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'biaya', 'ttd_dpjp'];
+    /** Bila saran kondisi menyala: bahan untuk mencari diagnosis/tindakan/layanan yang terlewat di resume. */
+    private const SARAN_INSTRUCTION = 'Tambahan (mengalahkan batas di atas): isi juga "penunjang_abnormal":[] (hasil penunjang yang abnormal) dan '
+        . '"biaya_item_penting":[] (item tindakan/obat/layanan bermakna di rincian biaya). Batas: tindakan maks 8, terapi_penting maks 10, '
+        . 'penunjang_abnormal maks 10, biaya_item_penting maks 10; tiap teks maks 15 kata.';
+
+    private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'penunjang_abnormal', 'biaya', 'biaya_item_penting', 'ttd_dpjp'];
 
     /** Model, batas token, dan halaman scan untuk satu dokumen menurut jenisnya. */
     public function documentPlan(FolderDocument $d, ProviderConfig $config): array
@@ -213,7 +219,7 @@ TXT);
                 $this->findings(array_slice($json['temuan'] ?? [], 0, 8), $names),
                 $this->ruleFindings($a->folder, $docs, $extracted),
             ),
-            'suggestions' => $this->suggestions(array_slice($json['kondisi'] ?? [], 0, 3), $names),
+            'suggestions' => $this->suggestions(array_slice($json['kondisi'] ?? [], 0, 5), $names),
             'extracted' => $extracted,
         ];
     }
@@ -245,6 +251,7 @@ TXT;
     {
         $opsi = fn (array $m) => implode(', ', array_map(fn ($k, $v) => "$k=$v", array_keys($m), $m));
         $tarif = implode(', ', array_keys(Eklaim::TARIF));
+        $saran = SettingController::conditionSuggestionsOn() ? PHP_EOL . self::SARAN_INSTRUCTION : '';
 
         return <<<TXT
 Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).
@@ -254,7 +261,7 @@ Baca SATU dokumen di bawah ini saja. Catat isinya untuk diperiksa silang nanti, 
 
 Jawab HANYA satu objek JSON dalam satu baris tanpa spasi, tanpa ```:
 {"identitas":{"nama":"","no_rm":"","no_sep":""},"isian":[{"field":"","nilai":""}],"diagnosis":[],"tindakan":[],"terapi_penting":[],"penunjang":[{"pemeriksaan":"","hasil":""}],"biaya":[{"komponen":"","nilai":0}],"ttd_dpjp":true,"temuan":[{"tingkat":"kritis|perhatian","judul":"","uraian":"","halaman":1}]}
-Batas: hanya yang tertulis di dokumen, jangan menyalin paragraf; lewati bagian yang tidak ada; diagnosis, tindakan, terapi_penting maks 5 item; penunjang maks 8; biaya hanya total per komponen maks 10; tiap teks maks 12 kata; temuan maks 5, uraian maks 20 kata; ttd_dpjp null bila tidak relevan; tanpa kode ICD; tanpa nomor kartu peserta. Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. "halaman" boleh null.
+Batas: hanya yang tertulis di dokumen, jangan menyalin paragraf; lewati bagian yang tidak ada; diagnosis, tindakan, terapi_penting maks 5 item; penunjang maks 8; biaya hanya total per komponen maks 10; tiap teks maks 12 kata; temuan maks 5, uraian maks 20 kata; ttd_dpjp null bila tidak relevan; tanpa kode ICD; tanpa nomor kartu peserta. Kritis = harus diselesaikan sebelum klaim diajukan. Perhatian = perlu dicek. "halaman" boleh null.$saran
 TXT;
     }
 
@@ -347,6 +354,7 @@ TXT;
     private function suggestions(array $items, array $names): array
     {
         return collect($items)->filter(fn ($s) => is_array($s) && filled($s['kondisi'] ?? null))->map(fn ($s) => [
+            'jenis' => mb_substr((string) ($s['jenis'] ?? ''), 0, 20),
             'kondisi' => IcdGuard::strip(mb_substr((string) $s['kondisi'], 0, 200)),
             'bukti' => IcdGuard::strip(mb_substr((string) ($s['bukti'] ?? ''), 0, 600)),
             'dokumen' => $this->matchName($s['dokumen'] ?? null, $names),

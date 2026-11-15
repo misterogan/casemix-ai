@@ -33,7 +33,9 @@ class SynthesizeFolderAnalysis implements ShouldQueue
 
     public int $timeout = 600;
 
-    public const MAX_SUGGESTIONS = 3;
+    public const MAX_SUGGESTIONS = 5;
+
+    public const JENIS = ['Diagnosis', 'Tindakan', 'Layanan'];
 
     public function __construct(public int $analysisId)
     {
@@ -124,7 +126,7 @@ class SynthesizeFolderAnalysis implements ShouldQueue
     {
         $butir = collect($need)->map(fn ($k) => "- $k: " . VerificationRubric::label($k))->implode("\n");
         $schema = '{"ringkasan":"maks 2 kalimat","rubrik":[{"kode":"...","status":"lengkap|kurang|tidak_berlaku","catatan":"maks 20 kata","dokumen":"nama file","halaman":1}]'
-            . ($needSaran ? ',"kondisi":[{"kondisi":"...","bukti":"kutipan maks 30 kata","dokumen":"nama file","halaman":1}]' : '') . '}';
+            . ($needSaran ? ',"kondisi":[{"jenis":"Diagnosis|Tindakan|Layanan","kondisi":"...","bukti":"kutipan maks 30 kata","dokumen":"nama file","halaman":1}]' : '') . '}';
 
         $req->system = "Anda verifikator berkas klaim BPJS rumah sakit. Nilai HANYA butir rubrik yang diminta, berdasarkan hasil baca dokumen.\n"
             . "Status: lengkap (terpenuhi), kurang (tidak terpenuhi/tidak tertulis), tidak_berlaku (tidak relevan untuk pasien ini).\n"
@@ -142,7 +144,8 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             . ($need ? "Butir rubrik yang dinilai:\n$butir\n\n" : "Tidak ada butir rubrik yang perlu dinilai; isi \"rubrik\" dengan [].\n\n");
 
         if ($needSaran) {
-            $text .= 'Kondisi: maks ' . self::MAX_SUGGESTIONS . ' kondisi klinis yang punya bukti TERTULIS di dokumen tetapi tidak ada di diagnosis resume. '
+            $text .= 'Kondisi: maks ' . self::MAX_SUGGESTIONS . ' kemungkinan terlewat di resume medis, jenis Diagnosis, Tindakan, atau Layanan: '
+                . 'hal yang punya bukti TERTULIS di dokumen lain (terapi, penunjang abnormal, laporan operasi, rincian biaya, asesmen) tetapi tidak tertulis di resume. '
                 . "Sertakan kutipan bukti, nama file, dan halaman. Tanpa kode ICD. Bila tidak ada, isi [].\n";
             $dijawab = $folder->conditionSuggestions()->where('status', '!=', 'baru')->get()
                 ->filter(fn (ConditionSuggestion $s) => $s->source_fingerprints == VerificationRubric::fileFingerprint($folder, $s->dokumen))
@@ -213,6 +216,10 @@ class SynthesizeFolderAnalysis implements ShouldQueue
         $added = 0;
         foreach ($saran as $s) {
             $kondisi = trim((string) ($s['kondisi'] ?? ''));
+            $jenis = collect(self::JENIS)->first(fn ($j) => strcasecmp($j, trim((string) ($s['jenis'] ?? ''))) === 0);
+            if ($jenis && $kondisi !== '' && ! str_starts_with(mb_strtolower($kondisi), mb_strtolower($jenis) . ':')) {
+                $kondisi = "$jenis: $kondisi";
+            }
             if ($kondisi === '' || $added >= self::MAX_SUGGESTIONS) {
                 continue;
             }
