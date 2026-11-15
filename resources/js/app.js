@@ -152,7 +152,7 @@ function initCari() {
     if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; segera(); }
   });
   form.addEventListener('submit', (e) => { e.preventDefault(); segera(); });
-  hapus?.addEventListener('click', (e) => { e.preventDefault(); input.value = ''; input.focus(); segera(); });
+  hapus?.addEventListener('click', (e) => { e.preventDefault(); input.value = ''; input.focus({ preventScroll: true }); segera(); });
 
   // Tab filter dan paginasi dimuat di tempat
   hasil.addEventListener('click', (e) => {
@@ -191,19 +191,17 @@ function initDocs() {
 
   // Jangan menggulir otomatis bila pengguna baru saja (3 detik) menggulir daftar ini sendiri
   let terakhirDigulir = 0;
+  const wadah = list.closest('[data-gulir-file]') || list;
   ['wheel', 'touchmove', 'pointerdown', 'keydown'].forEach((ev) =>
-    list.addEventListener(ev, () => { terakhirDigulir = Date.now(); }, { passive: true }));
+    wadah.addEventListener(ev, () => { terakhirDigulir = Date.now(); }, { passive: true }));
 
-  // Gulir HANYA container daftar (bukan halaman) agar item terlihat, setara block: 'nearest'
+  // Gulir HANYA kolom panel file (bukan window); tanpa scrollIntoView. Kepala sticky diperhitungkan.
   const tampakkan = (el) => {
-    if (Date.now() - terakhirDigulir < 3000 || list.scrollHeight <= list.clientHeight) return;
-    const pad = parseFloat(getComputedStyle(list).scrollPaddingTop) || 0;
-    const atas = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
-    const bawah = atas + el.offsetHeight;
-    let tujuan = null;
-    if (atas - pad < list.scrollTop) tujuan = atas - pad;
-    else if (bawah > list.scrollTop + list.clientHeight) tujuan = Math.min(atas - pad, bawah - list.clientHeight + pad);
-    if (tujuan !== null) list.scrollTo({ top: tujuan, behavior: reduce ? 'auto' : 'smooth' });
+    if (Date.now() - terakhirDigulir < 3000 || wadah.scrollHeight <= wadah.clientHeight) return;
+    const kepala = wadah.querySelector('.sticky')?.offsetHeight || 0;
+    const atas = el.getBoundingClientRect().top - wadah.getBoundingClientRect().top + wadah.scrollTop;
+    if (atas - kepala >= wadah.scrollTop && atas + el.offsetHeight <= wadah.scrollTop + wadah.clientHeight) return;
+    wadah.scrollTo({ top: Math.max(0, atas - kepala - 12), behavior: reduce ? 'auto' : 'smooth' });
   };
 
   const buka = (el) => {
@@ -228,7 +226,7 @@ function initDocs() {
     }
 
     // Posisi gulir dipertahankan saat isi diganti (tidak melompat ke atas)
-    const posisiDaftar = list.scrollTop;
+    const posisiDaftar = wadah.scrollTop;
     const baruSelesai = [];
     j.docs.forEach((d) => {
       const lama = list.querySelector(`[data-doc="${d.id}"]`);
@@ -247,7 +245,7 @@ function initDocs() {
         list.append(baru);
       }
     });
-    list.scrollTop = posisiDaftar;
+    wadah.scrollTop = posisiDaftar;
     baruSelesai.forEach(buka);
 
     const progres = root.querySelector('[data-docs-progress]');
@@ -336,7 +334,7 @@ function modalPratinjau() {
   if (pratinjau) return pratinjau;
   pratinjau = document.createElement('dialog');
   pratinjau.className = 'p-0 rounded-lg shadow-xl backdrop:bg-black/50';
-  pratinjau.style.cssText = 'width:90vw;height:90vh;max-width:none;max-height:none';
+  pratinjau.style.cssText = 'position:fixed;inset:0;margin:auto;width:90vw;height:90vh;max-width:none;max-height:none';
   pratinjau.innerHTML = `<div class="flex h-full flex-col bg-white">
     <div class="flex items-center gap-3 border-b px-4 py-2">
       <h2 class="min-w-0 flex-1 truncate font-medium" data-judul></h2>
@@ -348,10 +346,20 @@ function modalPratinjau() {
   pratinjau.addEventListener('click', (e) => {
     if (e.target === pratinjau || e.target.closest('[data-tutup]')) pratinjau.close();
   });
-  pratinjau.addEventListener('close', () => { pratinjau.querySelector('[data-isi]').replaceChildren(); });
+  pratinjau.addEventListener('close', () => {
+    const isi = pratinjau.querySelector('[data-isi]');
+    isi.querySelectorAll('iframe').forEach((f) => { f.src = 'about:blank'; });
+    isi.replaceChildren();
+    window.scrollTo(0, Number(pratinjau.dataset.scrollY || 0));
+  });
   document.body.append(pratinjau);
   return pratinjau;
 }
+
+// Klik <summary> accordion: jangan ikuti tautan hash (window tidak boleh tergulir)
+document.addEventListener('click', (e) => {
+  if (e.target.closest('summary a[href^="#"]')) e.preventDefault();
+});
 
 document.addEventListener('click', async (e) => {
   const a = e.target.closest('a[data-preview]');
@@ -374,5 +382,5 @@ document.addEventListener('click', async (e) => {
     ? Object.assign(document.createElement('img'), { src: href, alt: a.dataset.preview || '', className: 'mx-auto h-full w-full object-contain' })
     : Object.assign(document.createElement('iframe'), { src: href, title: a.dataset.preview || 'Dokumen', className: 'h-full w-full border-0' });
   isi.replaceChildren(el);
-  if (!d.open) d.showModal();
+  if (!d.open) { d.dataset.scrollY = String(window.scrollY); d.showModal(); }
 });

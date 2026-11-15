@@ -1,6 +1,6 @@
 @props(['title' => null, 'fullHeight' => false])
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" @class(['lg:h-full lg:overflow-hidden' => $fullHeight])>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="min-h-screen bg-latar">
+<body @class(['min-h-screen bg-latar', 'lg:h-full lg:overflow-hidden' => $fullHeight])>
 @php
     // Menu utama: Koordinator membaca hasil verifikasi AI langsung dari folder FTP.
     // Menu berkas klaim, impor, dan ringkasan lama disembunyikan (datanya tetap ada).

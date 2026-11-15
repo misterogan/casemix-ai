@@ -151,7 +151,7 @@
 
         </div>
 
-        <div class="min-h-0 lg:overflow-y-auto lg:overscroll-contain">
+        <div class="min-h-0 lg:overflow-y-auto lg:overscroll-contain" data-gulir-file>
         @if ($total)
             {{-- Accordion file: detail per dokumen --}}
             <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white" aria-labelledby="judul-file">
