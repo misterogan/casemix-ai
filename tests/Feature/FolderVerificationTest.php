@@ -321,7 +321,7 @@ class FolderVerificationTest extends TestCase
         // Dibuka lagi: hasil tersimpan tampil, AI tidak dipanggil lagi
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
             ->assertSee('3 dari 3 file selesai')->assertSee('Resume belum ditandatangani DPJP')->assertSee('Belum siap · 2 butir kurang')
-            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-status-folder', 'Daftar periksa', 'Saran untuk dikonfirmasi ke DPJP', 'File (3)', 'data-docs-progress', 'data-docs-list', 'data-doc='], false)
+            ->assertSeeInOrder(['data-kepala', 'Analisa ulang dengan AI', 'data-status-folder', 'Daftar periksa', 'Kemungkinan belum tercatat di resume', 'File (3)', 'data-docs-progress', 'data-docs-list', 'data-doc='], false)
             ->assertSee('Buka dokumen')->assertDontSee('Dokumen di folder');
         $this->assertCount(4, Http::recorded());
     }
@@ -669,7 +669,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame(0, $folder->fresh()->rubric_kurang);
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
             ->assertSee('Siap diajukan')->assertSee('Saran DPJP: 1 menunggu tindak lanjut')
-            ->assertSee('Saran untuk dikonfirmasi ke DPJP')->assertSee('Bukan bagian daftar periksa dan tidak menghalangi status Siap diajukan.')
+            ->assertSee('Kemungkinan belum tercatat di resume')->assertSee('Tidak menghalangi status Siap diajukan.')
             ->assertDontSee('Analisa ulang dengan AI');
         $this->actingAs($this->koordinator)->get(route('folders.index', ['kesiapan' => 'siap']))->assertOk()->assertSee('PASIEN CONTOH');
         $this->actingAs($this->koordinator)->get(route('folders.index', ['kesiapan' => 'belum_siap']))->assertOk()->assertDontSee('PASIEN CONTOH');
@@ -712,7 +712,7 @@ class FolderVerificationTest extends TestCase
         $this->assertStringNotContainsString('kondisi', $this->lastPrompt());
         $this->assertSame(0, ConditionSuggestion::count());
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
-            ->assertDontSee('Saran untuk dikonfirmasi ke DPJP')->assertDontSee('Saran DPJP:');
+            ->assertDontSee('Kemungkinan belum tercatat di resume')->assertDontSee('Saran DPJP:');
     }
 
     public function test_saran_maks_tiga_dan_yang_sudah_dijawab_tidak_muncul_lagi(): void
@@ -780,8 +780,8 @@ class FolderVerificationTest extends TestCase
         Queue::fake(); // folder belum dianalisa: jangan jalankan analisa otomatis
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
             ->assertSee('Salin pesan untuk DPJP')->assertSee($teks)
-            ->assertSee('Tunggu resume diperbarui di DHealth')
-            ->assertSee('Jangan menambahkan diagnosis di Edit Koreksi DHealth tanpa tertulis di resume oleh DPJP.')
+            ->assertSee('DPJP melengkapi resume di Enigma')
+            ->assertDontSee('Jangan menambahkan diagnosis di Edit Koreksi DHealth tanpa tertulis di resume oleh DPJP.')
             ->assertDontSee('Saran DPJP:');
     }
 }

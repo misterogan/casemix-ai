@@ -3,13 +3,13 @@
     <div class="flex items-start gap-3">
         <svg class="mt-0.5 size-5 shrink-0 text-purple-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14" stroke-linecap="round"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
         <div class="min-w-0">
-            <h2 id="judul-saran" class="font-semibold text-purple-900">Saran untuk dikonfirmasi ke DPJP</h2>
-            <p class="mt-0.5 text-sm text-purple-900/80">Bukan bagian daftar periksa dan tidak menghalangi status Siap diajukan. Keputusan sepenuhnya di DPJP.</p>
+            <h2 id="judul-saran" class="font-semibold text-purple-900">Kemungkinan belum tercatat di resume</h2>
+            <p class="mt-0.5 text-sm text-purple-900/80">Ditemukan AI dari dokumen lain. Konfirmasi ke DPJP agar resume lengkap dan klaim tidak kurang. Tidak menghalangi status Siap diajukan.</p>
         </div>
     </div>
 
     @if ($suggestions->isEmpty())
-        <p class="mt-3 text-sm text-purple-900/80">Tidak ada saran kondisi untuk folder ini.</p>
+        <p class="mt-3 text-sm text-purple-900/80">AI belum menemukan hal yang kemungkinan terlewat di resume.</p>
     @else
         <ol class="mt-4 space-y-3">
             @foreach ($suggestions as $s)
@@ -73,11 +73,11 @@
                         </li>
                         <li>
                             @if ($s->status === 'disetujui')
-                                Tunggu resume diperbarui di DHealth. Folder akan tertanda File berubah, lalu klik Analisa ulang.
+                                DPJP melengkapi resume di Enigma, lalu koder mengkodekan dari resume. Setelah itu klik Analisa ulang.
                             @elseif ($s->answered())
                                 Selesai, tidak ada perubahan.
                             @else
-                                Bila DPJP setuju: tunggu resume diperbarui di DHealth, lalu analisa ulang. Bila tidak: selesai, tidak ada perubahan.
+                                Bila DPJP setuju: DPJP melengkapi resume di Enigma, lalu koder mengkodekan dari resume. Setelah itu klik Analisa ulang. Bila tidak: selesai, tidak ada perubahan.
                             @endif
                         </li>
                     </ol>
@@ -86,5 +86,4 @@
         </ol>
     @endif
 
-    <p class="mt-3 text-xs text-purple-900/80">Jangan menambahkan diagnosis di Edit Koreksi DHealth tanpa tertulis di resume oleh DPJP.</p>
 </section>
