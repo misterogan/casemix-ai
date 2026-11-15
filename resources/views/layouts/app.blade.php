@@ -43,6 +43,7 @@
                     </svg>
                     <span class="text-[17px] font-bold text-arang">{{ config('casemix.app_name') }}</span>
                 </span>
+                <span class="block text-[11px] text-abu">by Enigma</span>
                 <span class="mt-1 block text-xs text-abu">{{ config('casemix.hospital_name') }}</span>
             </a>
         </div>
@@ -179,7 +180,7 @@
             @endif
         </div>
         <footer class="mt-auto shrink-0 border-t border-garis-g px-5 py-3 text-center text-xs text-abu lg:px-8">
-            Casemix AI · RS Serenapita · © 2026 Enigma Works Indonesia
+            CERMAT by Enigma · RS Serenapita · © 2026 Enigma Works Indonesia
         </footer>
     </main>
 </div>

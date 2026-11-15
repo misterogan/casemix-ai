@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'app_name' => env('CASEMIX_APP_NAME', 'Casemix AI'),
+    'app_name' => env('CASEMIX_APP_NAME', 'CERMAT'),
     'hospital_name' => env('CASEMIX_HOSPITAL_NAME', 'Rumah Sakit'),
 
     // Modul lama berkas klaim/impor/unggah; dimatikan karena verifikasi kini langsung dari FTP.
