@@ -89,6 +89,10 @@
                     <p class="truncate text-sm font-semibold text-arang">{{ auth()->user()->name }}</p>
                     <p class="truncate text-xs text-abu">{{ auth()->user()->roleLabel() }}</p>
                 </div>
+                <a href="{{ route('account.password.edit') }}" class="rounded-full p-2 text-abu transition-colors duration-150 hover:bg-abu-muda hover:text-arang" title="Ganti password">
+                    <svg class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path stroke-linecap="round" d="M8 11V7a4 4 0 018 0v4"/></svg>
+                    <span class="sr-only">Ganti password</span>
+                </a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="rounded-full p-2 text-abu transition-colors duration-150 hover:bg-abu-muda hover:text-arang" title="Keluar">

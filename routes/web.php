@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountPasswordController;
 use App\Http\Controllers\Admin\AiBudgetController;
 use App\Http\Controllers\Admin\AiProviderController;
 use App\Http\Controllers\Admin\RoleController;
@@ -26,6 +27,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/keluar', [LoginController::class, 'logout'])->name('logout');
+    Route::get('/akun/password', [AccountPasswordController::class, 'edit'])->name('account.password.edit');
+    Route::put('/akun/password', [AccountPasswordController::class, 'update'])->middleware('throttle:6,1')->name('account.password.update');
     // Halaman awal menurut peran: Koordinator ke verifikasi, Admin ke pengaturan.
     Route::get('/', function () {
         $u = auth()->user();
