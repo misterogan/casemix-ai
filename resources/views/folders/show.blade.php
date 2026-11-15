@@ -72,6 +72,9 @@
             </div>
         @endif
 
+        {{-- lg+: dua panel setinggi layar, masing-masing scroll sendiri --}}
+        <div class="grid gap-6 lg:h-[calc(100vh-220px)] lg:min-h-0 lg:grid-cols-2">
+        <div class="min-h-0 space-y-6 lg:overflow-y-auto lg:overscroll-contain">
         {{-- Daftar periksa: 14 butir tetap per kelompok --}}
         <section class="panel" aria-labelledby="judul-periksa" data-daftar-periksa>
             <div class="panel-head border-b border-gray-200 px-4 py-3">
@@ -145,10 +148,13 @@
             @include('folders.partials.detail', ['done' => $done ? (clone $done)->setAttribute('suggestions', []) : null])
         </div>
 
+        </div>
+
+        <div class="min-h-0 lg:overflow-y-auto lg:overscroll-contain">
         @if ($total)
             {{-- Accordion file: detail per dokumen --}}
             <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white" aria-labelledby="judul-file">
-                <div class="shrink-0 rounded-t-lg border-b border-gray-200 bg-white px-4 py-3">
+                <div class="sticky top-0 z-10 shrink-0 rounded-t-lg border-b border-gray-200 bg-white px-4 py-3">
                     <div class="flex items-baseline justify-between gap-3">
                         <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
                         <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
@@ -165,5 +171,7 @@
                 </div>
             </section>
         @endif
+        </div>
+        </div>
     </div>
 </x-app-layout>
