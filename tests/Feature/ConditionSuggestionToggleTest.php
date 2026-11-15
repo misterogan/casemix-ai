@@ -72,7 +72,7 @@ class ConditionSuggestionToggleTest extends TestCase
         $this->assertStringContainsString('"temuan"', $this->sentPrompt());
         $this->assertSame([], $a->suggestions, 'Field "kondisi" dari AI diabaikan');
         $this->actingAs($this->koordinator)->get(route('folders.show', $this->folder))->assertOk()
-            ->assertDontSee('Kondisi yang belum tertulis sebagai diagnosis');
+            ->assertDontSee('Kemungkinan belum tercatat di resume');
     }
 
     public function test_menyala_kondisi_tersimpan_dan_tampil(): void
@@ -96,7 +96,7 @@ class ConditionSuggestionToggleTest extends TestCase
         AppSetting::put(SettingController::KEY_CONDITION_SUGGESTIONS, false, null);
 
         $this->actingAs($this->koordinator)->get(route('folders.show', $this->folder))->assertOk()
-            ->assertDontSee('Kondisi yang belum tertulis sebagai diagnosis')->assertDontSee('Kemungkinan anemia')
+            ->assertDontSee('Kemungkinan belum tercatat di resume')->assertDontSee('Kemungkinan anemia')
             ->assertSee('Berkas lengkap.');
         $this->assertNotEmpty($a->fresh()->suggestions, 'Data lama tidak dihapus, hanya disembunyikan');
     }
