@@ -56,7 +56,7 @@ class ConditionSuggestion extends Model
         $hal = $this->halaman ?: '-';
 
         return sprintf(
-            'Dok, mohon konfirmasi untuk pasien %s (RM %s, SEP %s). Di %s hal. %s tercatat: %s. Apakah kondisi %s perlu dicantumkan sebagai diagnosis di resume medis? Bila ya, mohon dilengkapi di DHealth. Bila tidak, tidak perlu ada perubahan. Terima kasih.',
+            'Dok, mohon konfirmasi untuk pasien %s (RM %s, SEP %s). Di %s hal. %s tercatat: %s. Apakah kondisi %s perlu dicantumkan sebagai diagnosis di resume medis? Bila ya, mohon dilengkapi di Enigma. Bila tidak, tidak perlu ada perubahan. Terima kasih.',
             $folder->nama_pasien ?: $folder->name, $folder->no_rm ?: '-', $folder->no_sep ?: '-', $dok, $hal, rtrim((string) $this->bukti, '. '), $this->kondisi,
         );
     }

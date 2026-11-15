@@ -334,7 +334,7 @@ class FolderVerificationTest extends TestCase
         $this->analyze($folder);
         $this->assertCount(3, Http::recorded());
 
-        // Resume diperbaiki di DHealth: hanya file itu yang berubah
+        // Resume diperbaiki di Enigma: hanya file itu yang berubah
         $f = $this->ftpFolder('000001_PASIEN CONTOH_0000R0000000V000001', ['SEP.png', 'Resume Medis.png']);
         $f['files'][1]['modified'] = 1_794_100_000;
         $this->ftp->folders = [$f];
@@ -686,9 +686,9 @@ class FolderVerificationTest extends TestCase
         $this->actingAs($this->koordinator)->post($url, ['alasan' => ''])->assertSessionHasErrors('alasan');
         $this->assertSame('kurang', $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->value('status'));
 
-        $this->actingAs($this->koordinator)->post($url, ['alasan' => 'TTD elektronik di DHealth'])->assertSessionHas('ok');
+        $this->actingAs($this->koordinator)->post($url, ['alasan' => 'TTD elektronik di Enigma'])->assertSessionHas('ok');
         $item = $folder->rubricItems()->where('kode', 'res_ttd_dpjp')->sole();
-        $this->assertSame(['diterima', 'TTD elektronik di DHealth', $this->koordinator->id], [$item->status, $item->accepted_reason, $item->accepted_by]);
+        $this->assertSame(['diterima', 'TTD elektronik di Enigma', $this->koordinator->id], [$item->status, $item->accepted_reason, $item->accepted_by]);
         $this->assertTrue($folder->fresh()->ready());
         $this->assertSame(1, AuditLog::where('action', 'folder.rubrik_terima')->count());
 
@@ -781,7 +781,7 @@ class FolderVerificationTest extends TestCase
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
             ->assertSee('Salin pesan untuk DPJP')->assertSee($teks)
             ->assertSee('DPJP melengkapi resume di Enigma')
-            ->assertDontSee('Jangan menambahkan diagnosis di Edit Koreksi DHealth tanpa tertulis di resume oleh DPJP.')
+            ->assertDontSee('Jangan menambahkan diagnosis di Edit Koreksi Enigma tanpa tertulis di resume oleh DPJP.')
             ->assertDontSee('Saran DPJP:');
     }
 }
