@@ -79,6 +79,8 @@
             @endcan
         </nav>
 
+        <x-robot-worker class="hidden shrink-0 px-4 pb-3 lg:block" aria-hidden="true"/>
+
         <div class="shrink-0 border-t border-garis-g bg-white px-5 py-4">
             <div class="flex items-center gap-3">
                 <span class="grid size-9 place-items-center rounded-full bg-biru text-sm font-bold text-white">{{ auth()->user()->initials() }}</span>
@@ -99,6 +101,49 @@
 
     {{-- Konten --}}
     <main @class(['flex min-h-screen min-w-0 flex-col', 'lg:h-screen' => $fullHeight])>
+        @php
+            $sync = \App\Models\AppSetting::get(\App\Services\Verification\FolderSync::KEY_LAST);
+            $syncAt = is_array($sync) && ! empty($sync['at']) ? \Illuminate\Support\Carbon::parse($sync['at'])->timezone(config('app.timezone'))->format('H:i') : null;
+            $syncOk = (bool) ($sync['ok'] ?? true);
+            $diDaftar = request()->routeIs('folders.index');
+        @endphp
+        <header class="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b border-garis-g bg-gradient-to-r from-[#E8F0FE] via-white to-white px-4 shadow-[0_1px_2px_rgba(32,33,36,.05)] lg:px-8">
+            <div class="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(var(--color-garis-g)_1px,transparent_1px)] [background-size:14px_14px]" aria-hidden="true"></div>
+            <p class="relative flex min-w-0 shrink items-center gap-2 text-[15px] font-semibold text-arang sm:max-w-[30%]">
+                <svg class="size-5 shrink-0 text-biru" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                <span class="truncate">{{ $title ?? config('casemix.app_name') }}</span>
+            </p>
+            <div class="relative flex min-w-0 flex-1 justify-center">
+                @can('folders.view')
+                    <form method="GET" action="{{ route('folders.index') }}" role="search" class="w-full max-w-[520px]">
+                        @if ($diDaftar)
+                            @foreach (request()->except(['sep', 'page']) as $k => $v)
+                                @if (is_string($v))<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif
+                            @endforeach
+                        @endif
+                        <div class="cari h-10 bg-white/90">
+                            <button type="submit" class="cari-ikon" aria-label="Cari">
+                                <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+                            </button>
+                            <label for="cari-sep" class="sr-only">Cari No. SEP</label>
+                            <input id="cari-sep" name="sep" type="search" value="{{ $diDaftar ? request()->query('sep') : '' }}" maxlength="30"
+                                   class="cari-input num text-sm" placeholder="Cari No. SEP" autocomplete="off" spellcheck="false">
+                        </div>
+                    </form>
+                @endcan
+            </div>
+            <div class="relative flex shrink-0 items-center gap-3">
+                @if ($syncAt)
+                    <span @class(['hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium md:inline-flex',
+                                  'border-sesuai/25 bg-sesuai-muda text-sesuai' => $syncOk,
+                                  'border-kritis/25 bg-kritis-muda text-kritis' => ! $syncOk])>
+                        <span @class(['size-1.5 rounded-full', 'bg-sesuai' => $syncOk, 'bg-kritis' => ! $syncOk])></span>
+                        {{ $syncOk ? 'FTP tersinkron' : 'FTP gagal' }} {{ $syncAt }}
+                    </span>
+                @endif
+                <span class="grid size-9 place-items-center rounded-full bg-biru text-sm font-bold text-white" title="{{ auth()->user()->name }}">{{ auth()->user()->initials() }}</span>
+            </div>
+        </header>
         <div @class(['mx-auto w-full max-w-[1320px] flex-1 px-5 py-6 lg:px-8 lg:py-8', 'flex min-h-0 flex-col lg:overflow-hidden' => $fullHeight])>
             <x-ai-budget-banner/>
 

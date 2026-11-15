@@ -26,12 +26,9 @@
             @endif
         </p>
 
-        {{-- Satu-satunya isian di halaman ini: filter pencarian (GET) --}}
-        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto] lg:items-end">
-            <div>
-                <label for="sep" class="label">No. SEP</label>
-                <input id="sep" name="sep" value="{{ $filters['sep'] }}" maxlength="30" class="field num" placeholder="Contoh 0030R0011126V000143" autocomplete="off" spellcheck="false" autofocus>
-            </div>
+        {{-- Filter (GET); pencarian No. SEP ada di header --}}
+        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:items-end">
+            <input type="hidden" name="sep" value="{{ $filters['sep'] }}">
             <div>
                 <label for="dari" class="label">Dari tanggal</label>
                 <input id="dari" name="dari" type="date" value="{{ $filters['dari'] }}" class="field num">

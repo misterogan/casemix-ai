@@ -181,3 +181,57 @@
     .bar-tak-tentu::before { animation: none !important; left: 0; width: 100%; opacity: .6; }
   }
 }
+
+/* Robot pekerja di sidebar: hanya transform/opacity, siklus 6 detik */
+@layer components {
+  .robot-kerja svg * { transform-box: fill-box; }
+  .rb-sinar { opacity: 0; }
+  .rb-teks span { position: absolute; inset: 0; opacity: 0; }
+  .rb-teks span:first-child { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .rb-titik { animation: rb-titik 8s linear infinite; }
+    .rb-dokumen { animation: rb-dokumen 6s ease-in-out infinite; }
+    .rb-centang { transform-origin: center; animation: rb-centang 6s ease-out infinite; }
+    .rb-sinar { animation: rb-sinar 6s ease-in-out infinite; }
+    .rb-robot { animation: rb-pantul 6s ease-in-out infinite; }
+    .rb-lampu { transform-origin: center; animation: rb-lampu 1.6s ease-in-out infinite; }
+    .rb-mata { transform-origin: center; animation: rb-kedip 4.3s infinite; }
+    .rb-mata-2 { animation-duration: 5.7s; animation-delay: -1.9s; }
+    .rb-teks span { animation: rb-teks 12s infinite; }
+    .rb-teks span:first-child { opacity: 0; }
+    .rb-teks span:nth-child(2) { animation-delay: 4s; }
+    .rb-teks span:nth-child(3) { animation-delay: 8s; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .robot-kerja svg *, .rb-teks span { animation: none !important; }
+  }
+  @keyframes rb-titik { to { transform: translateX(-12px); } }
+  @keyframes rb-dokumen {
+    0% { transform: translateX(90px); opacity: 0; }
+    6% { opacity: 1; }
+    20%, 72% { transform: translateX(0); opacity: 1; }
+    92% { transform: translateX(-150px); opacity: 0; }
+    100% { transform: translateX(-150px); opacity: 0; }
+  }
+  @keyframes rb-sinar {
+    0%, 22% { transform: translateY(0); opacity: 0; }
+    25% { opacity: .85; }
+    34% { transform: translateY(28px); }
+    44% { transform: translateY(0); }
+    54% { transform: translateY(28px); opacity: .85; }
+    58%, 100% { transform: translateY(0); opacity: 0; }
+  }
+  @keyframes rb-centang {
+    0%, 58% { transform: scale(.3); opacity: 0; }
+    64% { transform: scale(1.15); opacity: 1; }
+    68%, 86% { transform: scale(1); opacity: 1; }
+    92%, 100% { transform: scale(1); opacity: 0; }
+  }
+  @keyframes rb-pantul {
+    0%, 22%, 30%, 38%, 46%, 54%, 62%, 100% { transform: translateY(0); }
+    26%, 34%, 42%, 50%, 58% { transform: translateY(-2px); }
+  }
+  @keyframes rb-lampu { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+  @keyframes rb-kedip { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+  @keyframes rb-teks { 0% { opacity: 0; } 3%, 30% { opacity: 1; } 33%, 100% { opacity: 0; } }
+}
