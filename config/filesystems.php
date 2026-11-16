@@ -33,6 +33,11 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
+            // Dipakai bersama user worker (oem) dan web (www-data) dalam grup www-data
+            'permissions' => [
+                'file' => ['public' => 0664, 'private' => 0660],
+                'dir' => ['public' => 0775, 'private' => 0770],
+            ],
             'serve' => true,
             'throw' => false,
             'report' => false,

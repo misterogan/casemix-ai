@@ -22,6 +22,7 @@ use App\Support\VerificationRubric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -286,7 +287,11 @@ class FolderController extends Controller
                 $disk->deleteDirectory($tmp);
             }
             if ($doc && ReadFolderDocument::archiveEnabled()) {
-                ReadFolderDocument::archiveContents($doc, $contents);
+                try {
+                    ReadFolderDocument::archiveContents($doc, $contents);
+                } catch (\Throwable $e) {
+                    Log::warning('Salinan arsip gagal disimpan; dokumen tetap ditampilkan dari FTP', ['document_id' => $doc->id, 'error' => $e->getMessage()]);
+                }
             }
         }
         Audit::log('folder.buka_dokumen', $folder, 'Membuka ' . $f['name']);

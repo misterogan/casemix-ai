@@ -3,6 +3,7 @@
 namespace App\Services\Verification;
 
 use App\Http\Controllers\Admin\SettingController;
+use App\Jobs\ReadFolderDocument;
 use App\Enums\ReviewStatus;
 use App\Models\AiProvider as ProviderConfig;
 use App\Models\Claim;
@@ -23,6 +24,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * Verifikasi folder FTP dalam dua tahap:
@@ -107,6 +109,14 @@ class FolderAnalyzer
 
         try {
             $local = $this->ftp->download($f['path'], $tmp . '/dokumen.' . Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION)));
+            // Salinan arsip dari unduhan yang sama (tanpa unduh kedua kali); gagal arsip tidak menggagalkan baca AI
+            try {
+                if (ReadFolderDocument::archiveEnabled() && ! $d->stored_path) {
+                    ReadFolderDocument::archiveContents($d, $disk->get($local));
+                }
+            } catch (Throwable $e) {
+                report($e);
+            }
             $mime = $disk->mimeType($local) ?: 'application/octet-stream';
             if (! in_array($mime, config('casemix.upload.content_types'), true)) {
                 return null;

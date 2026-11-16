@@ -900,4 +900,52 @@ class FolderVerificationTest extends TestCase
         Http::assertNothingSent();
         $this->assertTrue($a->documents()->get()->every(fn ($d) => $d->stored_path !== null));
     }
+
+    public function test_disk_lokal_membuat_folder_dengan_izin_grup(): void
+    {
+        $cfg = config('filesystems.disks.' . config('casemix.storage_disk'));
+        $this->assertSame(0770, $cfg['permissions']['dir']['private']);
+        $this->assertSame(0660, $cfg['permissions']['file']['private']);
+
+        $root = sys_get_temp_dir() . '/casemix-izin-' . \Illuminate\Support\Str::ulid();
+        $disk = Storage::build(array_merge($cfg, ['root' => $root]));
+        $old = umask(0);
+        try {
+            $disk->put('arsip/1/x.bin', 'isi');
+            $perm = fileperms("$root/arsip/1") & 0777;
+        } finally {
+            umask($old);
+            (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($root);
+        }
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $this->assertSame(0770, $perm, 'Folder baru: rwx untuk pemilik dan grup');
+        }
+    }
+
+    public function test_pratinjau_tetap_200_bila_salinan_gagal_disimpan(): void
+    {
+        $folder = $this->synced();
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $this->koordinator->id]);
+        app(FolderAnalyzer::class)->prepare($a);
+        Storage::disk(config('casemix.storage_disk'))->put('arsip', 'bukan folder'); // folder arsip tidak bisa dibuat
+        \Illuminate\Support\Facades\Log::spy();
+
+        $res = $this->actingAs($this->koordinator)->get(route('folders.file', [$folder, 1]))->assertOk()->assertHeader('Content-Type', 'image/png');
+
+        $this->assertSame(base64_decode(self::PNG), $res->getContent());
+        $this->assertNull($a->documents()->where('name', 'SEP.png')->value('stored_path'));
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once();
+    }
+
+    public function test_satu_dokumen_dibaca_ai_satu_unduhan_ftp(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertCount(2, $this->ftp->downloads, 'Dua dokumen = dua unduhan');
+        $this->assertTrue($a->documents->every(fn ($d) => $d->stored_path !== null));
+    }
 }

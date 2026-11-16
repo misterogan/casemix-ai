@@ -60,13 +60,7 @@ class ReadFolderDocument implements ShouldQueue
                 throw new RuntimeException($blocked);
             }
             $config = $ai->defaultConfig();
-            $req = $analyzer->documentRequest($d, $config);
-            // File sudah terbaca: simpan salinan terenkripsi supaya riwayat dan pratinjau tetap ada walau file dipindah dari FTP
-            try {
-                self::archiveFromFtp($d, app(SimrsFtp::class));
-            } catch (Throwable $e) {
-                report($e);
-            }
+            $req = $analyzer->documentRequest($d, $config); // sekaligus menyimpan salinan arsip dari unduhan yang sama
             if (! $req) {
                 $d->update(['status' => ReviewStatus::Selesai, 'summary' => null, 'findings' => [], 'finished_at' => now(),
                     'error' => 'Bukan PDF/gambar; tidak dibaca AI.']);
@@ -160,8 +154,8 @@ class ReadFolderDocument implements ShouldQueue
         $path = 'arsip/' . $d->ftp_folder_id . '/' . $sha . '.bin';
         $disk = Storage::disk(config('casemix.storage_disk'));
         $new = ! $disk->exists($path);
-        if ($new) {
-            $disk->put($path, Crypt::encrypt($contents));
+        if ($new && ! $disk->put($path, Crypt::encrypt($contents))) {
+            throw new RuntimeException("Gagal menyimpan salinan arsip: $path");
         }
         $attrs = ['stored_path' => $path, 'stored_sha256' => $sha, 'stored_size' => strlen($contents), 'stored_at' => now()];
         FolderDocument::where('ftp_folder_id', $d->ftp_folder_id)->where('name', $d->name)->where('file_fingerprint', $d->file_fingerprint)
