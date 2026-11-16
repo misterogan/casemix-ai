@@ -149,6 +149,9 @@
                         <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>
                         <p class="text-sm text-abu" data-docs-progress>{{ $selesai }} dari {{ $total }} file selesai</p>
                     </div>
+                    @if ($folder->missing_at)
+                        <p class="mt-1 text-xs text-abu">Dokumen dibuka dari salinan arsip CERMAT</p>
+                    @endif
                     <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label="Kemajuan baca file"
                          aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $selesai }}" data-docs-bar>
                         <div class="h-full rounded-full bg-green-600 transition-[width] duration-200 motion-reduce:transition-none" style="width: {{ round($selesai / $total * 100) }}%"></div>
@@ -157,6 +160,7 @@
                 <div class="space-y-2 p-3" data-docs-list>
                     @foreach ($documents as $d)
                         @include('folders.partials.document')
+                        <p class="-mt-1 px-1 text-xs {{ $d->stored_path ? 'text-green-700' : 'text-abu' }}" data-arsip>{{ $d->stored_path ? 'tersimpan' : 'tidak tersimpan' }}</p>
                     @endforeach
                 </div>
             </section>

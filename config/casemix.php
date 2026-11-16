@@ -77,4 +77,10 @@ return [
         'path_riwayat_pasien' => env('SIMRS_FTP_PATH_RIWAYAT', '/ftp/riwayat_pasien/'),
         'max_files_per_import' => (int) env('SIMRS_FTP_MAX_FILES', 60),
     ],
+
+    'archive' => [
+        // Salinan terenkripsi tiap dokumen yang dibaca AI (arsip/{folder}/{sha256}.bin di storage_disk)
+        'enabled' => (bool) env('CASEMIX_ARCHIVE_ENABLED', true),
+        'retention_months' => (int) env('CASEMIX_ARCHIVE_RETENTION_MONTHS', 24),
+    ],
 ];

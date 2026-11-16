@@ -34,6 +34,9 @@ class FakeFtp extends SimrsFtp
 
     public array $downloads = [];
 
+    /** true = file sudah dipindah/dihapus dari FTP */
+    public bool $gone = false;
+
     public function configured(): bool
     {
         return true;
@@ -46,6 +49,9 @@ class FakeFtp extends SimrsFtp
 
     public function download(string $remotePath, string $localRelative): string
     {
+        if ($this->gone) {
+            throw new \RuntimeException('File tidak ada di FTP.');
+        }
         $this->downloads[] = $remotePath;
         Storage::disk(config('casemix.storage_disk'))->put($localRelative,
             base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='));
@@ -783,5 +789,115 @@ class FolderVerificationTest extends TestCase
             ->assertSee('DPJP melengkapi resume di Enigma')
             ->assertDontSee('Jangan menambahkan diagnosis di Edit Koreksi Enigma tanpa tertulis di resume oleh DPJP.')
             ->assertDontSee('Saran DPJP:');
+    }
+
+    // ------------------------------------------------------------ arsip salinan terenkripsi
+
+    private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    public function test_setelah_dibaca_salinan_terenkripsi_tersimpan_dan_sha_sama_dipakai_ulang(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+
+        $disk = Storage::disk(config('casemix.storage_disk'));
+        $docs = $a->documents;
+        $this->assertTrue($docs->every(fn ($d) => $d->stored_path && $d->stored_at), 'Semua dokumen punya salinan');
+        $this->assertSame("arsip/{$folder->id}/" . hash('sha256', base64_decode(self::PNG)) . '.bin', $docs[0]->stored_path);
+        $this->assertCount(1, $disk->files("arsip/{$folder->id}"), 'Isi sama (sha256 sama) disimpan sekali');
+        $this->assertSame($docs[0]->stored_path, $docs[1]->stored_path);
+        $raw = $disk->get($docs[0]->stored_path);
+        $this->assertNotSame(base64_decode(self::PNG), $raw, 'Isi di disk terenkripsi');
+        $this->assertSame(base64_decode(self::PNG), \Illuminate\Support\Facades\Crypt::decrypt($raw));
+        $this->assertSame([], $disk->files('tmp', true), 'File sementara dibersihkan');
+    }
+
+    public function test_pratinjau_dari_salinan_saat_file_tidak_ada_lagi_di_ftp(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG);
+        $this->analyze($folder);
+        $this->ftp->gone = true;
+        $folder->update(['missing_at' => now()]);
+        $unduhan = count($this->ftp->downloads);
+
+        $res = $this->actingAs($this->koordinator)->get(route('folders.file', [$folder, 1]))->assertOk()
+            ->assertHeader('Content-Type', 'image/png')->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringContainsString('inline', $res->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('no-store', $res->headers->get('Cache-Control'));
+        $this->assertSame(base64_decode(self::PNG), $res->getContent());
+        $this->assertSame($unduhan, count($this->ftp->downloads), 'Tidak mengambil dari FTP');
+        $this->assertSame(1, AuditLog::where('action', 'folder.buka_dokumen')->count());
+
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()
+            ->assertSee('Dokumen dibuka dari salinan arsip CERMAT')->assertSee('tersimpan');
+    }
+
+    public function test_pratinjau_dari_ftp_menyimpan_salinan_dan_dokumen_dipakai_ulang_mewarisinya(): void
+    {
+        $folder = $this->synced();
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Selesai, 'requested_by' => $this->koordinator->id]);
+        app(FolderAnalyzer::class)->prepare($a);
+        $a->documents()->update(['status' => ReviewStatus::Selesai->value, 'finished_at' => now()]);
+        $a->update(['finished_at' => now()]);
+
+        $this->actingAs($this->koordinator)->get(route('folders.file', [$folder, 1]))->assertOk();
+        $sep = $a->documents()->where('name', 'SEP.png')->first();
+        $this->assertNotNull($sep->stored_path, 'Dibuka dari FTP lalu disimpan');
+
+        $b = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $this->koordinator->id]);
+        app(FolderAnalyzer::class)->prepare($b);
+        $folder->update(['last_analysis_id' => $b->id]);
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk();
+        $baru = $b->documents()->where('name', 'SEP.png')->first();
+        $this->assertTrue($baru->reused);
+        $this->assertSame($sep->stored_path, $baru->stored_path, 'Dokumen dipakai ulang mewarisi salinan');
+    }
+
+    public function test_prune_menghapus_salinan_lama_tanpa_menghapus_hasil(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [['field' => 'tanggal_masuk', 'nilai' => '2026-11-04']], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+        $path = $a->documents[0]->stored_path;
+        $a->documents()->update(['stored_at' => now()->subMonths(25)]);
+
+        $this->artisan('casemix:archive-prune')->assertSuccessful();
+
+        $this->assertFalse(Storage::disk(config('casemix.storage_disk'))->exists($path));
+        $docs = $a->fresh()->documents;
+        $this->assertTrue($docs->every(fn ($d) => $d->stored_path === null && $d->status === ReviewStatus::Selesai && $d->summary !== null), 'Hasil verifikasi tetap');
+        $log = AuditLog::where('action', 'arsip.hapus_kedaluwarsa')->sole();
+        $this->assertSame(1, $log->properties['files']);
+        $this->assertSame(2, $log->properties['documents']);
+    }
+
+    public function test_prune_tidak_menghapus_salinan_yang_masih_baru(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+
+        $this->artisan('casemix:archive-prune')->assertSuccessful();
+
+        $this->assertTrue($a->fresh()->documents->every(fn ($d) => $d->stored_path !== null));
+    }
+
+    public function test_backfill_menyimpan_salinan_tanpa_memanggil_ai(): void
+    {
+        Http::fake();
+        $folder = $this->synced();
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Selesai, 'requested_by' => $this->koordinator->id]);
+        app(FolderAnalyzer::class)->prepare($a);
+
+        $this->artisan('casemix:archive-backfill', ['--limit' => 50])->expectsOutputToContain('Tersimpan: 2 dokumen')->assertSuccessful();
+
+        Http::assertNothingSent();
+        $this->assertTrue($a->documents()->get()->every(fn ($d) => $d->stored_path !== null));
     }
 }

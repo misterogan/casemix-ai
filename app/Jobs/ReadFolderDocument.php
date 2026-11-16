@@ -7,9 +7,13 @@ use App\Models\FolderDocument;
 use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
 use App\Services\Ai\AiResponse;
+use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -57,6 +61,12 @@ class ReadFolderDocument implements ShouldQueue
             }
             $config = $ai->defaultConfig();
             $req = $analyzer->documentRequest($d, $config);
+            // File sudah terbaca: simpan salinan terenkripsi supaya riwayat dan pratinjau tetap ada walau file dipindah dari FTP
+            try {
+                self::archiveFromFtp($d, app(SimrsFtp::class));
+            } catch (Throwable $e) {
+                report($e);
+            }
             if (! $req) {
                 $d->update(['status' => ReviewStatus::Selesai, 'summary' => null, 'findings' => [], 'finished_at' => now(),
                     'error' => 'Bukan PDF/gambar; tidak dibaca AI.']);
@@ -101,5 +111,71 @@ class ReadFolderDocument implements ShouldQueue
     private static function truncated(AiResponse $res): bool
     {
         return in_array($res->raw['stop_reason'] ?? null, ['max_tokens', 'length'], true);
+    }
+
+    // ------------------------------------------------------------ arsip salinan terenkripsi
+
+    public static function archiveEnabled(): bool
+    {
+        return (bool) config('casemix.archive.enabled', true);
+    }
+
+    /** Dokumen lain dengan file yang sama (folder, nama, sidik) yang sudah punya salinan. */
+    public static function storedSibling(FolderDocument $d): ?FolderDocument
+    {
+        return FolderDocument::where('ftp_folder_id', $d->ftp_folder_id)->where('name', $d->name)->where('file_fingerprint', $d->file_fingerprint)
+            ->whereNotNull('stored_path')->latest('id')->first();
+    }
+
+    /** Simpan salinan dari FTP bila belum ada. Mengembalikan ukuran byte yang baru disimpan (0 bila memakai salinan yang ada / tidak disimpan). */
+    public static function archiveFromFtp(FolderDocument $d, SimrsFtp $ftp): int
+    {
+        if (! self::archiveEnabled() || $d->stored_path) {
+            return 0;
+        }
+        if ($s = self::storedSibling($d)) {
+            $d->update($s->only(['stored_path', 'stored_sha256', 'stored_size', 'stored_at']));
+
+            return 0;
+        }
+        $f = collect($d->folder?->files)->firstWhere('name', $d->name);
+        if (! $f || FolderDocument::fingerprintOf($f) !== $d->file_fingerprint) {
+            return 0; // file di FTP sudah lain dari yang dibaca
+        }
+        $disk = Storage::disk(config('casemix.storage_disk'));
+        $tmp = 'tmp/arsip/' . Str::ulid();
+        try {
+            $local = $ftp->download($f['path'], $tmp . '/dokumen');
+
+            return self::archiveContents($d, $disk->get($local));
+        } finally {
+            $disk->deleteDirectory($tmp);
+        }
+    }
+
+    /** Enkripsi dan simpan isi file di arsip/{folder}/{sha256}.bin; sha256 sama dipakai ulang. Dokumen kembar ikut mewarisi. */
+    public static function archiveContents(FolderDocument $d, string $contents): int
+    {
+        $sha = hash('sha256', $contents);
+        $path = 'arsip/' . $d->ftp_folder_id . '/' . $sha . '.bin';
+        $disk = Storage::disk(config('casemix.storage_disk'));
+        $new = ! $disk->exists($path);
+        if ($new) {
+            $disk->put($path, Crypt::encrypt($contents));
+        }
+        $attrs = ['stored_path' => $path, 'stored_sha256' => $sha, 'stored_size' => strlen($contents), 'stored_at' => now()];
+        FolderDocument::where('ftp_folder_id', $d->ftp_folder_id)->where('name', $d->name)->where('file_fingerprint', $d->file_fingerprint)
+            ->whereNull('stored_path')->update($attrs);
+        $d->forceFill($attrs)->save();
+
+        return $new ? strlen($contents) : 0;
+    }
+
+    /** Isi asli dari salinan, atau null bila tidak ada. */
+    public static function archivedContents(?FolderDocument $d): ?string
+    {
+        $disk = Storage::disk(config('casemix.storage_disk'));
+
+        return $d?->stored_path && $disk->exists($d->stored_path) ? Crypt::decrypt($disk->get($d->stored_path)) : null;
     }
 }

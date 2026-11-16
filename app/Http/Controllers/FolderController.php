@@ -268,24 +268,37 @@ class FolderController extends Controller
         return back()->with('ok', 'Tindak lanjut saran dicatat.');
     }
 
-    /** Buka satu dokumen langsung dari FTP (tidak disimpan). Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */
+    /** Buka satu dokumen: dari salinan arsip bila ada, bila tidak dari FTP lalu disimpan salinannya. Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */
     public function file(FtpFolder $folder, int $index, SimrsFtp $ftp)
     {
         $f = $folder->fileAt($index);
         abort_unless($f, 404);
 
-        $disk = Storage::disk(config('casemix.storage_disk'));
-        $local = $ftp->download($f['path'], 'tmp/lihat/' . Str::ulid() . '.' . Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION)));
-        $mime = $disk->mimeType($local) ?: 'application/octet-stream';
-        $safe = in_array($mime, config('casemix.upload.content_types'), true);
+        $doc = FolderDocument::where('ftp_folder_id', $folder->id)->where('name', $f['name'])
+            ->where('file_fingerprint', FolderDocument::fingerprintOf($f))->latest('id')->first();
+        $contents = ReadFolderDocument::archivedContents($doc && ! $doc->stored_path ? ReadFolderDocument::storedSibling($doc) : $doc);
+        if ($contents === null) {
+            $disk = Storage::disk(config('casemix.storage_disk'));
+            $tmp = 'tmp/lihat/' . Str::ulid();
+            try {
+                $contents = $disk->get($ftp->download($f['path'], $tmp . '/dokumen'));
+            } finally {
+                $disk->deleteDirectory($tmp);
+            }
+            if ($doc && ReadFolderDocument::archiveEnabled()) {
+                ReadFolderDocument::archiveContents($doc, $contents);
+            }
+        }
         Audit::log('folder.buka_dokumen', $folder, 'Membuka ' . $f['name']);
 
-        return response()->file($disk->path($local), [
-            'Content-Type' => $safe ? $mime : 'application/octet-stream',
-            'Content-Disposition' => ($safe ? 'inline' : 'attachment') . '; filename="' . str_replace(['"', "\r", "\n"], '', $f['name']) . '"',
+        $mime = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'][Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION))] ?? null;
+
+        return response($contents, 200, [
+            'Content-Type' => $mime ?? 'application/octet-stream',
+            'Content-Disposition' => ($mime ? 'inline' : 'attachment') . '; filename="' . str_replace(['"', "\r", "\n"], '', $f['name']) . '"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store',
-        ])->deleteFileAfterSend();
+        ]);
     }
 
     private function startBlocker(AiBudget $budget): ?string
@@ -323,7 +336,7 @@ class FolderController extends Controller
             'done' => $done,
             'changed' => $done && $done->fingerprint !== $folder->fingerprint,
             'blocker' => $blocker,
-            'documents' => $latest ? $latest->documents()->get() : collect(),
+            'documents' => $latest ? $this->withArchive($latest->documents()->get()) : collect(),
             'linkable' => collect($folder->files)->pluck('name')->flip(),
             'canResynth' => $latest ? $this->canResynth($latest) : false,
             // Daftar periksa: 14 butir tetap, urut sesuai rubrik, dikelompokkan
@@ -332,6 +345,18 @@ class FolderController extends Controller
             'saranOn' => $saranOn,
             'suggestions' => $saranOn ? $folder->conditionSuggestions()->get() : collect(),
         ];
+    }
+
+    /** Dokumen yang dipakai ulang mewarisi salinan arsip dari dokumen sebelumnya dengan file yang sama. */
+    private function withArchive($docs)
+    {
+        foreach ($docs->whereNull('stored_path') as $d) {
+            if ($s = ReadFolderDocument::storedSibling($d)) {
+                $d->update($s->only(['stored_path', 'stored_sha256', 'stored_size', 'stored_at']));
+            }
+        }
+
+        return $docs;
     }
 
     /** Semua file analisa terakhir selesai dibaca, tetapi tahap 2 gagal atau belum ada hasilnya. */
