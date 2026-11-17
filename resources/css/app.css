@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/plus-jakarta-sans';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -15,7 +16,30 @@
  * stempel #4B3A9C  cap persetujuan (tinta stempel dinas)
  */
 @theme {
-  --font-sans: 'Public Sans', ui-sans-serif, system-ui, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, sans-serif;
+
+  /* Papan triase CERMAT */
+  --color-brand: #1A5FD0;
+  --color-brand-soft: #E8F0FC;
+  --color-ink: #1F2A3D;
+  --color-ink-muted: #5B6880;
+  --color-paper: #F5F7FB;
+  --color-line: #DCE3EE;
+  --color-triage-red: #C8352E;
+  --color-triage-red-soft: #FBECEB;
+  --color-triage-amber: #D99A0B;
+  --color-triage-amber-soft: #FDF4E2;
+  --color-triage-green: #1E8A5A;
+  --color-triage-green-soft: #E6F4EC;
+
+  /* Skala huruf 12/14/16/20/28/40: xs, sm, base, xl (bawaan) + title, display */
+  --text-title: 28px;
+  --text-title--line-height: 1.25;
+  --text-display: 40px;
+  --text-display--line-height: 1.15;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
 
   --color-kertas: #F6F7F4;
   --color-garis: #DDE2DC;
@@ -56,13 +80,14 @@
 
 @layer base {
   html { font-feature-settings: 'tnum' 0; }
-  body { @apply bg-kertas text-tinta antialiased; }
-  :focus-visible { outline: 2px solid var(--color-giok); outline-offset: 2px; border-radius: 4px; }
+  body { @apply bg-paper text-ink antialiased; }
+  :focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; border-radius: 4px; }
   ::selection { background: var(--color-manila); }
 }
 
 @layer components {
   .num { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .tabular { font-variant-numeric: tabular-nums; }
 
   /* Tombol — Tailwind v4 tidak bisa @apply kelas buatan sendiri, jadi dasar tombol digabung lewat selektor */
   .btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .btn-stamp {
@@ -122,8 +147,8 @@
   }
   @keyframes stamp-in { from { transform: rotate(-14deg) scale(1.35); opacity: 0; } to { transform: rotate(-6deg) scale(1); opacity: .9; } }
 
-  /* Fokus keyboard: cincin biru 2px */
-  :focus-visible { outline-color: var(--color-biru); }
+  /* Fokus keyboard: cincin brand 2px */
+  :focus-visible { outline-color: var(--color-brand); }
 
   /* Kotak pencarian berbentuk pil */
   .cari { @apply flex h-11 w-full items-center gap-1 rounded-full border border-garis-g bg-white pr-2 pl-1 transition-[box-shadow,border-color,height,max-width] duration-200; }

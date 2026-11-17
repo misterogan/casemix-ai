@@ -6,12 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ isset($title) ? $title . ' · ' : '' }}{{ config('casemix.app_name') }}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body @class(['min-h-screen bg-latar', 'lg:h-full lg:overflow-hidden' => $fullHeight])>
+<body @class(['min-h-screen bg-paper text-ink', 'lg:h-full lg:overflow-hidden' => $fullHeight])>
 @php
     // Menu utama: Koordinator membaca hasil verifikasi AI langsung dari folder FTP.
     // Menu berkas klaim, impor, dan ringkasan lama disembunyikan (datanya tetap ada).
