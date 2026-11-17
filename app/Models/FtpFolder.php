@@ -32,6 +32,7 @@ class FtpFolder extends Model
             'missing_at' => 'datetime',
             'analyzed_at' => 'datetime',
             'rubric_kurang' => 'integer',
+            'assigned_at' => 'datetime',
         ];
     }
 
@@ -43,6 +44,12 @@ class FtpFolder extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(FolderDocument::class);
+    }
+
+    /** Petugas yang ditugaskan Koordinator untuk menindaklanjuti folder ini. */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
     }
 
     public function rubricItems(): HasMany

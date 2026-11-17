@@ -83,4 +83,14 @@ return [
         'enabled' => (bool) env('CASEMIX_ARCHIVE_ENABLED', true),
         'retention_months' => (int) env('CASEMIX_ARCHIVE_RETENTION_MONTHS', 24),
     ],
+
+    'dashboard' => [
+        // Prioritas 0-100 (App\Services\Dashboard\ClaimVerdict): bobot vonis + per butir kurang + umur hari sejak tanggal FTP
+        'weight_blokir' => 40,
+        'weight_tinjau' => 20,
+        'per_kurang' => 5,
+        'max_kurang' => 30,
+        'max_umur' => 30,
+        'sla_days' => (int) env('CASEMIX_DASHBOARD_SLA_DAYS', 7), // tenggat pengajuan sejak tanggal FTP
+    ],
 ];

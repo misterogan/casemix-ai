@@ -271,6 +271,24 @@ class FolderController extends Controller
         return back()->with('ok', 'Tindak lanjut saran dicatat.');
     }
 
+    /** Tugaskan/lepas petugas folder (Koordinator). user_id kosong = lepas. Diaudit dengan nilai lama/baru. */
+    public function assign(Request $request, FtpFolder $folder)
+    {
+        $v = $request->validate(['user_id' => ['nullable', 'integer', 'exists:users,id']]);
+        $lama = $folder->assigned_to;
+        $baru = isset($v['user_id']) ? (int) $v['user_id'] : null;
+        if ($lama === $baru) {
+            return back()->with('ok', 'Penugasan tidak berubah.');
+        }
+        $folder->update(['assigned_to' => $baru, 'assigned_at' => $baru ? now() : null]);
+        $nama = fn ($id) => $id ? (\App\Models\User::find($id)?->name ?? "#$id") : null;
+        Audit::log($baru ? 'folder.tugaskan' : 'folder.lepas_tugas', $folder,
+            $baru ? 'Menugaskan folder ke ' . $nama($baru) : 'Melepas penugasan folder dari ' . $nama($lama),
+            ['perubahan' => ['assigned_to' => ['lama' => $lama, 'baru' => $baru], 'petugas' => ['lama' => $nama($lama), 'baru' => $nama($baru)]]]);
+
+        return back()->with('ok', $baru ? 'Folder ditugaskan.' : 'Penugasan dilepas.');
+    }
+
     /** Catat tindak lanjut saran kode ke DPJP. Tidak memengaruhi status Siap diajukan dan tidak menulis ke Enigma. */
     public function codeStatus(Request $request, FtpFolder $folder, CodeSuggestion $code)
     {
