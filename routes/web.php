@@ -43,6 +43,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     // Pusat Kendali Klaim: Koordinator saja (Admin tidak, privasi)
     Route::get('/dashboard', \App\Http\Controllers\Dashboard\DashboardController::class)->middleware('role:koordinator')->name('control.index');
+    Route::get('/antrean', \App\Http\Controllers\WorkQueueController::class)->middleware('role:koordinator')->name('work-queue.index');
 
     // Verifikasi langsung dari folder FTP
     Route::middleware('permission:folders.view')->group(function () {
