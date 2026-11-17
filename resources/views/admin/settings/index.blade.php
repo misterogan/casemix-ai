@@ -1,5 +1,7 @@
 <x-app-layout title="Pengaturan">
-    <x-page-header title="Pengaturan dan FTP" subtitle="Nilai di halaman ini dibaca dari file .env server. Ubah .env lalu jalankan php artisan config:cache."/>
+    <x-page-header title="Pengaturan dan FTP" subtitle="Nilai di halaman ini dibaca dari file .env server. Ubah .env lalu jalankan php artisan config:cache.">
+        <x-slot:actions><a href="{{ route('admin.regulations.index') }}" class="btn-secondary">Acuan regulasi</a></x-slot:actions>
+    </x-page-header>
 
     <div class="grid gap-6 lg:grid-cols-2">
         <section class="panel">

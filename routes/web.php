@@ -111,5 +111,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('pengaturan', [SettingController::class, 'index'])->name('settings.index');
         Route::post('pengaturan/uji-ftp', [SettingController::class, 'testFtp'])->name('settings.ftp');
         Route::put('pengaturan/analisa', [SettingController::class, 'updateAnalysis'])->name('settings.analysis');
+        Route::resource('pengaturan/acuan-regulasi', \App\Http\Controllers\Admin\RegulationController::class)->except(['show'])
+            ->parameters(['acuan-regulasi' => 'regulation'])->names('regulations');
     });
 });

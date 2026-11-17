@@ -9,6 +9,7 @@
         $total = $documents->count();
         $kunci = $berjalan && ! $blocker; // tombol yang dibuka JS saat analisa selesai
         $siap = $folder->ready();
+        $acuanPerButir = \App\Models\Regulation::byRubric();
         $menunggu = $saranOn ? $suggestions->whereIn('status', ['baru', 'ditanyakan'])->count() : 0;
         $tautan = fn (?string $dok, ?int $hal) => $dok !== null && isset($linkable[$dok]) ? route('folders.file', [$folder, $linkable[$dok]]) . ($hal ? '#page=' . $hal : '') : null;
     @endphp
@@ -97,6 +98,9 @@
                                                 @if ($url) · <a href="{{ $url }}" data-preview="{{ $i->dokumen }}" target="_blank" rel="noopener" class="text-url underline">{{ $i->dokumen }}@if ($i->halaman) hal. {{ $i->halaman }}@endif</a>
                                                 @elseif ($i->dokumen) · {{ $i->dokumen }}@endif
                                             </p>
+                                        @endif
+                                        @if ($i->status === 'kurang')
+                                            @include('folders.partials.regulation', ['kode' => $i->kode])
                                         @endif
                                         @if ($i->status === 'diterima')
                                             <p class="text-xs text-blue-800">Diterima: {{ $i->accepted_reason }}</p>
