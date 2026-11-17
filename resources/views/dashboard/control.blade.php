@@ -55,6 +55,16 @@
         <section class="panel border-dashed bg-abu-muda px-5 py-4 text-gray-500"><p class="text-sm">Nilai klaim &amp; status BPJS — tersedia setelah VClaim tersambung</p></section>
     </div>
 
+    <section class="mt-4" aria-labelledby="judul-pindah">
+        <h2 id="judul-pindah" class="text-sm font-medium text-arang">Folder dipindahkan dari FTP</h2>
+        <p class="text-xs text-abu">perkiraan dari waktu folder hilang di FTP</p>
+        <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            @foreach ([['dipindahkan', 'Sudah dipindahkan (perkiraan diajukan)', $s['pindah']['dipindahkan']], ['pindah_belum_siap', 'Dipindah dalam status belum siap', $s['pindah']['belum_siap']], ['tanpa_periksa', 'Dipindah tanpa diperiksa CERMAT', $s['pindah']['tanpa_periksa']], ['median_hari', 'Median hari masuk FTP → dipindahkan', $s['pindah']['median_hari'] ?? '—']] as [$k, $l, $n])
+                <section class="panel px-4 py-3"><p class="text-xs text-abu">{{ $l }}</p><p class="mt-1 text-xl font-bold text-arang" data-kartu="{{ $k }}">{{ $n }}</p></section>
+            @endforeach
+        </div>
+    </section>
+
     {{-- 4. Butir rubrik paling sering kurang --}}
     <section class="panel" aria-labelledby="judul-rubrik">
         <div class="panel-head"><h2 id="judul-rubrik" class="panel-title">Butir rubrik paling sering kurang</h2></div>

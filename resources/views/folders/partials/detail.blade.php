@@ -17,7 +17,7 @@
 
 <div class="space-y-4">
         @if ($folder->missing_at)
-            <p class="rounded-lg border border-garis-g bg-white px-4 py-3 text-sm text-abu">Folder ini sudah tidak ada di FTP sejak {{ $folder->missing_at->translatedFormat('d M Y H:i') }}. Hasil analisa terakhir tetap ditampilkan.</p>
+            <p class="rounded-lg border border-biru/25 bg-biru-muda px-4 py-3 text-sm text-biru-aktif" role="status">Folder sudah dipindahkan dari FTP pada ±{{ $folder->missing_at->translatedFormat('d M Y') }}. Hasil verifikasi dan salinan dokumen tetap tersimpan.</p>
         @endif
         @if ($changed && ! $active)
             <p class="rounded-lg border border-stempel/25 bg-[#ECE9F7] px-4 py-3 text-sm text-stempel">

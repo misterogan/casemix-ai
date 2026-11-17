@@ -88,6 +88,24 @@ class DashboardStats
             'kurang_klaim' => $kodeAktif ? $this->top($codes->where('peran', 'sekunder')->where('system', 'icd10')->where('tercantum_di_resume', false)
                 ->reject(fn ($c) => in_array($c->status_tindak_lanjut, ['tidak_setuju', 'tidak_relevan'], true))->pluck('code')) : null,
             'kurang_bukti' => $kodeAktif ? $this->top($this->weakDiagnosis($ids, $codes)) : null,
+            'pindah' => $this->moved($period),
+        ];
+    }
+
+    /** Folder yang hilang dari FTP (perkiraan diajukan) dalam periode, berdasar missing_at. */
+    private function moved(string $period): array
+    {
+        $moved = FtpFolder::query()->whereNotNull('missing_at')
+            ->when($this->since($period), fn ($w, $from) => $w->where('missing_at', '>=', $from))->get();
+        $periksa = $moved->filter(fn ($f) => $f->moved_status === 'dipindahkan');
+        $hari = $moved->map(fn ($f) => ($f->first_seen_at ?? $f->files_modified_at)?->diffInDays($f->missing_at))
+            ->filter(fn ($d) => $d !== null)->map(fn ($d) => max(0, (int) floor($d)));
+
+        return [
+            'dipindahkan' => $moved->count(),
+            'belum_siap' => $periksa->filter(fn ($f) => in_array($this->verdict->verdict($f), ['tinjau', 'blokir'], true))->count(),
+            'tanpa_periksa' => $moved->count() - $periksa->count(),
+            'median_hari' => $hari->isEmpty() ? null : $hari->median(),
         ];
     }
 

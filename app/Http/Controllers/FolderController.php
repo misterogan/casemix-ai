@@ -39,7 +39,9 @@ class FolderController extends Controller
             'sampai' => ['nullable', 'date'],
             'periksa' => ['nullable', 'in:sudah,belum'],
             'kesiapan' => ['nullable', 'in:siap,belum_siap'],
+            'tab' => ['nullable', 'in:aktif,dipindahkan,hilang_tanpa_periksa'],
         ]);
+        $tab = $v['tab'] ?? 'aktif';
 
         $sep = strtoupper(preg_replace('/\s+/', '', (string) ($v['sep'] ?? '')));
         $dari = filled($v['dari'] ?? null) ? Carbon::parse($v['dari'])->startOfDay() : null;
@@ -51,13 +53,13 @@ class FolderController extends Controller
         $kesiapan = $v['kesiapan'] ?? '';
 
         // Filter No. SEP dan tanggal; status pemeriksaan ditambahkan terpisah supaya jumlah per status bisa dihitung
-        $base = fn () => FtpFolder::query()
-            ->whereNull('missing_at')
+        $filtered = fn () => FtpFolder::query()
             ->when($sep !== '', fn ($w) => $w->where('no_sep', 'like', "%$sep%"))
             ->when($dari, fn ($w) => $w->where('files_modified_at', '>=', $dari))
             ->when($sampai, fn ($w) => $w->where('files_modified_at', '<=', $sampai))
             ->when($kesiapan === 'siap', fn ($w) => $w->where('rubric_kurang', 0))
             ->when($kesiapan === 'belum_siap', fn ($w) => $w->where('rubric_kurang', '>', 0));
+        $base = fn () => $filtered()->moved($tab);
         $byStatus = fn ($w, string $p) => match ($p) {
             'sudah' => $w->where('analysis_status', 'selesai'),
             'belum' => $w->whereNull('analysis_status'),
@@ -65,8 +67,10 @@ class FolderController extends Controller
         };
 
         return view('folders.index', [
-            'folders' => $byStatus($base(), $periksa)->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
+            'folders' => $byStatus($base(), $periksa)->when($tab !== 'aktif', fn ($w) => $w->orderByDesc('missing_at'))->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
             'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa, 'kesiapan' => $kesiapan],
+            'tab' => $tab,
+            'tabCounts' => collect(['aktif', 'dipindahkan', 'hilang_tanpa_periksa'])->mapWithKeys(fn ($t) => [$t => $filtered()->moved($t)->count()])->all(),
             'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
         ]);

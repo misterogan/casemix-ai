@@ -17,6 +17,9 @@
         @if ($f->files_modified_at) · diperbarui di FTP {{ $f->files_modified_at->translatedFormat('d M Y') }}@endif
     </p>
     <div class="mt-2 flex">
+        @if ($f->moved_status)
+            <span class="chip {{ $f->moved_status === 'dipindahkan' ? 'chip-proses' : 'chip-belum' }}" data-moved="{{ $f->moved_status }}">{{ $f->moved_label }} · dipindah ±{{ $f->missing_at->translatedFormat('d M Y') }}</span>
+        @else
         @switch($s)
             @case('temuan')
                 <span class="chip {{ $f->kritis_count ? 'chip-kritis' : 'chip-waspada' }}">Sudah diperiksa AI · {{ $temuan }}</span>
@@ -36,5 +39,6 @@
             @default
                 <span class="chip chip-belum">Belum diperiksa AI</span>
         @endswitch
+        @endif
     </div>
 </li>

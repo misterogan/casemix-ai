@@ -28,6 +28,7 @@
 
         {{-- Filter (GET); pencarian No. SEP ada di header --}}
         <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:items-end">
+            @if ($tab !== 'aktif')<input type="hidden" name="tab" value="{{ $tab }}">@endif
             <input type="hidden" name="sep" value="{{ $filters['sep'] }}">
             <div>
                 <label for="dari" class="label">Dari tanggal</label>
@@ -59,6 +60,14 @@
             </div>
         </form>
         <p class="hint">Tanggal mengacu pada tanggal di FTP (waktu file terakhir diperbarui di Enigma).</p>
+
+        <nav class="mt-5 flex gap-1 border-b border-garis-g text-sm" aria-label="Status folder">
+            @foreach (['aktif' => 'Aktif', 'dipindahkan' => 'Sudah dipindahkan', 'hilang_tanpa_periksa' => 'Dipindah tanpa diperiksa'] as $k => $l)
+                <a href="{{ route('folders.index', array_filter(['tab' => $k === 'aktif' ? null : $k] + $filters)) }}" data-tab="{{ $k }}"
+                   @if ($tab === $k) aria-current="page" @endif
+                   class="-mb-px border-b-2 px-3 py-2 {{ $tab === $k ? 'border-biru-aktif font-medium text-biru-aktif' : 'border-transparent text-abu hover:text-arang' }}">{{ $l }} <span class="num">({{ number_format($tabCounts[$k], 0, ',', '.') }})</span></a>
+            @endforeach
+        </nav>
 
         <div class="mt-6">
             <p class="num text-sm text-abu" aria-live="polite">

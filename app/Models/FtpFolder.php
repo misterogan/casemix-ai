@@ -114,6 +114,37 @@ class FtpFolder extends Model
         };
     }
 
+    /** Status pindah (turunan missing_at): dipindahkan | hilang_tanpa_periksa | null (masih di FTP). */
+    public function getMovedStatusAttribute(): ?string
+    {
+        if (! $this->missing_at) {
+            return null;
+        }
+
+        return ($this->analyzed_at || $this->last_analysis_id) ? 'dipindahkan' : 'hilang_tanpa_periksa';
+    }
+
+    public function getMovedLabelAttribute(): ?string
+    {
+        return match ($this->moved_status) {
+            'dipindahkan' => 'Sudah dipindahkan casemix',
+            'hilang_tanpa_periksa' => 'Dipindah tanpa diperiksa CERMAT',
+            default => null,
+        };
+    }
+
+    /** Filter tab: aktif | dipindahkan | hilang_tanpa_periksa. */
+    public function scopeMoved(Builder $q, string $tab): Builder
+    {
+        $pernah = fn ($w) => $w->whereNotNull('analyzed_at')->orWhereNotNull('last_analysis_id');
+
+        return match ($tab) {
+            'dipindahkan' => $q->whereNotNull('missing_at')->where($pernah),
+            'hilang_tanpa_periksa' => $q->whereNotNull('missing_at')->whereNull('analyzed_at')->whereNull('last_analysis_id'),
+            default => $q->whereNull('missing_at'),
+        };
+    }
+
     public function scopeState(Builder $q, ?string $state): Builder
     {
         return match ($state) {
