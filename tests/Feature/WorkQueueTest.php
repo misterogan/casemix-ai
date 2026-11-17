@@ -79,4 +79,37 @@ class WorkQueueTest extends TestCase
         $admin = User::factory()->create(['is_active' => true])->assignRole('admin');
         $this->actingAs($admin)->get(route('work-queue.index'))->assertForbidden();
     }
+
+    public function test_kolom_penugasan_hanya_bila_koordinator_lebih_dari_satu(): void
+    {
+        $this->folder('SEPSATU', 1, ['ttd_dpjp']);
+        $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()
+            ->assertDontSee('Ditugaskan ke')->assertDontSee('Tugas saya saja')->assertViewHas('tampilPenugasan', false);
+
+        User::factory()->create(['is_active' => true])->assignRole('koordinator');
+        $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()
+            ->assertSee('Ditugaskan ke')->assertSee('Tugas saya saja')->assertViewHas('tampilPenugasan', true);
+    }
+
+    public function test_ringkasan_hari_ini_dan_kartu_berikutnya(): void
+    {
+        $this->folder('SEPSIAPHARIINI', 0, [], ['analyzed_at' => now()]);
+        $this->folder('SEPSIAPKEMARIN', 0, [], ['analyzed_at' => now()->subDay()]);
+        $tinjau = $this->folder('SEPTINJAU', 1, ['ttd_dpjp']);
+        $lama = $this->folder('SEPLAMA', 2, ['dok_sep', 'dok_biaya'], ['files_modified_at' => now()->subDays(10), 'name' => '00123456_BUDI SANTOSO_', 'no_sep' => null]);
+
+        $res = $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()
+            ->assertSee('BUDI SANTOSO')->assertDontSee('BUDI SANTOSO_')->assertSee('RM 00123456')->assertSee('SEP belum ada');
+        $this->assertSame(['selesai' => 1, 'tersisa' => 2, 'terlambat' => 1], $res->viewData('summary'));
+        $next = $res->viewData('next');
+        $this->assertSame($lama->id, $next['folder']->id);
+        $this->assertSame('BUDI SANTOSO', $next['pasien']);
+        $this->assertCount(2, $next['kurang']);
+    }
+
+    public function test_antrean_kosong(): void
+    {
+        $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()
+            ->assertSee('Semua folder siap diajukan.')->assertSee('Buka verifikasi berkas')->assertSee(route('folders.index'));
+    }
 }
