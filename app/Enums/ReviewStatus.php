@@ -9,6 +9,7 @@ enum ReviewStatus: string
     case Selesai = 'selesai';
     case Gagal = 'gagal';
     case Dibatalkan = 'dibatalkan'; // tidak diproses karena langkah sebelumnya gagal
+    case Diarsipkan = 'diarsipkan'; // hanya salinan arsip otomatis saat sinkron; belum dibaca AI
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum ReviewStatus: string
             self::Selesai => 'Selesai',
             self::Gagal => 'Gagal',
             self::Dibatalkan => 'Dibatalkan',
+            self::Diarsipkan => 'Diarsipkan (belum dianalisa)',
         };
     }
 

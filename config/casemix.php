@@ -82,6 +82,10 @@ return [
         // Salinan terenkripsi tiap dokumen yang dibaca AI (arsip/{folder}/{sha256}.bin di storage_disk)
         'enabled' => (bool) env('CASEMIX_ARCHIVE_ENABLED', true),
         'retention_months' => (int) env('CASEMIX_ARCHIVE_RETENTION_MONTHS', 24),
+        // Arsip otomatis saat sinkron FTP (tanpa AI) untuk folder baru/berubah; dimusnahkan bila tidak pernah dianalisa
+        'auto_enabled' => (bool) env('CASEMIX_ARCHIVE_AUTO', false),
+        'auto_retention_months' => (int) env('CASEMIX_ARCHIVE_AUTO_RETENTION_MONTHS', 3),
+        'auto_max_folder_mb' => (int) env('CASEMIX_ARCHIVE_AUTO_MAX_MB', 200),
     ],
 
     'dashboard' => [

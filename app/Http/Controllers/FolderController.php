@@ -66,14 +66,27 @@ class FolderController extends Controller
             default => $w,
         };
 
+        $folders = $byStatus($base(), $periksa)->when($tab !== 'aktif', fn ($w) => $w->orderByDesc('missing_at'))->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString();
+        // Dipindah tanpa diperiksa: salinan arsip otomatis tersedia s.d. tanggal musnah (stored_at tertua + auto_retention_months)
+        $copies = $tab !== 'hilang_tanpa_periksa' ? collect() : FolderDocument::whereIn('ftp_folder_id', $folders->pluck('id'))->whereNotNull('stored_path')
+            ->groupBy('ftp_folder_id')->selectRaw('ftp_folder_id, min(stored_at) as s')->pluck('s', 'ftp_folder_id')
+            ->map(fn ($s) => Carbon::parse($s)->addMonths((int) config('casemix.archive.auto_retention_months', 3)));
+
         return view('folders.index', [
-            'folders' => $byStatus($base(), $periksa)->when($tab !== 'aktif', fn ($w) => $w->orderByDesc('missing_at'))->orderByDesc('files_modified_at')->orderByDesc('id')->paginate(25)->withQueryString(),
+            'folders' => $folders,
+            'copies' => $copies,
             'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa, 'kesiapan' => $kesiapan],
             'tab' => $tab,
             'tabCounts' => collect(['aktif', 'dipindahkan', 'hilang_tanpa_periksa'])->mapWithKeys(fn ($t) => [$t => $filtered()->moved($t)->count()])->all(),
             'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
         ]);
+    }
+
+    /** Folder punya salinan arsip (mis. arsip otomatis saat sinkron), jadi bisa dianalisa walau sudah hilang dari FTP. */
+    public static function hasCopy(FtpFolder $folder): bool
+    {
+        return FolderDocument::where('ftp_folder_id', $folder->id)->whereNotNull('stored_path')->exists();
     }
 
     /** Dibuka pertama kali: analisa AI dimulai otomatis. Berikutnya: hasil tersimpan, tanpa memanggil AI. */
@@ -99,7 +112,7 @@ class FolderController extends Controller
 
     public function analyze(Request $request, FtpFolder $folder, AiBudget $budget)
     {
-        abort_if($folder->missing_at, 404);
+        abort_if($folder->missing_at && ! self::hasCopy($folder), 404);
         if ($folder->analyses()->whereIn('status', [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value])->exists()) {
             return back()->with('warn', 'Folder ini sedang dianalisa.');
         }
@@ -161,7 +174,7 @@ class FolderController extends Controller
     /** Baca ulang SEMUA file (tanpa memakai hasil lama), lalu periksa silang. */
     public function processAll(Request $request, FtpFolder $folder, AiBudget $budget)
     {
-        abort_if($folder->missing_at, 404);
+        abort_if($folder->missing_at && ! self::hasCopy($folder), 404);
         if ($folder->analyses()->whereIn('status', [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value])->exists()) {
             return back()->with('warn', 'Folder ini sedang dianalisa.');
         }
@@ -379,6 +392,7 @@ class FolderController extends Controller
 
         return [
             'folder' => $folder,
+            'hasCopy' => $folder->missing_at && self::hasCopy($folder),
             'latest' => $latest,
             'done' => $done,
             'changed' => $done && $done->fingerprint !== $folder->fingerprint,

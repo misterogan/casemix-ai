@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Daftar folder FTP Enigma diperbarui otomatis tiap jam. Butuh cron: * * * * * php artisan schedule:run
-\Illuminate\Support\Facades\Schedule::command('casemix:sync-ftp')->hourly()->withoutOverlapping(50);
+\Illuminate\Support\Facades\Schedule::command('casemix:sync-ftp')->everyFifteenMinutes()->withoutOverlapping(14);
 
 // Salinan arsip dokumen yang melewati masa simpan dihapus tiap hari (hasil verifikasi tetap)
 \Illuminate\Support\Facades\Schedule::command('casemix:archive-prune')->daily()->withoutOverlapping();

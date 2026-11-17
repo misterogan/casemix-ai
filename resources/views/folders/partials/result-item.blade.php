@@ -19,6 +19,9 @@
     <div class="mt-2 flex">
         @if ($f->moved_status)
             <span class="chip {{ $f->moved_status === 'dipindahkan' ? 'chip-proses' : 'chip-belum' }}" data-moved="{{ $f->moved_status }}">{{ $f->moved_label }} · dipindah ±{{ $f->missing_at->translatedFormat('d M Y') }}</span>
+            @if ($musnah = ($copies ?? collect())->get($f->id))
+                <span class="chip chip-proses ml-1" data-salinan>Salinan tersedia s.d. {{ $musnah->translatedFormat('d M Y') }}</span>
+            @endif
         @else
         @switch($s)
             @case('temuan')

@@ -19,10 +19,10 @@
         <h1 class="text-[26px] leading-8 font-normal text-arang">Verifikasi berkas</h1>
         <p class="mt-1 text-xs text-abu">
             @if ($syncAt)
-                Daftar folder dari FTP Enigma diperbarui otomatis tiap jam · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
+                Daftar folder dari FTP Enigma diperbarui otomatis tiap 15 menit · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}
                 @if (! ($lastSync['ok'] ?? true))<span class="text-kritis"> · gagal terhubung ke FTP, dicoba lagi jam berikutnya</span>@endif
             @else
-                Daftar folder dari FTP Enigma diperbarui otomatis tiap jam · belum pernah tersinkron
+                Daftar folder dari FTP Enigma diperbarui otomatis tiap 15 menit · belum pernah tersinkron
             @endif
         </p>
 

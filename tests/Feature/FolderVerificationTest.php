@@ -144,12 +144,12 @@ class FolderVerificationTest extends TestCase
         $this->assertTrue(AppSetting::get(FolderSync::KEY_LAST)['ok']);
     }
 
-    public function test_sinkron_terjadwal_tiap_jam(): void
+    public function test_sinkron_terjadwal_tiap_15_menit(): void
     {
         $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->filter(fn ($e) => str_contains($e->command ?? '', 'casemix:sync-ftp'));
         $this->assertCount(1, $events);
-        $this->assertSame('0 * * * *', $events->first()->expression);
+        $this->assertSame('*/15 * * * *', $events->first()->expression);
     }
 
     // ------------------------------------------------------------ halaman

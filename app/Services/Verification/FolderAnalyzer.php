@@ -115,7 +115,16 @@ class FolderAnalyzer
 
         try {
             $fromFtp = false;
-            if ($f) {
+            // Salinan arsip dengan sidik sama (mis. arsip otomatis saat sinkron): dipakai tanpa unduh ulang
+            $stored = $d->stored_path ? $d : ReadFolderDocument::storedSibling($d);
+            $cached = ReadFolderDocument::archivedContents($stored);
+            if ($cached !== null) {
+                if (! $d->stored_path) {
+                    $d->update($stored->only(['stored_path', 'stored_sha256', 'stored_size', 'stored_at']));
+                }
+                $disk->put($local, $cached);
+                Log::info('Dokumen folder dibaca dari salinan', ['document_id' => $d->id, 'sumber' => 'arsip']);
+            } elseif ($f) {
                 try {
                     $this->ftp->download($f['path'], $local);
                     $fromFtp = true;
@@ -125,12 +134,8 @@ class FolderAnalyzer
                     }
                 }
             }
-            if (! $fromFtp) {
-                // File hilang dari FTP: pakai salinan arsip terenkripsi bila ada (tanpa unduh FTP)
-                $contents = ReadFolderDocument::archivedContents($d->stored_path ? $d : ReadFolderDocument::storedSibling($d))
-                    ?? throw new RuntimeException('File sudah tidak ada di FTP dan belum diarsipkan.');
-                $disk->put($local, $contents);
-                Log::info('Dokumen folder dibaca dari salinan', ['document_id' => $d->id, 'sumber' => 'arsip']);
+            if (! $fromFtp && $cached === null) {
+                throw new RuntimeException('File sudah tidak ada di FTP dan belum diarsipkan.');
             }
             // Salinan arsip dari unduhan yang sama (tanpa unduh kedua kali); gagal arsip tidak menggagalkan baca AI
             try {

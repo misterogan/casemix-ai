@@ -29,7 +29,7 @@
                 @endif
             </div>
             @can('folders.analyze')
-                @unless ($folder->missing_at)
+                @if (! $folder->missing_at || $hasCopy)
                     <div class="flex flex-wrap gap-2">
                         {{-- Siap diajukan: analisa ulang disembunyikan kecuali ada file berubah --}}
                         @unless ($siap === true && ! $changed && ! $berjalan)
@@ -49,7 +49,7 @@
                             <button type="submit" class="btn-secondary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Ulangi rekomendasi keseluruhan</button>
                         </form>
                     </div>
-                @endunless
+                @endif
             @endcan
         </header>
 

@@ -2,6 +2,8 @@
 
 namespace App\Services\Verification;
 
+use App\Jobs\ArchiveFolderFiles;
+use App\Jobs\ReadFolderDocument;
 use App\Models\AppSetting;
 use App\Models\FtpFolder;
 use App\Services\Import\SimrsFtp;
@@ -10,7 +12,8 @@ use Throwable;
 
 /**
  * Menyalin DAFTAR folder pasien di FTP ke database (bukan isi filenya), supaya halaman verifikasi
- * cepat dan bisa dicari walau FTP berisi ribuan folder. Dijalankan otomatis tiap jam.
+ * cepat dan bisa dicari walau FTP berisi ribuan folder. Dijalankan otomatis tiap 15 menit.
+ * Folder baru/berubah diarsipkan otomatis (tanpa AI) bila casemix.archive.auto_enabled.
  */
 class FolderSync
 {
@@ -35,6 +38,7 @@ class FolderSync
                 $latest = collect($files)->max('modified');
 
                 $folder = FtpFolder::firstOrNew(['path' => $f['path']]);
+                $archive = ! $folder->exists || $folder->fingerprint !== $fp;
                 if (! $folder->exists) {
                     $stats['baru']++;
                     $folder->first_seen_at = $now;
@@ -55,6 +59,9 @@ class FolderSync
                     'missing_at' => null,
                 ])->save();
                 $seen[] = $folder->id;
+                if ($archive && config('casemix.archive.auto_enabled') && ReadFolderDocument::archiveEnabled()) {
+                    ArchiveFolderFiles::dispatch($folder->id);
+                }
                 $stats['folders']++;
             }
 
