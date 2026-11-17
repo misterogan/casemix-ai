@@ -94,9 +94,10 @@
                 <a href="{{ route('folders.file', [$folder, $idx]) }}" data-preview="{{ $d->name }}" target="_blank" rel="noopener" class="hover:underline">Buka dokumen ↗</a>
             @endif
             @can('folders.analyze')
+                @php($tanpaArsip = $folder->missing_at && ! ($d->stored_path || \App\Jobs\ReadFolderDocument::storedSibling($d)))
                 <form method="POST" action="{{ route('folders.process_document', [$folder, $d]) }}">
                     @csrf
-                    <button type="submit" class="btn-secondary text-sm" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang file ini</button>
+                    <button type="submit" class="btn-secondary text-sm" @if ($berjalan && ! $blocker) data-lock @endif @disabled($berjalan || $blocker || $tanpaArsip) @if ($tanpaArsip) title="File sudah tidak ada di FTP dan belum diarsipkan" @endif>Proses ulang file ini</button>
                 </form>
             @endcan
         </div>

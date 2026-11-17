@@ -948,4 +948,46 @@ class FolderVerificationTest extends TestCase
         $this->assertCount(2, $this->ftp->downloads, 'Dua dokumen = dua unduhan');
         $this->assertTrue($a->documents->every(fn ($d) => $d->stored_path !== null));
     }
+
+    public function test_proses_ulang_folder_hilang_dari_ftp_memakai_arsip(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+        $sep = $a->documents->firstWhere('name', 'SEP.png');
+        $this->ftp->gone = true;
+        $folder->update(['missing_at' => now()]);
+        $unduhan = count($this->ftp->downloads);
+
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('Proses ulang file ini');
+        $this->actingAs($this->koordinator)->post(route('folders.process_document', [$folder, $sep]))->assertSessionHas('ok');
+
+        $this->assertSame(ReviewStatus::Selesai, $sep->fresh()->status, (string) $sep->fresh()->error);
+        $this->assertSame($unduhan, count($this->ftp->downloads), 'Tidak mengunduh dari FTP');
+    }
+
+    public function test_proses_ulang_tanpa_ftp_dan_tanpa_arsip_gagal_dengan_pesan_jelas(): void
+    {
+        $folder = $this->synced();
+        $doc = ['isian' => [], 'temuan' => []];
+        $this->fakeAi($doc, $doc, self::SILANG, $doc, self::SILANG);
+        $a = $this->analyze($folder);
+        $sep = $a->documents->firstWhere('name', 'SEP.png');
+        \App\Models\FolderDocument::query()->update(['stored_path' => null, 'stored_sha256' => null]);
+        $this->ftp->gone = true;
+
+        // FTP hilang (file tidak ditemukan) dan tidak ada arsip: job gagal dengan pesan jelas
+        $this->actingAs($this->koordinator)->post(route('folders.process_document', [$folder, $sep]))->assertSessionHas('ok');
+        $this->assertSame(ReviewStatus::Gagal, $sep->fresh()->status);
+        $this->assertSame('File sudah tidak ada di FTP dan belum diarsipkan.', $sep->fresh()->error);
+
+        // Folder ditandai hilang: tombol nonaktif dan permintaan ditolak
+        $sep->update(['status' => ReviewStatus::Selesai, 'error' => null]);
+        $a->fresh()->update(['status' => ReviewStatus::Selesai]);
+        $folder->update(['missing_at' => now()]);
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('belum diarsipkan');
+        $this->actingAs($this->koordinator)->post(route('folders.process_document', [$folder, $sep]))
+            ->assertSessionHas('warn', 'File sudah tidak ada di FTP dan belum diarsipkan.');
+    }
 }

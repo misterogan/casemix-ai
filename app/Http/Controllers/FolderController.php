@@ -175,6 +175,9 @@ class FolderController extends Controller
     {
         $a = $folder->analyses()->first();
         abort_unless($a && $document->folder_analysis_id === $a->id, 404);
+        if ($folder->missing_at && ! $document->stored_path && ! ReadFolderDocument::storedSibling($document)) {
+            return back()->with('warn', 'File sudah tidak ada di FTP dan belum diarsipkan.');
+        }
         if ($a->status?->isActive()) {
             return back()->with('warn', 'Folder ini sedang dianalisa.');
         }

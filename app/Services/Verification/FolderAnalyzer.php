@@ -21,6 +21,7 @@ use App\Support\Eklaim;
 use App\Support\IcdGuard;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -107,15 +108,33 @@ class FolderAnalyzer
     public function documentRequest(FolderDocument $d, ProviderConfig $config): ?AiRequest
     {
         $folder = $d->folder;
-        $f = collect($folder->files)->firstWhere('name', $d->name) ?? throw new RuntimeException('File tidak ada lagi di folder FTP.');
+        $f = $folder->missing_at ? null : collect($folder->files)->firstWhere('name', $d->name);
         $disk = Storage::disk(config('casemix.storage_disk'));
         $tmp = 'tmp/analisa/' . Str::ulid();
+        $local = $tmp . '/dokumen.' . Str::lower(pathinfo($f['name'] ?? $d->name, PATHINFO_EXTENSION));
 
         try {
-            $local = $this->ftp->download($f['path'], $tmp . '/dokumen.' . Str::lower(pathinfo($f['name'], PATHINFO_EXTENSION)));
+            $fromFtp = false;
+            if ($f) {
+                try {
+                    $this->ftp->download($f['path'], $local);
+                    $fromFtp = true;
+                } catch (Throwable $e) {
+                    if (! Str::contains(Str::lower($e->getMessage()), ['not found', 'tidak ada', 'no such file', '550'])) {
+                        throw $e;
+                    }
+                }
+            }
+            if (! $fromFtp) {
+                // File hilang dari FTP: pakai salinan arsip terenkripsi bila ada (tanpa unduh FTP)
+                $contents = ReadFolderDocument::archivedContents($d->stored_path ? $d : ReadFolderDocument::storedSibling($d))
+                    ?? throw new RuntimeException('File sudah tidak ada di FTP dan belum diarsipkan.');
+                $disk->put($local, $contents);
+                Log::info('Dokumen folder dibaca dari salinan', ['document_id' => $d->id, 'sumber' => 'arsip']);
+            }
             // Salinan arsip dari unduhan yang sama (tanpa unduh kedua kali); gagal arsip tidak menggagalkan baca AI
             try {
-                if (ReadFolderDocument::archiveEnabled() && ! $d->stored_path) {
+                if ($fromFtp && ReadFolderDocument::archiveEnabled() && ! $d->stored_path) {
                     ReadFolderDocument::archiveContents($d, $disk->get($local));
                 }
             } catch (Throwable $e) {
