@@ -43,6 +43,14 @@
                                     <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Sama dengan resume</span>
                                 @endif
                             </div>
+                            @php $warnaLencana = ['abu' => 'bg-gray-100 text-gray-700', 'oranye' => 'bg-orange-100 text-orange-800', 'merah' => 'bg-red-100 text-red-800', 'biru' => 'bg-blue-100 text-blue-800']; @endphp
+                            @if ($lencana = $c->lencana())
+                                <p class="mt-1 flex flex-wrap gap-1">
+                                    @foreach ($lencana as [$warna, $teks])
+                                        <span class="rounded-full px-2 py-0.5 text-xs {{ $warnaLencana[$warna] }}" data-lencana="{{ $warna }}">{{ $teks }}</span>
+                                    @endforeach
+                                </p>
+                            @endif
                             @if ($c->alasan)<p class="mt-1 text-arang">{{ $c->alasan }}</p>@endif
                             @if ($c->kaidah_koding)<p class="mt-0.5 text-xs text-abu">Kaidah: {{ $c->kaidah_koding }}</p>@endif
                             <p class="mt-1 text-xs text-abu">Sumber: {{ $c->sumber }} · Keyakinan: {{ $c->keyakinan }}</p>
