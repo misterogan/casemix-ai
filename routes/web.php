@@ -29,16 +29,20 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/keluar', [LoginController::class, 'logout'])->name('logout');
     Route::get('/akun/password', [AccountPasswordController::class, 'edit'])->name('account.password.edit');
     Route::put('/akun/password', [AccountPasswordController::class, 'update'])->middleware('throttle:6,1')->name('account.password.update');
-    // Halaman awal menurut peran: Koordinator ke verifikasi, Admin ke pengaturan.
+    // Halaman awal menurut peran: Koordinator ke Dashboard, peran lain ke verifikasi, Admin ke pengaturan.
     Route::get('/', function () {
         $u = auth()->user();
 
         return match (true) {
+            $u->hasRole('koordinator') => redirect()->route('control.index'),
             $u->can('folders.view') => redirect()->route('folders.index'),
             $u->can('admin.manage') => redirect()->route('admin.budget.index'),
             default => abort(403),
         };
     })->name('home');
+
+    // Pusat Kendali Klaim: Koordinator saja (Admin tidak, privasi)
+    Route::get('/dashboard', \App\Http\Controllers\Dashboard\DashboardController::class)->middleware('role:koordinator')->name('control.index');
 
     // Verifikasi langsung dari folder FTP
     Route::middleware('permission:folders.view')->group(function () {

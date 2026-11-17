@@ -157,7 +157,7 @@ class FolderVerificationTest extends TestCase
     public function test_koordinator_diarahkan_ke_verifikasi_dan_daftar_bisa_dicari(): void
     {
         $this->synced();
-        $this->actingAs($this->koordinator)->get('/')->assertRedirect(route('folders.index'));
+        $this->actingAs($this->koordinator)->get('/')->assertRedirect(route('control.index'));
         $this->actingAs($this->koordinator)->get(route('folders.index', ['sep' => '0000R0000000V000001']))->assertOk()->assertSee('PASIEN CONTOH')->assertSee('Belum diperiksa AI');
         $this->actingAs($this->koordinator)->get(route('folders.index', ['sep' => 'TIDAKADA']))->assertOk()->assertDontSee('PASIEN CONTOH');
     }

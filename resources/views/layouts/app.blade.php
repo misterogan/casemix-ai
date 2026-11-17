@@ -16,6 +16,8 @@
     // Menu utama: Koordinator membaca hasil verifikasi AI langsung dari folder FTP.
     // Menu berkas klaim, impor, dan ringkasan lama disembunyikan (datanya tetap ada).
     $nav = [
+        ['route' => 'control.index', 'match' => 'control.*', 'label' => 'Dashboard', 'role' => 'koordinator',
+         'icon' => 'M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z'],
         ['route' => 'folders.index', 'match' => 'folders.*', 'label' => 'Verifikasi berkas', 'can' => 'folders.view',
          'icon' => 'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
         ['route' => 'audit.index', 'match' => 'audit.*', 'label' => 'Riwayat aktivitas', 'can' => 'audit.view',
@@ -50,7 +52,7 @@
 
         <nav class="space-y-0.5 pr-3 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto" aria-label="Menu utama">
             @foreach ($nav as $item)
-                @can($item['can'])
+                @if (isset($item['role']) ? auth()->user()->hasRole($item['role']) : auth()->user()->can($item['can']))
                     @php $active = request()->routeIs($item['match']); @endphp
                     <a href="{{ route($item['route']) }}"
                        @class(['flex h-10 items-center gap-3 rounded-r-full pr-4 pl-6 text-sm font-medium transition-colors duration-150',
@@ -62,7 +64,7 @@
                         </svg>
                         {{ $item['label'] }}
                     </a>
-                @endcan
+                @endif
             @endforeach
 
             @can('admin.manage')
