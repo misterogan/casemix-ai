@@ -111,6 +111,36 @@ class CodeSuggestionTest extends TestCase
         $this->assertSame(['I10'], CodeSuggestion::pluck('code')->all());
     }
 
+    public function test_panel_hanya_tampil_bila_menyala_dan_tidak_menghalangi_siap(): void
+    {
+        AppSetting::put(SettingController::KEY_CODE_SUGGESTIONS, true, null);
+        $this->synthesize([$this->kode(), $this->kode(['peran' => 'sekunder', 'code' => 'D64.9', 'title' => 'Anaemia, unspecified', 'sumber' => 'lab', 'tercantum_di_resume' => false])]);
+        $koor = User::factory()->create(['is_active' => true])->assignRole('koordinator');
+
+        $this->actingAs($koor)->get(route('folders.show', $this->folder))->assertOk()
+            ->assertSee('Saran diagnosis &amp; kode', false)->assertSee('Sama dengan resume')
+            ->assertSee('Hanya di lab — perlu konfirmasi DPJP')->assertSee('RESUME.pdf hal. 1')
+            ->assertSee('Diagnosis utama: J18.9 Pneumonia, unspecified', false)->assertSee('D64.9 Anaemia, unspecified (menunggu DPJP)', false)
+            ->assertSee('Saran ini bantuan, bukan keputusan koding.');
+
+        AppSetting::put(SettingController::KEY_CODE_SUGGESTIONS, false, null);
+        $this->actingAs($koor)->get(route('folders.show', $this->folder))->assertOk()->assertDontSee('Saran diagnosis &amp; kode', false);
+    }
+
+    public function test_tindak_lanjut_diaudit(): void
+    {
+        AppSetting::put(SettingController::KEY_CODE_SUGGESTIONS, true, null);
+        $this->synthesize([$this->kode(['tercantum_di_resume' => false])]);
+        $c = CodeSuggestion::first();
+        $koor = User::factory()->create(['is_active' => true])->assignRole('koordinator');
+
+        $this->actingAs($koor)->post(route('folders.code.status', [$this->folder, $c]), ['status' => 'ditanyakan'])->assertSessionHas('ok');
+        $this->actingAs($koor)->post(route('folders.code.status', [$this->folder, $c]), ['status' => 'setuju'])->assertSessionHas('ok');
+        $this->assertSame('setuju', $c->fresh()->status_tindak_lanjut);
+        $this->assertSame(2, AuditLog::where('action', 'folder.saran_kode_status')->count());
+        $this->actingAs($koor)->post(route('folders.code.status', [$this->folder, $c]), ['status' => 'ngawur'])->assertSessionHasErrors('status');
+    }
+
     public function test_toggle_admin_diaudit(): void
     {
         $admin = User::factory()->create(['is_active' => true])->assignRole('admin');

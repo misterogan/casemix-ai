@@ -129,6 +129,10 @@
             </div>
         </section>
 
+        @if ($kodeOn)
+            @include('folders.partials.codes')
+        @endif
+
         @if ($saranOn)
             @include('folders.partials.suggestions')
         @endif

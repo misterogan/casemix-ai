@@ -8,6 +8,8 @@ use App\Jobs\RunFolderAnalysis;
 use App\Jobs\SynthesizeFolderAnalysis;
 use App\Models\AiProvider;
 use App\Models\AppSetting;
+use App\Http\Controllers\Admin\SettingController;
+use App\Models\CodeSuggestion;
 use App\Models\ConditionSuggestion;
 use App\Models\FolderAnalysis;
 use App\Models\FolderDocument;
@@ -269,6 +271,21 @@ class FolderController extends Controller
         return back()->with('ok', 'Tindak lanjut saran dicatat.');
     }
 
+    /** Catat tindak lanjut saran kode ke DPJP. Tidak memengaruhi status Siap diajukan dan tidak menulis ke Enigma. */
+    public function codeStatus(Request $request, FtpFolder $folder, CodeSuggestion $code)
+    {
+        abort_unless($code->analysis?->ftp_folder_id === $folder->id, 404);
+        $v = $request->validate([
+            'status' => ['required', 'in:' . implode(',', CodeSuggestion::STATUS)],
+        ]);
+        $lama = $code->status_tindak_lanjut;
+        $code->update(['status_tindak_lanjut' => $v['status']]);
+        Audit::log('folder.saran_kode_status', $folder, sprintf('Saran kode %s "%s": %s → %s', $code->code, $code->title, $lama ?? 'baru', $v['status']),
+            ['saran_kode' => $code->id, 'kode' => $code->code, 'dari' => $lama, 'ke' => $v['status']]);
+
+        return back()->with('ok', 'Tindak lanjut saran kode dicatat.');
+    }
+
     /** Buka satu dokumen: dari salinan arsip bila ada, bila tidak dari FTP lalu disimpan salinannya. Dipilih lewat nomor urut, bukan path, supaya tidak bisa diarahkan ke file lain. */
     public function file(FtpFolder $folder, int $index, SimrsFtp $ftp)
     {
@@ -349,7 +366,17 @@ class FolderController extends Controller
                 ->groupBy(fn (RubricItem $i) => VerificationRubric::group($i->kode)),
             'saranOn' => $saranOn,
             'suggestions' => $saranOn ? $folder->conditionSuggestions()->get() : collect(),
+            'kodeOn' => $kodeOn = SettingController::codeSuggestionsOn(),
+            'codes' => $kodeOn ? $this->latestCodes($folder) : collect(),
         ];
+    }
+
+    /** Saran kode dari analisa terakhir yang menghasilkan saran kode. */
+    private function latestCodes(FtpFolder $folder)
+    {
+        $id = CodeSuggestion::whereHas('analysis', fn ($q) => $q->where('ftp_folder_id', $folder->id))->max('folder_analysis_id');
+
+        return $id ? CodeSuggestion::with('document')->where('folder_analysis_id', $id)->orderBy('id')->get() : collect();
     }
 
     /** Dokumen yang dipakai ulang mewarisi salinan arsip dari dokumen sebelumnya dengan file yang sama. */

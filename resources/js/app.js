@@ -319,7 +319,7 @@ document.addEventListener('click', async (e) => {
   b.dataset.label = label;
   b.textContent = b.dataset.salinOk || 'Tersalin';
   const kabar = document.querySelector('[data-kabar]');
-  if (kabar) kabar.textContent = 'Pesan untuk DPJP tersalin.';
+  if (kabar) kabar.textContent = (b.dataset.salinOk || 'Tersalin') + '.';
   setTimeout(() => { b.textContent = label; }, 2000);
 });
 
