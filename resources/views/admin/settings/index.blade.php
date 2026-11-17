@@ -37,6 +37,14 @@
                         <span id="ket-saran-kondisi" class="mt-0.5 block text-tinta-3">Bila mati, AI hanya memeriksa kelengkapan dan konsistensi dokumen (administratif).</span>
                     </span>
                 </label>
+                <input type="hidden" name="saran_kode" value="0">
+                <label class="flex items-start gap-3">
+                    <input type="checkbox" name="saran_kode" value="1" class="mt-0.5 size-4" @checked($codeSuggestions) aria-describedby="ket-saran-kode">
+                    <span>
+                        <span class="font-medium">Tampilkan saran kode ICD-10 / ICD-9-CM 2010 dari AI</span>
+                        <span id="ket-saran-kode" class="mt-0.5 block text-tinta-3">Hanya saran berbukti (dokumen + halaman). Keputusan tetap koder/DPJP; tidak ditulis ke Enigma.</span>
+                    </span>
+                </label>
                 <button type="submit" class="btn-primary">Simpan</button>
             </form>
         </section>

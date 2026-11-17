@@ -2,7 +2,11 @@
 
 namespace App\Support;
 
-/** Pengaman: Casemix AI tidak boleh menghasilkan kode ICD/INA-CBG. Koding dilakukan koder di E-Klaim. */
+/**
+ * Pengaman: teks AI tidak boleh memuat kode ICD/INA-CBG. Koding dilakukan koder di E-Klaim.
+ * Pengecualian satu-satunya: saran kode (CodeSuggestion, SynthesizeFolderAnalysis::saveCodes) yang sengaja
+ * TIDAK melewati strip(); jalur itu memakai cek format CodeSuggestion::validFormat. Jalur lain tetap dijaga.
+ */
 class IcdGuard
 {
     /** Buang pola yang menyerupai kode ICD-10 (mis. "(E11.9)") atau label "ICD-10: E11" bila model tetap menuliskannya. */

@@ -47,7 +47,11 @@ class FolderAnalyzer
         . '"biaya_item_penting":[] (item tindakan/obat/layanan bermakna di rincian biaya). Batas: tindakan maks 8, terapi_penting maks 10, '
         . 'penunjang_abnormal maks 10, biaya_item_penting maks 10; tiap teks maks 15 kata.';
 
-    private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'penunjang_abnormal', 'biaya', 'biaya_item_penting', 'ttd_dpjp'];
+    /** Bila saran kode menyala: bahan per halaman untuk saran kode ICD-10/ICD-9-CM di tahap 2. */
+    private const KODE_INSTRUCTION = 'Tambahan (mengalahkan batas di atas): isi juga "temuan_klinis":[{"jenis":"diagnosis|tindakan|lab_abnormal|obat","teks":"","halaman":1}] '
+        . '(semua diagnosis, komplikasi/komorbid, tindakan, nilai lab abnormal beserta nilainya, obat bermakna yang tertulis, per halaman). Maks 20 item; tiap teks maks 15 kata; tanpa kode.';
+
+    private const SUMMARY_KEYS = ['identitas', 'isian', 'diagnosis', 'tindakan', 'terapi_penting', 'penunjang', 'penunjang_abnormal', 'biaya', 'biaya_item_penting', 'temuan_klinis', 'ttd_dpjp'];
 
     /** Model, batas token, dan halaman scan untuk satu dokumen menurut jenisnya. */
     public function documentPlan(FolderDocument $d, ProviderConfig $config): array
@@ -261,7 +265,8 @@ TXT;
     {
         $opsi = fn (array $m) => implode(', ', array_map(fn ($k, $v) => "$k=$v", array_keys($m), $m));
         $tarif = implode(', ', array_keys(Eklaim::TARIF));
-        $saran = SettingController::conditionSuggestionsOn() ? PHP_EOL . self::SARAN_INSTRUCTION : '';
+        $saran = (SettingController::conditionSuggestionsOn() ? PHP_EOL . self::SARAN_INSTRUCTION : '')
+            . (SettingController::codeSuggestionsOn() ? PHP_EOL . self::KODE_INSTRUCTION : '');
 
         return <<<TXT
 Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).

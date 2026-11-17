@@ -19,6 +19,14 @@ class SettingController extends Controller
         return filter_var(AppSetting::get(self::KEY_CONDITION_SUGGESTIONS, false), FILTER_VALIDATE_BOOLEAN);
     }
 
+    /** Saran kode ICD-10/ICD-9-CM dari AI di verifikasi folder. Bawaan: mati. Keputusan tetap koder/DPJP. */
+    public const KEY_CODE_SUGGESTIONS = 'ai_code_suggestions';
+
+    public static function codeSuggestionsOn(): bool
+    {
+        return filter_var(AppSetting::get(self::KEY_CODE_SUGGESTIONS, false), FILTER_VALIDATE_BOOLEAN);
+    }
+
     public function index(SimrsFtp $ftp)
     {
         $c = config('casemix.ftp');
@@ -36,6 +44,7 @@ class SettingController extends Controller
             ],
             'insecure' => $ftp->configured() && ! $c['ssl'],
             'conditionSuggestions' => self::conditionSuggestionsOn(),
+            'codeSuggestions' => self::codeSuggestionsOn(),
             'app' => [
                 'Nama rumah sakit' => config('casemix.hospital_name'),
                 'Disk penyimpanan' => config('casemix.storage_disk'),
@@ -58,6 +67,14 @@ class SettingController extends Controller
         if ($lama !== $baru) {
             Audit::log('admin.saran_kondisi', null, 'Saran kondisi ' . ($baru ? 'dinyalakan' : 'dimatikan'),
                 ['perubahan' => ['saran_kondisi' => ['lama' => $lama, 'baru' => $baru]]]);
+        }
+
+        $lamaKode = self::codeSuggestionsOn();
+        $baruKode = $request->boolean('saran_kode');
+        AppSetting::put(self::KEY_CODE_SUGGESTIONS, $baruKode, $request->user()->id);
+        if ($lamaKode !== $baruKode) {
+            Audit::log('admin.saran_kode', null, 'Saran kode ICD ' . ($baruKode ? 'dinyalakan' : 'dimatikan'),
+                ['perubahan' => ['saran_kode' => ['lama' => $lamaKode, 'baru' => $baruKode]]]);
         }
 
         return back()->with('ok', 'Pengaturan analisa AI disimpan.');

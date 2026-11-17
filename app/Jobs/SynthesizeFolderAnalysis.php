@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\ReviewStatus;
 use App\Http\Controllers\Admin\SettingController;
+use App\Models\CodeSuggestion;
 use App\Models\ConditionSuggestion;
 use App\Models\FolderAnalysis;
 use App\Models\FtpFolder;
@@ -17,6 +18,7 @@ use App\Support\VerificationRubric;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -36,6 +38,8 @@ class SynthesizeFolderAnalysis implements ShouldQueue
     public const MAX_SUGGESTIONS = 5;
 
     public const JENIS = ['Diagnosis', 'Tindakan', 'Layanan'];
+
+    public const MAX_CODES = 15;
 
     public function __construct(public int $analysisId)
     {
@@ -67,13 +71,15 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 ->reject(fn ($k) => $items->get($k)?->lockedFor(VerificationRubric::fingerprints($folder, $k)))->values()->all();
             $saranOn = SettingController::conditionSuggestionsOn();
             $needSaran = $saranOn && $folder->suggestions_fingerprint !== $folder->fingerprint;
+            $needKode = SettingController::codeSuggestionsOn() && ! CodeSuggestion::whereHas('analysis',
+                fn ($q) => $q->where('ftp_folder_id', $folder->id)->where('fingerprint', $folder->fingerprint))->exists();
 
             $json = [];
-            if ($need || $needSaran) {
+            if ($need || $needSaran || $needKode) {
                 if ($blocked = $budget->runBlocker()) {
                     throw new RuntimeException($blocked);
                 }
-                $this->buildRequest($req, $a, $folder, $need, $needSaran);
+                $this->buildRequest($req, $a, $folder, $need, $needSaran, $needKode);
                 $req->maxTokens = min((int) $config->max_tokens, ReadFolderDocument::MAX_TOKENS);
                 $res = $ai->for($config)->generate($req);
                 $budget->charge($a, $res, $config->id);
@@ -89,6 +95,9 @@ class SynthesizeFolderAnalysis implements ShouldQueue
 
             $this->saveAiItems($folder, $items, $need, (array) ($json['rubrik'] ?? []));
             $this->saveRuleItems($folder, $items, collect($r['findings'] ?? []));
+            if ($needKode) { // jalur saran kode: sengaja tidak lewat IcdGuard, hanya cek format
+                $this->saveCodes($a, (array) ($json['kode'] ?? []));
+            }
             if ($needSaran) {
                 $this->saveSuggestions($folder, (array) ($r['suggestions'] ?? []));
             }
@@ -122,15 +131,17 @@ class SynthesizeFolderAnalysis implements ShouldQueue
     }
 
     /** Ganti instruksi tahap 2: hanya butir yang perlu dinilai (+ kondisi bila saran menyala). */
-    private function buildRequest(AiRequest $req, FolderAnalysis $a, FtpFolder $folder, array $need, bool $needSaran): void
+    private function buildRequest(AiRequest $req, FolderAnalysis $a, FtpFolder $folder, array $need, bool $needSaran, bool $needKode = false): void
     {
         $butir = collect($need)->map(fn ($k) => "- $k: " . VerificationRubric::label($k))->implode("\n");
         $schema = '{"ringkasan":"maks 2 kalimat","rubrik":[{"kode":"...","status":"lengkap|kurang|tidak_berlaku","catatan":"maks 20 kata","dokumen":"nama file","halaman":1}]'
-            . ($needSaran ? ',"kondisi":[{"jenis":"Diagnosis|Tindakan|Layanan","kondisi":"...","bukti":"kutipan maks 30 kata","dokumen":"nama file","halaman":1}]' : '') . '}';
+            . ($needSaran ? ',"kondisi":[{"jenis":"Diagnosis|Tindakan|Layanan","kondisi":"...","bukti":"kutipan maks 30 kata","dokumen":"nama file","halaman":1}]' : '')
+            . ($needKode ? ',"kode":[{"system":"icd10|icd9cm","peran":"utama|sekunder|tindakan","code":"A00.0","title":"judul kode","alasan":"maks 20 kata","kaidah_koding":"aturan koding bila ada, boleh null","sumber":"resume|cppt|penunjang|lab|lainnya","bukti":"kutipan maks 30 kata","dokumen":"nama file","halaman":1,"keyakinan":"kuat|sedang","tercantum_di_resume":true}]' : '') . '}';
 
         $req->system = "Anda verifikator berkas klaim BPJS rumah sakit. Nilai HANYA butir rubrik yang diminta, berdasarkan hasil baca dokumen.\n"
             . "Status: lengkap (terpenuhi), kurang (tidak terpenuhi/tidak tertulis), tidak_berlaku (tidak relevan untuk pasien ini).\n"
-            . "Jangan membuat butir lain. Jawab hanya JSON valid tanpa teks lain.";
+            . "Jangan membuat butir lain. Jawab hanya JSON valid tanpa teks lain."
+            . ($needKode ? "\nKhusus field \"kode\": Anda BOLEH menyarankan kode ICD-10 2010 dan ICD-9-CM 2010 sebagai bahan koder; keputusan tetap koder/DPJP. Di luar field itu jangan menulis kode." : '');
 
         $dokumen = $a->documents->map(fn ($d) => [
             'nama' => $d->name,
@@ -153,6 +164,12 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             if ($dijawab->isNotEmpty()) {
                 $text .= 'Sudah ditanyakan/dijawab DPJP, JANGAN diusulkan lagi: ' . $dijawab->implode('; ') . "\n";
             }
+        }
+        if ($needKode) {
+            $text .= 'Kode: maks ' . self::MAX_CODES . ' saran dari hasil baca tahap 1: diagnosis utama (icd10, peran utama), diagnosis sekunder '
+                . '(komplikasi/komorbid yang didukung lab, obat, atau CPPT; icd10, peran sekunder), dan tindakan (icd9cm, peran tindakan). '
+                . 'WAJIB kutipan bukti, nama file, dan halaman; tanpa bukti jangan dimasukkan. Jangan mempertimbangkan tarif atau nilai klaim. '
+                . "Format kode: ICD-10 mis. J18.9, ICD-9-CM mis. 99.04. Bila tidak ada, isi [].\n";
         }
         $text .= "\nFormat JSON: $schema";
 
@@ -206,6 +223,46 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             'evaluated_at' => now(),
         ])->save();
         $items->put($kode, $item);
+    }
+
+    /** Saran kode: format dicek (tanpa master), tanpa bukti/halaman dibuang. Tidak lewat IcdGuard. */
+    private function saveCodes(FolderAnalysis $a, array $kode): void
+    {
+        $added = 0;
+        foreach ($kode as $k) {
+            if ($added >= self::MAX_CODES || ! is_array($k)) {
+                continue;
+            }
+            $system = strtolower(trim((string) ($k['system'] ?? '')));
+            $peran = strtolower(trim((string) ($k['peran'] ?? '')));
+            $code = strtoupper(trim((string) ($k['code'] ?? '')));
+            $bukti = trim((string) ($k['bukti'] ?? ''));
+            $halaman = is_numeric($k['halaman'] ?? null) && (int) $k['halaman'] > 0 ? (int) $k['halaman'] : null;
+            if ($bukti === '' || ! $halaman || ! in_array($peran, CodeSuggestion::PERAN, true)) {
+                continue;
+            }
+            if (($peran === 'tindakan') !== ($system === 'icd9cm') || ! CodeSuggestion::validFormat($system, $code)) {
+                Log::warning('Saran kode AI dibuang: format tidak valid', ['analisa' => $a->id, 'system' => $system, 'peran' => $peran, 'code' => $code]);
+                continue;
+            }
+            $dokumen = VerificationRubric::matchFile($a->folder, $k['dokumen'] ?? null) ?? ($k['dokumen'] ?? null);
+            CodeSuggestion::create([
+                'folder_analysis_id' => $a->id,
+                'system' => $system,
+                'peran' => $peran,
+                'code' => $code,
+                'title' => mb_substr(trim((string) ($k['title'] ?? '')), 0, 255),
+                'alasan' => mb_substr(trim((string) ($k['alasan'] ?? '')), 0, 500) ?: null,
+                'kaidah_koding' => mb_substr(trim((string) ($k['kaidah_koding'] ?? '')), 0, 300) ?: null,
+                'sumber' => in_array($k['sumber'] ?? null, CodeSuggestion::SUMBER, true) ? $k['sumber'] : 'lainnya',
+                'bukti' => mb_substr($bukti, 0, 400),
+                'folder_document_id' => $dokumen ? $a->documents->firstWhere('name', $dokumen)?->id : null,
+                'halaman' => $halaman,
+                'keyakinan' => ($k['keyakinan'] ?? null) === 'kuat' ? 'kuat' : 'sedang',
+                'tercantum_di_resume' => filter_var($k['tercantum_di_resume'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            ]);
+            $added++;
+        }
     }
 
     /** Saran baru menggantikan saran "baru" lama; yang sudah ditanyakan/dijawab dengan dokumen sama tidak diduplikasi. */

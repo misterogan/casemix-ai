@@ -4,3 +4,8 @@
 - Edit dengan perubahan kecil, jangan menulis ulang file, jangan membaca ulang file setelah diedit.
 - Test: php artisan test --filter=<nama test terkait> 2>&1 | tail -15
 - Bila lulus: git add -A, commit, push origin main. Bila gagal: berhenti dan laporkan.
+
+# Prinsip
+- AI boleh MENYARANKAN kode ICD-10 2010 dan ICD-9-CM 2010 (hanya lewat saran kode di verifikasi folder, setting `ai_code_suggestions`, bawaan mati). Wajib bukti + halaman; tanpa pertimbangan tarif.
+- Keputusan koding tetap pada koder/DPJP. Aplikasi tidak menulis apa pun ke Enigma/E-Klaim.
+- Jalur AI lain tetap dijaga IcdGuard (kode ICD dibuang dari teks).
