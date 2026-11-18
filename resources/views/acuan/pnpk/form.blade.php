@@ -26,6 +26,12 @@
                         @foreach (\App\Models\PnpkDokumen::STATUS as $k => $l)<option value="{{ $k }}" @selected(old('status', $dokumen->status) === $k)>{{ $l }}</option>@endforeach
                     </select>
                 </x-field>
+                <x-field name="diganti_oleh_id" label="Diganti oleh (opsional)" hint="Diisi → status menjadi Diganti.">
+                    <select id="diganti_oleh_id" name="diganti_oleh_id" class="field">
+                        <option value="">—</option>
+                        @foreach ($penggantiPilihan ?? [] as $p)<option value="{{ $p->id }}" @selected((string) old('diganti_oleh_id', $dokumen->diganti_oleh_id) === (string) $p->id)>{{ $p->judul }} ({{ $p->nomor_kmk ?? '—' }}, {{ $p->tahun }})</option>@endforeach
+                    </select>
+                </x-field>
             @else
                 <x-field name="pdf" label="PDF resmi" required hint="Maks 50 MB. PDF yang sama tidak bisa diunggah dua kali.">
                     <input id="pdf" type="file" name="pdf" accept="application/pdf" required class="field">

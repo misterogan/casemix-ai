@@ -80,13 +80,18 @@ class PnpkController extends Controller
 
     public function edit(PnpkDokumen $pnpk)
     {
-        return view('acuan.pnpk.form', ['dokumen' => $pnpk, 'pilihan' => collect()]);
+        return view('acuan.pnpk.form', ['dokumen' => $pnpk, 'pilihan' => collect(),
+            'penggantiPilihan' => PnpkDokumen::whereKeyNot($pnpk->id)->orderBy('judul')->get(['id', 'judul', 'nomor_kmk', 'tahun'])]);
     }
 
     public function update(Request $request, PnpkDokumen $pnpk)
     {
-        $v = $request->validate($this->rules() + ['status' => ['required', 'in:berlaku,dicabut,diganti']]);
-        $data = $this->meta($v) + ['status' => $v['status'] === 'diganti' && ! $pnpk->diganti_oleh_id ? $pnpk->status : $v['status']];
+        $v = $request->validate($this->rules() + ['status' => ['required', 'in:berlaku,dicabut,diganti'],
+            'diganti_oleh_id' => ['nullable', 'integer', 'exists:pnpk_dokumen,id', 'not_in:' . $pnpk->id]]);
+        $ganti = $v['diganti_oleh_id'] ?? null;
+        $status = $ganti ? 'diganti' : ($v['status'] === 'diganti' && ! $pnpk->diganti_oleh_id ? $pnpk->status : $v['status']);
+        $data = $this->meta($v) + ['status' => $status, 'diganti_oleh_id' => $ganti ?? ($status === 'diganti' ? $pnpk->diganti_oleh_id : null),
+            'perlu_dilengkapi' => false];
         $lama = $pnpk->only(array_keys($data));
         $pnpk->update($data);
         Audit::log('pnpk.ubah', $pnpk, "Mengubah metadata PNPK {$pnpk->judul}", ['lama' => $lama, 'baru' => $data]);

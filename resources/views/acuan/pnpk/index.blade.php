@@ -43,8 +43,9 @@
                     <li class="flex flex-wrap items-start justify-between gap-3 px-5 py-3 text-sm" data-pnpk="{{ $d->id }}">
                         <div class="min-w-0">
                             <p class="font-medium text-arang"><a href="{{ route('acuan.pnpk.show', $d) }}">{{ $d->judul }}</a>
-                                <x-badge :variant="\App\Models\PnpkDokumen::STATUS_TONE[$d->status] ?? 'gray'">{{ \App\Models\PnpkDokumen::STATUS[$d->status] ?? $d->status }}</x-badge></p>
-                            <p class="num text-xs text-tinta-3">{{ $d->nomor_kmk }} · {{ $d->tahun }} · berlaku {{ $d->tanggal_berlaku?->translatedFormat('d M Y') }}
+                                <x-badge :variant="\App\Models\PnpkDokumen::STATUS_TONE[$d->status] ?? 'gray'">{{ \App\Models\PnpkDokumen::STATUS[$d->status] ?? $d->status }}</x-badge>
+                                @if ($d->perlu_dilengkapi)<x-badge variant="warning">Perlu dilengkapi</x-badge>@endif</p>
+                            <p class="num text-xs text-tinta-3">{{ $d->nomor_kmk ?? 'Nomor KMK belum ada' }} · {{ $d->tahun }} · berlaku {{ $d->tanggal_berlaku?->translatedFormat('d M Y') }}
                                 · {{ $d->icd_disetujui }} ICD · {{ $d->butir_disetujui }} butir disetujui · {{ \App\Models\PnpkDokumen::PROSES[$d->status_proses] ?? $d->status_proses }}</p>
                         </div>
                         <div class="flex gap-2">

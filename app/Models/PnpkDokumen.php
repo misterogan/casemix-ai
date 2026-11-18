@@ -20,11 +20,11 @@ class PnpkDokumen extends Model
         'siap_tinjau' => 'Siap ditinjau', 'selesai' => 'Selesai ditinjau', 'gagal' => 'Gagal'];
 
     protected $fillable = ['judul', 'nomor_kmk', 'tahun', 'tanggal_berlaku', 'status', 'diganti_oleh_id', 'sumber_url', 'path',
-        'sha256', 'jumlah_halaman', 'status_proses', 'error', 'diunggah_oleh'];
+        'sha256', 'jumlah_halaman', 'status_proses', 'error', 'diunggah_oleh', 'perlu_dilengkapi'];
 
     protected function casts(): array
     {
-        return ['tanggal_berlaku' => 'date', 'tahun' => 'integer', 'jumlah_halaman' => 'integer', 'finished_at' => 'datetime'];
+        return ['tanggal_berlaku' => 'date', 'tahun' => 'integer', 'jumlah_halaman' => 'integer', 'finished_at' => 'datetime', 'perlu_dilengkapi' => 'boolean'];
     }
 
     public function halaman(): HasMany
