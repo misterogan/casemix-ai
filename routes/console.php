@@ -12,3 +12,7 @@ Artisan::command('inspire', function () {
 
 // Salinan arsip dokumen yang melewati masa simpan dihapus tiap hari (hasil verifikasi tetap)
 \Illuminate\Support\Facades\Schedule::command('casemix:archive-prune')->daily()->withoutOverlapping();
+
+// Bridging VClaim Monitoring (hanya GET; berhenti diam bila CASEMIX_VCLAIM_ENABLED=false)
+\Illuminate\Support\Facades\Schedule::command('casemix:vclaim-sync-kunjungan')->hourly()->withoutOverlapping();
+\Illuminate\Support\Facades\Schedule::command('casemix:vclaim-sync-klaim')->dailyAt('02:00')->withoutOverlapping();

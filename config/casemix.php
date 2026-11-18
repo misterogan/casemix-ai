@@ -97,4 +97,17 @@ return [
         'max_umur' => 30,
         'sla_days' => (int) env('CASEMIX_DASHBOARD_SLA_DAYS', 7), // tenggat pengajuan sejak tanggal FTP
     ],
+    // Bridging VClaim BPJS (hanya GET Monitoring). Kredensial hanya dari .env.
+    'vclaim' => [
+        'enabled' => (bool) env('CASEMIX_VCLAIM_ENABLED', false),
+        'base_url' => env('VCLAIM_BASE_URL'),
+        'service' => env('VCLAIM_SERVICE'),
+        'cons_id' => env('VCLAIM_CONS_ID'),
+        'secret' => env('VCLAIM_SECRET'),
+        'user_key' => env('VCLAIM_USER_KEY'),
+        'timeout' => 30,
+        'jeda_ms' => 300,
+        'window_klaim_hari' => 60,
+        'window_kunjungan_hari' => 7,
+    ],
 ];

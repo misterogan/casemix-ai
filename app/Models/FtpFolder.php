@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /** Satu folder pasien di FTP Enigma, seperti terlihat pada sinkronisasi terakhir. */
 class FtpFolder extends Model
@@ -39,6 +40,16 @@ class FtpFolder extends Model
     public function analyses(): HasMany
     {
         return $this->hasMany(FolderAnalysis::class)->latest('id');
+    }
+
+    public function vclaimKlaim(): HasOne
+    {
+        return $this->hasOne(VclaimKlaim::class, 'no_sep', 'no_sep');
+    }
+
+    public function vclaimKunjungan(): HasOne
+    {
+        return $this->hasOne(VclaimKunjungan::class, 'no_sep', 'no_sep');
     }
 
     public function documents(): HasMany

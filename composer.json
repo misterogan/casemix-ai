@@ -10,6 +10,7 @@
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "league/flysystem-ftp": "^3.36",
+        "nullpunkt/lz-string-php": "^1.3",
         "smalot/pdfparser": "^2.13",
         "spatie/laravel-permission": "^8.5"
     },
