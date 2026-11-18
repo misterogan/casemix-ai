@@ -151,6 +151,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         });
     });
 
+    // Pemakaian AI (token & biaya, tanpa data pasien): Koordinator & Admin
+    Route::get('/sistem/pemakaian-ai', \App\Http\Controllers\AiUsageController::class)->middleware('role:admin|koordinator')->name('sistem.pemakaian_ai');
     Route::get('/riwayat-aktivitas', [AuditLogController::class, 'index'])->name('audit.index')->middleware('permission:audit.view');
 
     // Admin

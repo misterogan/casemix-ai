@@ -123,7 +123,7 @@ class FolderController extends Controller
         if ($blocked = $this->startBlocker($budget)) {
             return back()->with('warn', $blocked);
         }
-        $this->start($folder, $request->user()->id);
+        $this->start($folder, $request->user()->id, paksa: true); // tombol "Analisa ulang" selalu memanggil AI
         Audit::log('folder.analisa_ulang', $folder, 'Meminta analisa ulang folder');
 
         return back()->with('ok', 'Analisa ulang dimulai. Halaman diperbarui otomatis saat selesai.');
@@ -402,9 +402,9 @@ class FolderController extends Controller
     }
 
     /** @param bool $all true = semua file dibaca ulang; false = hanya file yang berubah */
-    private function start(FtpFolder $folder, int $userId, bool $all = false): FolderAnalysis
+    private function start(FtpFolder $folder, int $userId, bool $all = false, bool $paksa = false): FolderAnalysis
     {
-        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $userId]);
+        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $userId, 'paksa' => $paksa || $all]);
         $folder->update(['analysis_status' => 'antre', 'last_analysis_id' => $a->id]);
         app(FolderAnalyzer::class)->prepare($a); // daftar dokumen langsung tampil sebagai "menunggu"
         if ($all) {

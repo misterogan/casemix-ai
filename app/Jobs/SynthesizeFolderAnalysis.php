@@ -12,6 +12,7 @@ use App\Models\RubricItem;
 use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
 use App\Services\Ai\AiRequest;
+use App\Services\Ai\AnggaranHabis;
 use App\Services\Pnpk\PnpkAcuan;
 use App\Services\Verification\FolderAnalyzer;
 use App\Support\Audit;
@@ -75,13 +76,23 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             $needKode = SettingController::codeSuggestionsOn() && ! CodeSuggestion::whereHas('analysis',
                 fn ($q) => $q->where('ftp_folder_id', $folder->id)->where('fingerprint', $folder->fingerprint))->exists();
 
+            // Acuan PNPK: hanya butir disetujui, dirujuk AI lewat id; id yang tidak dikirim dibuang
+            $pnpk = app(PnpkAcuan::class)->butirForFolder($folder);
+            // Hash gabungan file (FTP + manual) + versi set butir: sama dengan analisa selesai terakhir → AI tidak dipanggil lagi
+            $hash = self::hashMasukan($a, $pnpk, [$need, $needSaran, $needKode]);
+            $a->update(['hash_masukan' => $hash]);
+            if (! $a->paksa && FolderAnalysis::where('ftp_folder_id', $folder->id)->whereKeyNot($a->id)
+                ->where('status', ReviewStatus::Selesai->value)->latest('id')->value('hash_masukan') === $hash) {
+                $need = [];
+                $needSaran = $needKode = false;
+            }
+
             $json = [];
             if ($need || $needSaran || $needKode) {
                 if ($blocked = $budget->runBlocker()) {
                     throw new RuntimeException($blocked);
                 }
-                // Acuan PNPK: hanya butir disetujui, dirujuk AI lewat id; id yang tidak dikirim dibuang
-                $pnpk = app(PnpkAcuan::class)->butirForFolder($folder);
+                $req->refId = $a->id;
                 $this->buildRequest($req, $a, $folder, $need, $needSaran, $needKode, $pnpk);
                 $req->maxTokens = min((int) $config->max_tokens, ReadFolderDocument::MAX_TOKENS);
                 $res = $ai->for($config)->generate($req);
@@ -95,7 +106,7 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 ?? 'Tidak ada dokumen yang berubah; daftar periksa tetap.';
             // Aturan E-Klaim + data gabungan dihitung tanpa AI; "kondisi" ikut dibersihkan (kode ICD dibuang)
             $r = $analyzer->synthesize($a, ['ringkasan' => $summary, 'temuan' => [], 'kondisi' => $needSaran ? array_slice((array) ($json['kondisi'] ?? []), 0, self::MAX_SUGGESTIONS) : []]);
-            if (isset($pnpk) && $pnpk->isNotEmpty()) {
+            if ($json && $pnpk->isNotEmpty()) {
                 $r['findings'] = array_merge($r['findings'] ?? [], $this->pnpkFindings($pnpk, $json['pnpk'] ?? []));
             }
 
@@ -128,12 +139,24 @@ class SynthesizeFolderAnalysis implements ShouldQueue
             Audit::system('folder.analisa_selesai', $folder, 'Analisa AI selesai: ' . $folder->readinessLabel()
                 . ($json ? '' : ' (tanpa panggilan AI, semua butir terkunci)'), $a->requested_by,
                 ['analisa' => $a->id, 'butir_dinilai_ai' => $need, 'butir_kurang' => $kurang]);
+        } catch (AnggaranHabis $e) { // ditahan, bukan gagal; dilanjutkan manual setelah anggaran dinaikkan
+            $a->update(['status' => ReviewStatus::MenungguAnggaran, 'error' => $e->getMessage()]);
+            $folder->update(['analysis_status' => ReviewStatus::MenungguAnggaran->value]);
         } catch (Throwable $e) {
             $a->update(['status' => ReviewStatus::Gagal, 'error' => mb_substr($e->getMessage(), 0, 2000), 'finished_at' => now()]);
             $folder->update(['analysis_status' => 'gagal']);
             Audit::system('folder.analisa_gagal', $folder, 'Analisa AI gagal: ' . mb_substr($e->getMessage(), 0, 180), $a->requested_by);
             report($e);
         }
+    }
+
+    /** sha256 dari sidik file berkas (FTP + manual) dan versi butir PNPK yang disisipkan. */
+    public static function hashMasukan(FolderAnalysis $a, Collection $pnpk, array $tugas = []): string
+    {
+        $files = $a->documents()->pluck('file_fingerprint', 'name')->sortKeys()->all();
+        $butir = $pnpk->map(fn ($b) => $b->id . '@' . $b->updated_at?->timestamp)->sort()->values()->all();
+
+        return hash('sha256', json_encode([$files, $butir, $tugas])); // $tugas: butir rubrik/saran yang perlu dinilai
     }
 
     /** Ganti instruksi tahap 2: hanya butir yang perlu dinilai (+ kondisi bila saran menyala). */

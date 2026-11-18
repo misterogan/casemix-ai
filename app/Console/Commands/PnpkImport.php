@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Jobs\EkstrakPnpk;
+use App\Models\AiUsage;
 use App\Models\PnpkDokumen;
+use App\Services\Pnpk\PnpkProposer;
 use App\Services\Pnpk\PnpkTextExtractor;
 use App\Support\Audit;
 use Illuminate\Console\Command;
@@ -16,7 +18,7 @@ use Throwable;
  */
 class PnpkImport extends Command
 {
-    protected $signature = 'casemix:pnpk-import {path : Folder berisi PDF PNPK} {--dry-run : Tampilkan rencana tanpa menyimpan} {--hanya= : Glob nama file, mis. pneumonia*}';
+    protected $signature = 'casemix:pnpk-import {path : Folder berisi PDF PNPK} {--dry-run : Tampilkan rencana tanpa menyimpan} {--hanya= : Glob nama file, mis. pneumonia*} {--estimasi : Perkiraan token & biaya usulan AI tanpa menyimpan apa pun}';
 
     protected $description = 'Impor PDF PNPK dari folder ke Acuan regulasi (ekstrak & usulan AI lewat antrean)';
 
@@ -38,6 +40,9 @@ class PnpkImport extends Command
         $files = array_filter(glob($dir . DIRECTORY_SEPARATOR . '*') ?: [], fn ($f) => is_file($f) && strtolower(pathinfo($f, PATHINFO_EXTENSION)) === 'pdf'
             && (! $hanya || fnmatch($hanya, basename($f), FNM_CASEFOLD)));
         sort($files);
+        if ($this->option('estimasi')) {
+            return $this->estimasi($files, $extractor);
+        }
 
         $rows = [];
         $n = $m = $k = 0;
@@ -82,6 +87,40 @@ class PnpkImport extends Command
 
         $this->table(['File', 'Judul', 'Tahun', 'Nomor KMK', 'Status'], $rows);
         $this->info("$n diimpor, $m dilewati, $k perlu dilengkapi" . ($dry ? ' (dry-run, tidak disimpan)' : ''));
+
+        return self::SUCCESS;
+    }
+
+    /** Hitung karakter pdftotext tiap PDF; token = karakter/3 + instruksi per potongan 15 halaman. Tidak menyimpan apa pun. */
+    private function estimasi(array $files, PnpkTextExtractor $extractor): int
+    {
+        $model = (string) config('casemix.ai.model_regulasi', 'claude-haiku-5-5');
+        $banding = 'claude-sonnet-5-5';
+        $req = app(PnpkProposer::class)->request($model, 4096, 'Judul', []);
+        $instruksi = (int) ceil((mb_strlen($req->system) + mb_strlen(collect($req->parts)->pluck('text')->implode(''))) / 3);
+        $keluar = 1500; // perkiraan token jawaban per potongan
+        $rows = [];
+        $tot = ['token' => 0, 'out' => 0, 'a' => 0.0, 'b' => 0.0];
+        foreach ($files as $f) {
+            try {
+                $pages = self::isPdf($f) ? $extractor->textPages($f) : [];
+            } catch (Throwable $e) {
+                $pages = [];
+            }
+            $hal = count($pages);
+            $kar = array_sum(array_map(fn ($t) => mb_strlen((string) $t), $pages));
+            $potong = max(1, (int) ceil($hal / PnpkProposer::CHUNK));
+            $token = (int) ceil($kar / 3) + $potong * $instruksi;
+            $out = $potong * $keluar;
+            $a = AiUsage::biaya($model, $token, $out);
+            $b = AiUsage::biaya($banding, $token, $out);
+            $scan = $hal === 0 || $kar / $hal < 200;
+            $rows[] = [basename($f), $hal, $kar, $token, '$' . number_format($a, 4), '$' . number_format($b, 4), $scan ? 'kemungkinan scan' : ''];
+            $tot = ['token' => $tot['token'] + $token, 'out' => $tot['out'] + $out, 'a' => $tot['a'] + $a, 'b' => $tot['b'] + $b];
+        }
+        $this->table(['File', 'Halaman', 'Karakter', 'Token masuk', "Biaya $model", "Biaya $banding", 'Catatan'], $rows);
+        $this->info(sprintf('Total %d token masuk, ±%d token keluar: US$%s (%s), US$%s (%s). Estimasi saja, tidak ada yang disimpan.',
+            $tot['token'], $tot['out'], number_format($tot['a'], 4), $model, number_format($tot['b'], 4), $banding));
 
         return self::SUCCESS;
     }

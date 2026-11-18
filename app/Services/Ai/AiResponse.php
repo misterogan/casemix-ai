@@ -10,6 +10,7 @@ final class AiResponse
         public ?int $tokensOut = null,
         public ?string $model = null,
         public array $raw = [],
+        public ?int $cacheReadTokens = null,
     ) {}
 
     /** Ambil objek JSON dari jawaban model (toleran terhadap ```json dan teks pembuka). */

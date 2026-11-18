@@ -10,6 +10,7 @@ enum ReviewStatus: string
     case Gagal = 'gagal';
     case Dibatalkan = 'dibatalkan'; // tidak diproses karena langkah sebelumnya gagal
     case Diarsipkan = 'diarsipkan'; // hanya salinan arsip otomatis saat sinkron; belum dibaca AI
+    case MenungguAnggaran = 'menunggu_anggaran'; // ditahan karena anggaran AI habis; dilanjutkan manual
 
     public function label(): string
     {
@@ -20,6 +21,7 @@ enum ReviewStatus: string
             self::Gagal => 'Gagal',
             self::Dibatalkan => 'Dibatalkan',
             self::Diarsipkan => 'Diarsipkan (belum dianalisa)',
+            self::MenungguAnggaran => 'Menunggu anggaran',
         };
     }
 

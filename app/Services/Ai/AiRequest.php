@@ -12,6 +12,8 @@ final class AiRequest
         public string $system = '',
         public int $maxTokens = 4096,
         public float $temperature = 0.0,
+        public string $jenis = 'analisa', // jenis tugas untuk pencatatan ai_usage & anggaran
+        public ?int $refId = null,
     ) {}
 
     public function text(string $text): self

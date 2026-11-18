@@ -63,6 +63,7 @@ class AnthropicProvider implements AiProvider
                 'block_types' => $blocks->pluck('type')->unique()->values()->all(),
                 'text_length' => mb_strlen($text),
             ],
+            cacheReadTokens: $res->json('usage.cache_read_input_tokens'),
         );
     }
 

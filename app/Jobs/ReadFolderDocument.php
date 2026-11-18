@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Enums\ReviewStatus;
 use App\Models\FolderDocument;
+use App\Models\FolderAnalysis;
 use App\Services\Ai\AiBudget;
+use App\Services\Ai\AnggaranHabis;
 use App\Services\Ai\AiManager;
 use App\Services\Ai\AiResponse;
 use App\Services\Import\SimrsFtp;
@@ -68,6 +70,7 @@ class ReadFolderDocument implements ShouldQueue
                 return;
             }
 
+            $req->refId = $d->folder_analysis_id;
             $req->maxTokens = min((int) $config->max_tokens, in_array($d->doc_type, self::LIGHT_TYPES, true) ? self::LIGHT_MAX_TOKENS : self::MAX_TOKENS);
 
             $res = $ai->for($config)->generate($req);
@@ -87,6 +90,10 @@ class ReadFolderDocument implements ShouldQueue
             $r = $analyzer->parseDocument($d, $res->json());
 
             $d->update(['status' => ReviewStatus::Selesai, 'summary' => $r['summary'], 'findings' => $r['findings'], 'finished_at' => now()]);
+        } catch (AnggaranHabis $e) { // ditahan, bukan gagal: "Lanjutkan" memproses lagi setelah anggaran dinaikkan
+            $d->update(['status' => ReviewStatus::Dibatalkan, 'error' => $e->getMessage(), 'finished_at' => now()]);
+            FolderAnalysis::whereKey($d->folder_analysis_id)->update(['status' => ReviewStatus::MenungguAnggaran->value, 'error' => $e->getMessage()]);
+            $d->folder?->update(['analysis_status' => ReviewStatus::MenungguAnggaran->value]);
         } catch (Throwable $e) {
             $d->update(['status' => ReviewStatus::Gagal, 'error' => mb_substr($e->getMessage(), 0, 1000), 'finished_at' => now()]);
             report($e);

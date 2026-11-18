@@ -63,7 +63,7 @@ class FolderAnalyzer
         $pages = config('casemix.ai.max_pages_by_type', []);
 
         return [
-            'model' => $fast ? ($config->model_fast ?: $config->model_standard) : $config->model_standard,
+            'model' => $fast ? ($config->model_fast ?: $config->model_standard) : app(\App\Services\Ai\AiManager::class)->model('analisa', $config),
             'max_tokens' => min((int) $config->max_tokens, $fast ? self::MAX_TOKENS_SHORT : self::MAX_TOKENS),
             'pages' => (int) ($pages[$d->doc_type] ?? $pages['lainnya'] ?? config('casemix.ai.max_pages_per_scan')),
             'short' => $d->doc_type === 'tambahan',
@@ -261,7 +261,7 @@ class FolderAnalyzer
         $unread = $a->documents->reject(fn ($d) => $read->contains('id', $d->id))->pluck('name')->all();
         $folder = $a->folder;
 
-        $req = new AiRequest($config->model_standard, $this->systemPrompt(), min((int) $config->max_tokens, self::MAX_TOKENS));
+        $req = new AiRequest(app(\App\Services\Ai\AiManager::class)->model('analisa', $config), $this->systemPrompt(), min((int) $config->max_tokens, self::MAX_TOKENS));
         $req->text(<<<TXT
 Folder FTP: "{$folder->name}" (dari nama folder: RM {$folder->no_rm}, nama {$folder->nama_pasien}, SEP {$folder->no_sep}).
 Berikut ringkasan setiap dokumen (sudah dibaca terpisah). Periksa SILANG antardokumen:

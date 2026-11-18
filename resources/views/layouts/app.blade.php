@@ -47,6 +47,7 @@
             ['route' => 'acuan.pnpk.index', 'match' => 'acuan.*', 'label' => 'Acuan regulasi', 'icon' => 'book', 'show' => $koor && ! $u->can('admin.manage')],
         ],
         'Sistem' => [
+            ['route' => 'sistem.pemakaian_ai', 'match' => 'sistem.pemakaian_ai', 'label' => 'Pemakaian AI', 'icon' => 'dashboard', 'show' => $koor || $u->hasRole('admin')],
             ['route' => 'audit.index', 'match' => 'audit.*', 'label' => 'Riwayat aktivitas', 'icon' => 'history', 'show' => $u->can('audit.view')],
             ['route' => 'admin.users.index', 'match' => ['admin.users.*', 'admin.roles.*', 'admin.providers.*', 'admin.budget.*', 'admin.settings.*'], 'label' => 'Administrasi', 'icon' => 'settings', 'show' => $u->can('admin.manage'), 'sub' => [
                 ['url' => route('admin.users.index'), 'label' => 'Pengguna', 'active' => request()->routeIs('admin.users.*')],
@@ -229,6 +230,13 @@
 
     <main @class(['mx-auto w-full max-w-screen-2xl flex-1 p-4 md:p-6', 'flex min-h-0 flex-col lg:overflow-hidden' => $fullHeight])>
         <x-ai-budget-banner/>
+        @if ($koor && ($pakaiAi = app(\App\Services\Ai\AiBudget::class)->persenPemakaian()) !== null && $pakaiAi >= 80)
+            <div data-banner-pemakaian-ai role="status" class="mb-5 rounded-xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-700 dark:text-orange-400">
+                Pemakaian AI bulan ini {{ $pakaiAi }}% dari anggaran.
+                @if ($pakaiAi >= 100) Usulan regulasi dan draf sanggahan ditahan; analisa memakai cadangan. @endif
+                <a href="{{ route('sistem.pemakaian_ai') }}" class="underline">Lihat pemakaian</a>
+            </div>
+        @endif
 
         @if (session('ok') || session('warn') || $errors->any())
             <div class="mb-5 space-y-2" role="status">

@@ -192,6 +192,45 @@ class AiBudget
         return $budget && $this->spent() >= $budget ? $this->message($this->status()) : null;
     }
 
+    // ------------------------------------------------ anggaran dari config (tabel ai_usage)
+
+    /** casemix.ai.anggaran_bulanan_usd; 0 = tanpa batas. */
+    public function anggaran(): float
+    {
+        return max(0.0, (float) config('casemix.ai.anggaran_bulanan_usd', 0));
+    }
+
+    /** Persen pemakaian ai_usage bulan ini terhadap anggaran, atau null bila tanpa batas. */
+    public function persenPemakaian(): ?int
+    {
+        $a = $this->anggaran();
+
+        return $a > 0 ? (int) floor(\App\Models\AiUsage::totalBulanIni() / $a * 100) : null;
+    }
+
+    /**
+     * Dicek sebelum tiap panggilan AI. ≥100%: usulan_regulasi & draf_sanggahan ditolak;
+     * analisa boleh memakai cadangan, sesudahnya ditahan (AnggaranHabis).
+     */
+    public function gate(string $jenis): void
+    {
+        $a = $this->anggaran();
+        if ($a <= 0) {
+            return;
+        }
+        $spent = \App\Models\AiUsage::totalBulanIni();
+        if ($spent < $a) {
+            return;
+        }
+        $teks = sprintf('Anggaran AI bulan ini habis (US$%s dari US$%s).', number_format($spent, 2), number_format($a, 2));
+        if ($jenis !== 'analisa') {
+            throw new AnggaranHabis("$teks Usulan regulasi dan draf sanggahan tidak dijalankan sampai anggaran dinaikkan atau bulan berganti.");
+        }
+        if ($spent >= $a + (float) config('casemix.ai.anggaran_cadangan_analisa_usd', 1)) {
+            throw new AnggaranHabis("$teks Cadangan analisa juga habis; analisa menunggu anggaran dan bisa dilanjutkan setelah anggaran dinaikkan.");
+        }
+    }
+
     /** Ringkasan per bulan dan per fitur/petugas untuk halaman Admin. */
     public function report(int $months = 6): array
     {

@@ -55,10 +55,43 @@ class PnpkAcuan
             ->filter(fn ($x) => $x['butir']->isNotEmpty())->values();
     }
 
-    /** Butir disetujui yang boleh disisipkan ke pipeline analisa. @return Collection<int, PnpkButir> */
-    public function butirForFolder(FtpFolder $folder, int $max = 20): Collection
+    /**
+     * Butir disetujui yang disisipkan ke analisa, dibatasi casemix.regulasi.max_butir & max_token (±4 karakter/token).
+     * Prioritas: PNPK yang cocok kode ICD lengkap, lalu yang hanya cocok prefix 3 digit.
+     *
+     * @return Collection<int, PnpkButir>
+     */
+    public function butirForFolder(FtpFolder $folder, ?int $max = null): Collection
     {
-        return $this->forFolder($folder)->flatMap(fn ($x) => $x['butir']->flatten())->take($max)->values();
+        $max ??= (int) config('casemix.regulasi.max_butir', 12);
+        $maxToken = (int) config('casemix.regulasi.max_token', 3000);
+        $codes = array_map(fn ($c) => str_replace('.', '', $c), $this->diagnosisCodes($folder));
+        $skor = fn (PnpkDokumen $d) => $d->icd->contains(function (PnpkIcd $i) use ($codes) {
+            $k = str_replace('.', '', $i->kode);
+
+            return collect($codes)->contains(fn ($c) => $c === $k || (strlen($k) > 3 && str_starts_with($c, $k)));
+        }) ? 0 : 1;
+
+        $hasil = collect();
+        $token = 0;
+        $urut = $this->forFolder($folder)->sortBy(fn ($x) => $skor($x['dokumen']), SORT_REGULAR)->values();
+        foreach ($urut->flatMap(fn ($x) => $x['butir']->flatten()) as $b) {
+            $t = (int) ceil(mb_strlen(json_encode($this->baris($b), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) / 4);
+            if ($hasil->count() >= $max || $token + $t > $maxToken) {
+                break;
+            }
+            $hasil->push($b);
+            $token += $t;
+        }
+
+        return $hasil;
+    }
+
+    /** Yang dikirim ke AI per butir: ringkasan + kutipan + sitasi (judul, halaman). Tidak pernah teks halaman/PDF. */
+    private function baris(PnpkButir $b): array
+    {
+        return ['id' => $b->id, 'pnpk' => $b->dokumen?->judul, 'halaman' => $b->halaman, 'jenis' => $b->jenisLabel(),
+            'ringkasan' => $b->ringkasan, 'kutipan' => $b->kutipan];
     }
 
     /** Teks sisipan untuk prompt: hanya id, jenis, ringkasan, kutipan. */
@@ -67,8 +100,7 @@ class PnpkAcuan
         if ($butir->isEmpty()) {
             return '';
         }
-        $rows = $butir->map(fn (PnpkButir $b) => ['id' => $b->id, 'pnpk' => $b->dokumen?->judul, 'jenis' => $b->jenisLabel(),
-            'ringkasan' => $b->ringkasan, 'kutipan' => $b->kutipan])->values()->all();
+        $rows = $butir->map(fn (PnpkButir $b) => $this->baris($b))->values()->all();
 
         return "\n\nACUAN PNPK (butir disetujui koordinator). Rujuk HANYA lewat \"id\" di bawah; jangan merujuk PNPK lain:\n"
             . json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

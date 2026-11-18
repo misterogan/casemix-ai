@@ -43,6 +43,26 @@ return [
         'queue' => env('CASEMIX_AI_QUEUE', 'ai'),
         // Claude: off = thinking dimatikan (token keluaran untuk jawaban), low = effort rendah
         'thinking' => env('CASEMIX_AI_THINKING', 'off'),
+        // Model per tugas. Kosong = model standar Penyedia AI aktif.
+        'model_analisa' => env('CASEMIX_AI_MODEL_ANALISA'),
+        'model_regulasi' => env('CASEMIX_AI_MODEL_REGULASI', 'claude-haiku-5-5'),
+        'model_draf' => env('CASEMIX_AI_MODEL_DRAF'), // kosong = model_analisa
+        // Harga USD per 1 juta token [input, output]; dicocokkan dari awal nama model. Ubah di sini tanpa mengubah kode.
+        'harga' => [
+            'claude-haiku-5-5' => [0.10, 0.50],
+            'claude-sonnet-5-5' => [2.00, 10.00],
+            'claude-opus-5-5' => [4.00, 20.00],
+        ],
+        // Anggaran bulanan pemakaian AI (tabel ai_usage). 0 = tanpa batas.
+        'anggaran_bulanan_usd' => (float) env('CASEMIX_AI_ANGGARAN', 0),
+        // Setelah anggaran habis, analisa tetap boleh memakai cadangan ini; sesudahnya ditahan "menunggu anggaran".
+        'anggaran_cadangan_analisa_usd' => (float) env('CASEMIX_AI_CADANGAN_ANALISA', 1),
+    ],
+
+    'regulasi' => [
+        // Butir PNPK yang disisipkan ke analisa (prioritas: cocok kode ICD lengkap > prefix 3 digit)
+        'max_butir' => (int) env('CASEMIX_REGULASI_MAX_BUTIR', 12),
+        'max_token' => (int) env('CASEMIX_REGULASI_MAX_TOKEN', 3000), // perkiraan 4 karakter/token
     ],
 
     'budget' => [
