@@ -7,41 +7,30 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- Alur status E-Klaim sebagai rangkaian, karena memang berurutan --}}
-    <section class="panel mb-6 overflow-hidden" aria-label="Jumlah berkas per status">
-        <ol class="grid divide-y divide-garis sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-5 lg:divide-x">
+    {{-- Jumlah berkas per status (alur E-Klaim berurutan) --}}
+    <div class="grid grid-cols-12 gap-4 md:gap-6">
+        <section class="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 xl:grid-cols-5" aria-label="Jumlah berkas per status">
             @foreach ([\App\Enums\ClaimStatus::SepBelumAda, \App\Enums\ClaimStatus::PerluDilengkapi, \App\Enums\ClaimStatus::BelumDiperiksa, \App\Enums\ClaimStatus::SudahDiperiksa, \App\Enums\ClaimStatus::Disetujui] as $s)
-                <li>
-                    <a href="{{ route('claims.index', ['status' => $s->value]) }}" class="block px-5 py-4 hover:bg-kertas">
-                        <span class="badge {{ $s->tone() }}">{{ $s->label() }}</span>
-                        <span class="num mt-2 block num text-[28px] leading-9 font-semibold text-tinta">{{ $counts[$s->value] }}</span>
-                    </a>
-                </li>
+                <x-stat-card :label="$s->label()" :value="$counts[$s->value]" :href="route('claims.index', ['status' => $s->value])"
+                    :icon="['file', 'alert', 'clock', 'folder-check', 'check'][$loop->index]" :tone="['gray', 'warning', 'info', 'brand', 'success'][$loop->index]"/>
             @endforeach
-        </ol>
-    </section>
+        </section>
 
-    <div class="grid gap-6 xl:grid-cols-[1fr_340px]">
-        <div class="space-y-6">
+        <div class="col-span-12 grid min-w-0 gap-4 md:gap-6 xl:col-span-8">
             @foreach ([['Siap disetujui', $readyToApprove, 'Sudah diperiksa AI dan dokumen wajib lengkap.'], ['Perlu ditindaklanjuti', $needsAttention, 'Dokumen kurang, SEP belum ada, atau belum diperiksa.']] as [$heading, $list, $desc])
-                <section class="panel">
-                    <div class="panel-head">
-                        <div>
-                            <h2 class="panel-title">{{ $heading }}</h2>
-                            <p class="text-xs text-tinta-3">{{ $desc }}</p>
-                        </div>
-                        <a href="{{ route('claims.index') }}" class="text-sm font-medium text-giok hover:underline">Lihat semua</a>
-                    </div>
+                <x-card :title="$heading" :subtitle="$desc" class="min-w-0">
+                    <x-slot:actions><a href="{{ route('claims.index') }}" class="text-sm font-medium text-brand-500 hover:underline">Lihat semua</a></x-slot:actions>
                     @if ($list->isEmpty())
-                        <p class="px-5 py-6 text-sm text-tinta-3">Tidak ada berkas.</p>
+                        <p class="text-sm text-gray-500">Tidak ada berkas.</p>
                     @else
-                        <ul class="divide-y divide-garis">
+                        <ul class="-my-3 divide-y divide-gray-100 dark:divide-gray-800">
                             @foreach ($list as $c)
                                 <li>
-                                    <a href="{{ route('claims.show', $c) }}" class="flex items-center gap-4 px-5 py-3 hover:bg-kertas">
+                                    <a href="{{ route('claims.show', $c) }}" class="flex items-center gap-3 py-3 hover:bg-gray-50 dark:hover:bg-white/5">
+                                        <span class="grid size-9 shrink-0 place-items-center rounded-full {{ $loop->parent->first ? 'bg-success-50 text-success-600 dark:bg-success-500/10' : 'bg-warning-50 text-warning-600 dark:bg-warning-500/10' }}" aria-hidden="true"><x-icon :name="$loop->parent->first ? 'check' : 'alert'" class="size-4"/></span>
                                         <div class="min-w-0 flex-1">
-                                            <p class="truncate font-semibold">{{ $c->nama_pasien }}</p>
-                                            <p class="num text-xs text-tinta-3">RM {{ $c->no_rm }} · SEP {{ $c->no_sep ?: '—' }}</p>
+                                            <p class="truncate text-sm font-medium text-gray-800 dark:text-white/90">{{ $c->nama_pasien }}</p>
+                                            <p class="num truncate text-xs text-gray-500">RM {{ $c->no_rm }} · SEP {{ $c->no_sep ?: '—' }}</p>
                                         </div>
                                         @if ($r = $c->latestReview)
                                             @if ($r->status === \App\Enums\ReviewStatus::Selesai && ($k = $r->countBy(\App\Enums\Severity::Kritis)))
@@ -54,19 +43,19 @@
                             @endforeach
                         </ul>
                     @endif
-                </section>
+                </x-card>
             @endforeach
         </div>
 
-        <aside class="space-y-6">
-            <section class="panel panel-body">
+        <aside class="col-span-12 space-y-4 md:space-y-6 xl:col-span-4">
+            <section class="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-800 dark:bg-white/[.03]">
                 <h2 class="panel-title">Hari ini</h2>
                 <dl class="mt-3 space-y-2 text-sm">
                     <div class="flex justify-between"><dt class="text-tinta-2">Disetujui</dt><dd class="num font-semibold">{{ $approvedToday }}</dd></div>
                     <div class="flex justify-between"><dt class="text-tinta-2">Sedang diperiksa AI</dt><dd class="num font-semibold">{{ $running }}</dd></div>
                 </dl>
             </section>
-            <section class="panel panel-body">
+            <section class="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-800 dark:bg-white/[.03]">
                 <h2 class="panel-title">Penyedia AI aktif</h2>
                 @if ($provider)
                     <p class="mt-2 text-sm font-semibold">{{ $provider->name }}</p>

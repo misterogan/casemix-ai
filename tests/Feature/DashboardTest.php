@@ -97,4 +97,15 @@ class DashboardTest extends TestCase
             ->assertSee('data-kartu="dpjp">3<', false)->assertSee('data-skor>60%<', false)
             ->assertSee('Sinkron FTP terakhir 09:15')->assertSee('Kemungkinan klaim kurang')->assertSee('D64');
     }
+
+    public function test_tata_letak_baru_kartu_dan_tabel(): void
+    {
+        $this->sampleData();
+        $res = $this->actingAs($this->koor)->get(route('control.index', ['periode' => '30']))->assertOk();
+        $res->assertSee('data-kartu="tinjau">1<', false)->assertSee('data-kartu="dpjp">3<', false)->assertSee('data-skor>60%<', false)
+            ->assertSee('Antrean terbaru')->assertSee('Folder terbaru')->assertSee('data-stat', false);
+        $this->assertMatchesRegularExpression('#overflow-x-auto[^"]*"[^>]*>\s*<table#', $res->getContent());
+
+        $this->actingAs($this->koor)->get(route('dashboard'))->assertOk()->assertSee('data-stat', false);
+    }
 }

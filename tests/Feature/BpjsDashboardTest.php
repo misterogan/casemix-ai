@@ -385,4 +385,22 @@ class BpjsDashboardTest extends TestCase
         }
         $this->actingAs($this->koor)->get($url)->assertOk()->assertSee('PASIEN BERAT')->assertDontSee('PASIEN LAIN');
     }
+
+    public function test_tata_letak_baru_kartu_dan_tabel(): void
+    {
+        $this->dataset();
+        $res = $this->ringkasan();
+        $k = $res->viewData('stats')['kartu'];
+        $html = $res->getContent();
+
+        $res->assertSee('Pusat kendali klaim BPJS')->assertSee('Tren status klaim')->assertSee('Status klaim')->assertSee('Nilai tertahan')
+            ->assertSee('Severity rawat inap')->assertSee('Perlu tindak lanjut')->assertSee('Klaim terbaru')->assertSee('Lihat semua')
+            ->assertSee('id="chart-spark"', false)->assertSee('data-tren-rentang', false);
+        foreach (['klaim', 'pending', 'tolak', 'belum'] as $kk) {
+            $this->assertMatchesRegularExpression('#data-kartu="' . $kk . '".*?data-stat>' . preg_quote(number_format($k[$kk]['n'], 0, ',', '.')) . '<#s', $html);
+        }
+        $this->assertStringContainsString('title="' . BpjsStats::rupiahPenuh($k['tertahan']['n']) . '"', $html);
+        $this->assertMatchesRegularExpression('#overflow-x-auto[^"]*"[^>]*>\s*<table#', $html);
+        $this->assertStringContainsString('data-terbaru="SEPA"', $html);
+    }
 }

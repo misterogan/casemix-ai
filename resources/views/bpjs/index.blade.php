@@ -3,19 +3,14 @@
     $rp = fn ($n) => $n === null ? '—' : number_format((float) $n, 0, ',', '.');
     $base = array_filter($filters);
 @endphp
-<div class="space-y-4">
+<div class="space-y-4 md:space-y-6">
     <header>
-        <h1 class="text-xl font-semibold text-ink">Klaim BPJS</h1>
+        <h1 class="text-xl font-semibold text-gray-800 dark:text-white/90">Klaim BPJS</h1>
         <p class="text-sm text-ink-muted">Data hanya dibaca dari hasil tarik VClaim. Halaman ini tidak memanggil BPJS.</p>
     </header>
 
-    <nav class="flex gap-1 border-b border-garis-g text-sm" aria-label="Tab Klaim BPJS">
-        @foreach (\App\Http\Controllers\BpjsController::TABS as $k => $l)
-            <a href="{{ route('bpjs.index', ['tab' => $k] + ($k === 'ringkasan' ? [] : $base)) }}" data-tab="{{ $k }}"
-               @if ($tab === $k) aria-current="page" @endif
-               class="-mb-px border-b-2 px-3 py-2 {{ $tab === $k ? 'border-biru-aktif font-medium text-biru-aktif' : 'border-transparent text-abu hover:text-arang' }}">{{ $l }}</a>
-        @endforeach
-    </nav>
+    <x-tabs label="Tab Klaim BPJS" :items="collect(\App\Http\Controllers\BpjsController::TABS)->map(fn ($l, $k) => ['label' => $l, 'active' => $tab === $k,
+        'href' => route('bpjs.index', ['tab' => $k] + ($k === 'ringkasan' ? [] : $base))])->values()->all()"/>
 
     @if (! $enabled)
         <x-panel><x-empty-state title="Bridging VClaim belum diaktifkan." data-vclaim-off/></x-panel>
