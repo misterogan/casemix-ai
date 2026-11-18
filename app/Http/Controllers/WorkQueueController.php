@@ -32,13 +32,16 @@ class WorkQueueController extends Controller
             default => null,
         };
 
+        // Status BPJS dibaca dari ftp_folders.bpjs_* (diisi job ApplyVclaimToCermat). Klaim selesai di BPJS keluar antrean;
+        // pending/tidak layak/dispute selalu masuk dan paling atas.
         $antrean = FtpFolder::query()->whereNull('missing_at')
-            ->where(fn ($w) => $w->where('analysis_status', 'gagal')->orWhereNotNull('rubric_kurang'))
+            ->where(fn ($w) => $w->whereNull('bpjs_status_kategori')->orWhere('bpjs_status_kategori', '!=', 'klaim'))
+            ->where(fn ($w) => $w->where('analysis_status', 'gagal')->orWhereNotNull('rubric_kurang')->orWhere('bpjs_tindak_lanjut', true))
             ->get()
-            ->map(fn ($f) => ['folder' => $f, 'vonis' => $verdict->verdict($f)])
-            ->filter(fn ($r) => in_array($r['vonis'], ['tinjau', 'blokir'], true))
+            ->map(fn ($f) => ['folder' => $f, 'vonis' => $verdict->verdict($f), 'tindak_bpjs' => (bool) $f->bpjs_tindak_lanjut])
+            ->filter(fn ($r) => $r['tindak_bpjs'] || in_array($r['vonis'], ['tinjau', 'blokir'], true))
             ->map(fn ($r) => $r + ['prioritas' => $verdict->priority($r['folder']), 'tenggat' => $verdict->dueDate($r['folder'])])
-            ->sort(fn ($a, $b) => [$b['prioritas'], $a['folder']->id] <=> [$a['prioritas'], $b['folder']->id])
+            ->sort(fn ($a, $b) => [$b['tindak_bpjs'], $b['prioritas'], $a['folder']->id] <=> [$a['tindak_bpjs'], $a['prioritas'], $b['folder']->id])
             ->values();
 
         $today = now()->startOfDay();
@@ -71,8 +74,7 @@ class WorkQueueController extends Controller
             ->orderByDesc('code_suggestions.folder_analysis_id')
             ->get(['code_suggestions.code', 'folder_analyses.ftp_folder_id'])
             ->unique('ftp_folder_id')->pluck('code', 'ftp_folder_id');
-        $bpjs = \App\Models\VclaimKlaim::whereIn('no_sep', $items->pluck('folder.no_sep')->filter())->pluck('status_kategori', 'no_sep');
-        $items = $items->map(fn ($r) => $r + ['dx' => $dx[$r['folder']->id] ?? null, 'bpjs' => $bpjs[$r['folder']->no_sep] ?? null] + self::identity($r['folder']));
+        $items = $items->map(fn ($r) => $r + ['dx' => $dx[$r['folder']->id] ?? null, 'bpjs' => $r['folder']->bpjs_status_kategori] + self::identity($r['folder']));
 
         return view('work-queue.index', [
             'rows' => new LengthAwarePaginator($items, $rows->count(), self::PER_PAGE, $page, ['path' => $request->url(), 'query' => $request->query()]),

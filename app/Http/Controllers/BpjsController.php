@@ -20,7 +20,7 @@ class BpjsController extends Controller
 
     /** Filter status daftar klaim => kategori (status_kategori). */
     private const STATUS = ['proses' => ['proses'], 'pending' => ['pending'], 'tidak_layak' => ['tidak_layak'], 'dispute' => ['dispute'],
-        'klaim' => ['klaim'], 'lainnya' => ['lainnya'], 'tolak' => ['tidak_layak', 'dispute']];
+        'klaim' => ['klaim'], 'lainnya' => ['lainnya'], 'tolak' => ['tidak_layak', 'dispute'], 'tindak' => ['pending', 'tidak_layak', 'dispute']];
 
     private const MAKS_CSV = 10000;
 
@@ -148,6 +148,8 @@ class BpjsController extends Controller
         ];
 
         return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links, 'sinkron' => BpjsStats::sinkron(),
+            'tanpaFolder' => ['n' => (int) \App\Models\AppSetting::get(\App\Jobs\ApplyVclaimToCermat::TANPA_FOLDER, 0),
+                'url' => route('bpjs.index', ['tab' => 'sep', 'tanpa_folder' => 1])],
             'dasarLink' => ['tab' => 'klaim'] + $p];
     }
 
@@ -167,6 +169,7 @@ class BpjsController extends Controller
             'status' => array_key_exists((string) $request->query('status'), self::STATUS) ? $request->query('status') : '',
             'q' => mb_substr(trim((string) $request->query('q')), 0, 100),
             'belum' => $request->query('belum') === '1' ? '1' : '',
+            'tanpa_folder' => $request->query('tanpa_folder') === '1' ? '1' : '',
             'kurang' => $request->query('kurang') === '1' ? '1' : '',
             'lama' => in_array($request->query('lama'), ['7', '14'], true) ? $request->query('lama') : '',
             'inacbg' => preg_match('/^[A-Za-z0-9.\-]{1,20}$/', (string) $request->query('inacbg')) ? strtoupper($request->query('inacbg')) : '',
@@ -214,7 +217,14 @@ class BpjsController extends Controller
 
     private function sepQuery(array $f): Builder
     {
-        $q = VclaimKunjungan::query()->whereBetween('tgl_sep', [$f['dari'], $f['sampai']]);
+        $q = VclaimKunjungan::query();
+        if ($f['tanpa_folder'] ?? '') {
+            // Berkas belum ada di FTP: pulang > 7 hari lalu, tanpa folder dengan SEP yang sama (tanpa batas tanggal SEP).
+            $q->whereNotNull('tgl_plg_sep')->where('tgl_plg_sep', '<', now()->startOfDay()->subDays(7)->toDateString())
+                ->whereNotExists(fn ($s) => $s->selectRaw('1')->from('ftp_folders')->whereColumn('ftp_folders.no_sep', 'vclaim_kunjungan.no_sep'));
+        } else {
+            $q->whereBetween('tgl_sep', [$f['dari'], $f['sampai']]);
+        }
         $this->jenis($q, $f['jenis']);
         if ($f['belum']) {
             $q->whereNotExists(fn ($s) => $s->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'));

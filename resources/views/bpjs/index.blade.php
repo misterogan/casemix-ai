@@ -30,7 +30,7 @@
             @endif
             <form method="GET" action="{{ route('bpjs.index') }}" class="flex flex-wrap items-end gap-2 text-sm">
                 <input type="hidden" name="tab" value="{{ $tab }}">
-                @foreach (['belum', 'kurang', 'lama', 'inacbg', 'sev', 'dx'] as $h)
+                @foreach (['belum', 'tanpa_folder', 'kurang', 'lama', 'inacbg', 'sev', 'dx'] as $h)
                     @if ($filters[$h])<input type="hidden" name="{{ $h }}" value="{{ $filters[$h] }}">@endif
                 @endforeach
                 @if ($filters['inacbg'] || $filters['sev'] || $filters['dx'])

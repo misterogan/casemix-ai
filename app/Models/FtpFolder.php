@@ -34,6 +34,8 @@ class FtpFolder extends Model
             'analyzed_at' => 'datetime',
             'rubric_kurang' => 'integer',
             'assigned_at' => 'datetime',
+            'bpjs_status_at' => 'datetime',
+            'bpjs_tindak_lanjut' => 'boolean',
         ];
     }
 

@@ -120,6 +120,8 @@ class VclaimViewTest extends TestCase
         $f = $this->folder('0301R001112600500');
         $f->update(['rubric_kurang' => 1]);
         $this->klaim($f->no_sep, 2);
+        \App\Jobs\ApplyVclaimToCermat::dispatchSync(); // Queue::fake() di setUp menahan ini
+        app()->call([new \App\Jobs\ApplyVclaimToCermat, 'handle']);
         $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()->assertSee('data-bpjs-status="pending"', false);
     }
 

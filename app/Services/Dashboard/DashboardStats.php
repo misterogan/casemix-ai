@@ -35,7 +35,14 @@ class DashboardStats
     {
         $period = self::period($period);
 
-        return Cache::remember("dashboard.stats.$period", 300, fn () => $this->compute($period)) + ['vclaim' => $this->vclaim()];
+        $gen = (int) Cache::get('dashboard.stats.gen', 0);
+
+        return Cache::remember("dashboard.stats.$gen.$period", 300, fn () => $this->compute($period)) + ['vclaim' => $this->vclaim()];
+    }
+
+    public static function forget(): void
+    {
+        Cache::forever('dashboard.stats.gen', (int) Cache::get('dashboard.stats.gen', 0) + 1);
     }
 
     /** Ringkasan VClaim (bulan berjalan menurut tanggal pulang); null bila VClaim tidak aktif. */

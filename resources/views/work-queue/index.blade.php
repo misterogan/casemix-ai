@@ -97,6 +97,7 @@
                         <td class="px-4 py-3">
                             <a href="{{ route('folders.show', $f) }}" class="font-semibold text-ink after:absolute after:inset-0 after:content-['']">{{ $r['pasien'] }}</a>
                             <span class="tabular block text-xs text-ink-muted">RM {{ $r['rm'] ?: '—' }} · {{ $f->no_sep ? 'SEP ' . $f->no_sep : 'SEP belum ada' }}</span>
+                            @if ($r['tindak_bpjs'])<span class="chip chip-kritis mt-1" data-tindak-bpjs>Perlu tindak lanjut BPJS</span>@endif
                         </td>
                         <td class="px-4 py-3 font-mono">{{ $r['dx'] ?? '—' }}</td>
                         <td class="px-4 py-3"><x-verdict :status="$r['vonis']"/></td>

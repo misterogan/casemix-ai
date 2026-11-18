@@ -149,6 +149,35 @@
                         {{ $syncOk ? 'FTP tersinkron' : 'FTP gagal' }} {{ $syncAt }}
                     </span>
                 @endif
+                @if (auth()->user()->hasRole('koordinator'))
+                    @php $belumDibaca = auth()->user()->unreadNotifications()->count(); @endphp
+                    <details class="relative" data-lonceng>
+                        <summary class="relative grid size-9 cursor-pointer list-none place-items-center rounded-full text-abu hover:bg-gray-100" aria-label="Notifikasi, {{ $belumDibaca }} belum dibaca">
+                            <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                            @if ($belumDibaca)<span class="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-kritis px-1 text-[10px] font-bold text-white" data-lonceng-n>{{ $belumDibaca > 99 ? '99+' : $belumDibaca }}</span>@endif
+                        </summary>
+                        <div class="absolute right-0 z-20 mt-2 w-80 rounded-[10px] border border-line bg-white shadow-lg">
+                            <div class="flex items-center justify-between border-b border-line px-4 py-2">
+                                <span class="text-sm font-semibold text-arang">Notifikasi</span>
+                                @if ($belumDibaca)
+                                    <form method="POST" action="{{ route('notifications.read-all') }}">@csrf<button class="text-xs text-biru-aktif underline">Tandai semua dibaca</button></form>
+                                @endif
+                            </div>
+                            <ul class="max-h-96 overflow-y-auto text-sm">
+                                @forelse (auth()->user()->notifications()->latest()->limit(10)->get() as $n)
+                                    <li><form method="POST" action="{{ route('notifications.open', $n->id) }}">@csrf
+                                        <button type="submit" @class(['block w-full px-4 py-2 text-left hover:bg-gray-50', 'font-semibold text-arang' => ! $n->read_at, 'text-abu' => $n->read_at]) data-notif>
+                                            {{ $n->data['pesan'] ?? 'Notifikasi' }}
+                                            <span class="block text-xs font-normal text-abu">{{ $n->created_at->format('d/m/Y H:i') }}</span>
+                                        </button>
+                                    </form></li>
+                                @empty
+                                    <li class="px-4 py-3 text-abu">Belum ada notifikasi.</li>
+                                @endforelse
+                            </ul>
+                        </div>
+                    </details>
+                @endif
                 <span class="grid size-9 place-items-center rounded-full bg-biru text-sm font-bold text-white" title="{{ auth()->user()->name }}">{{ auth()->user()->initials() }}</span>
             </div>
         </header>

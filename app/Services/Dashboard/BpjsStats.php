@@ -24,7 +24,15 @@ class BpjsStats
 
     public function get(string $periode, string $jenis): array
     {
-        return Cache::remember("bpjs-stats:v4-kategori:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
+        $gen = (int) Cache::get('bpjs-stats:gen', 0);
+
+        return Cache::remember("bpjs-stats:v4-kategori:$gen:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
+    }
+
+    /** Batalkan semua cache ringkasan (kunci bergantung periode/jenis). */
+    public static function forget(): void
+    {
+        Cache::forever('bpjs-stats:gen', (int) Cache::get('bpjs-stats:gen', 0) + 1);
     }
 
     public static function jenis(Builder $q, string $jenis): void

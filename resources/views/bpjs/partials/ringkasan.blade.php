@@ -63,6 +63,14 @@
     @endif
 </section>
 
+@isset($tanpaFolder)
+    <a href="{{ $tanpaFolder['url'] }}" data-kartu="tanpa_folder" class="flex items-center justify-between gap-3 rounded-[10px] border border-line bg-white px-5 py-3 text-sm hover:border-biru-aktif focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif">
+        <span><span class="font-medium text-ink">Berkas belum ada di FTP</span>
+            <span class="block text-xs text-ink-muted">SEP pulang lebih dari 7 hari lalu tanpa folder berkas di FTP</span></span>
+        <span class="tabular text-2xl font-semibold text-ink" data-angka>{{ $num($tanpaFolder['n']) }}</span>
+    </a>
+@endisset
+
 {{-- Status sinkron --}}
 <div class="grid gap-3 rounded-[10px] border border-line bg-white px-5 py-3 text-sm md:grid-cols-2" data-sinkron>
     @foreach (['klaim' => 'Data klaim', 'kunjungan' => 'Data kunjungan'] as $j => $judul)

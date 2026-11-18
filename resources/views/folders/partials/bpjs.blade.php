@@ -9,7 +9,9 @@
             @include('folders.partials.bpjs-chip', ['kat' => null])
         @else
             <div class="flex flex-wrap items-center gap-2">
-                @include('folders.partials.bpjs-chip', ['kat' => $k->status_kategori])
+                @include('folders.partials.bpjs-chip', ['kat' => $folder->bpjs_status_kategori ?? $k->status_kategori])
+                @if ($folder->bpjs_status_kategori === 'klaim')<span class="chip chip-sesuai" data-selesai-bpjs>Selesai di BPJS</span>
+                @elseif ($folder->bpjs_tindak_lanjut)<span class="chip chip-kritis" data-tindak-bpjs>Perlu tindak lanjut BPJS</span>@endif
                 @if ($k->no_fpk)<span class="text-xs text-abu">No FPK {{ $k->no_fpk }}</span>@endif
             </div>
             @if ($k->status_kategori === 'pending')

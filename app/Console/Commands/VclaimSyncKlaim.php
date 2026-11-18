@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\ApplyVclaimToCermat;
 use App\Services\Vclaim\VclaimClient;
 use App\Services\Vclaim\VclaimSync;
 use App\Support\Audit;
@@ -28,6 +29,7 @@ class VclaimSyncKlaim extends Command
             "Sinkron VClaim klaim {$from->toDateString()} s.d. {$to->toDateString()}: {$r['jumlah']} baris, {$r['gagal']} panggilan gagal",
             null, $r);
         $this->info("Klaim: {$r['jumlah']} baris, {$r['gagal']} gagal.");
+        ApplyVclaimToCermat::dispatch();
 
         return self::SUCCESS;
     }
