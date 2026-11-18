@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\FolderDocument;
 use App\Models\FtpFolder;
+use App\Models\VclaimSyncRun;
 use App\Support\Audit;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -52,10 +53,13 @@ class PruneArchive extends Command
             }
         }
 
+        // Log sinkron VClaim > 90 hari; data klaim/kunjungan/histori tidak disentuh
+        $runs = VclaimSyncRun::where('created_at', '<', now()->subDays(90))->delete();
+
         $ukuran = Number::fileSize($sum['bytes'], 1);
         Audit::system('arsip.hapus_kedaluwarsa', null,
-            "Pemusnahan salinan arsip: {$sum['files']} file dari {$sum['folders']} folder ($ukuran); belum dianalisa {$kategori['belum_dianalisa']['files']} file, sudah dianalisa {$kategori['sudah_dianalisa']['files']} file",
-            null, $sum + ['kategori' => $kategori]);
+            "Pemusnahan salinan arsip: {$sum['files']} file dari {$sum['folders']} folder ($ukuran); belum dianalisa {$kategori['belum_dianalisa']['files']} file, sudah dianalisa {$kategori['sudah_dianalisa']['files']} file; log sinkron VClaim {$runs} baris",
+            null, $sum + ['kategori' => $kategori, 'vclaim_sync_runs' => $runs]);
         $this->info("Dimusnahkan: {$sum['files']} file salinan dari {$sum['folders']} folder ({$sum['documents']} dokumen, $ukuran).");
 
         return self::SUCCESS;

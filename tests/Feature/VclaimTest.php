@@ -153,4 +153,22 @@ class VclaimTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->method() === 'GET' && str_contains($r->url(), '/monitoring/HistoriPelayanan/NoKartu/0000000000001/'));
         $this->assertDatabaseHas('vclaim_histori', ['no_kartu' => '0000000000001', 'no_sep' => 'H1', 'diagnosa' => 'Demam']);
     }
+
+    public function test_archive_prune_hapus_sync_runs_lebih_90_hari(): void
+    {
+        $lama = VclaimSyncRun::create(['jenis' => 'klaim', 'status' => 'ok']);
+        $lama->forceFill(['created_at' => now()->subDays(91)])->save();
+        $baru = VclaimSyncRun::create(['jenis' => 'klaim', 'status' => 'ok']);
+        $baru->forceFill(['created_at' => now()->subDays(89)])->save();
+        $klaim = VclaimKlaim::create(['no_sep' => 'SEPLAMA', 'status_kode' => 3]);
+        $klaim->forceFill(['created_at' => now()->subDays(400)])->save();
+
+        $this->artisan('casemix:archive-prune')->assertSuccessful();
+
+        $this->assertDatabaseMissing('vclaim_sync_runs', ['id' => $lama->id]);
+        $this->assertDatabaseHas('vclaim_sync_runs', ['id' => $baru->id]);
+        $this->assertDatabaseHas('vclaim_klaim', ['no_sep' => 'SEPLAMA']);
+        $log = \App\Models\AuditLog::where('action', 'arsip.hapus_kedaluwarsa')->latest('id')->firstOrFail();
+        $this->assertSame(1, $log->properties['vclaim_sync_runs'] ?? null);
+    }
 }
