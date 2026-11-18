@@ -38,6 +38,9 @@ class FolderSync
                 $latest = collect($files)->max('modified');
 
                 $folder = FtpFolder::firstOrNew(['path' => $f['path']]);
+                if ($folder->exists && $folder->isManual()) {
+                    continue; // folder unggahan manual tidak pernah disentuh sinkron FTP
+                }
                 $archive = ! $folder->exists || $folder->fingerprint !== $fp;
                 if (! $folder->exists) {
                     $stats['baru']++;
@@ -66,7 +69,7 @@ class FolderSync
             }
 
             // Folder yang tidak ada lagi (dipindah atau dihapus Enigma): tandai, jangan hapus hasil analisanya.
-            $stats['hilang'] = FtpFolder::whereNotIn('id', $seen ?: [0])->whereNull('missing_at')->update(['missing_at' => $now]);
+            $stats['hilang'] = FtpFolder::whereNotIn('id', $seen ?: [0])->where('sumber', '!=', 'manual')->whereNull('missing_at')->update(['missing_at' => $now]);
 
             AppSetting::put(self::KEY_LAST, ['at' => $now->toIso8601String(), 'ok' => true] + $stats);
 

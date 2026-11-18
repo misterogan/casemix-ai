@@ -374,6 +374,33 @@ class FolderController extends Controller
         return $budget->startBlocker();
     }
 
+    /** Analisa ulang otomatis (mis. dokumen manual ditambah/dihapus). Null bila sedang berjalan atau AI tidak tersedia. */
+    public static function autoAnalyze(FtpFolder $folder, int $userId): ?FolderAnalysis
+    {
+        $self = app(self::class);
+        if ($folder->analyses()->whereIn('status', [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value])->exists()
+            || $self->startBlocker(app(AiBudget::class))) {
+            return null;
+        }
+
+        return $self->start($folder, $userId);
+    }
+
+    /** JSON ringkas untuk polling panel hasil: status analisa terakhir dan HTML hasil saat sudah selesai/gagal. */
+    public function statusAnalisa(FtpFolder $folder, AiBudget $budget)
+    {
+        $a = $folder->analyses()->first();
+        $status = $a?->status?->value;
+        $active = in_array($status, [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value], true);
+
+        return response()->json([
+            'status' => $status,
+            'active' => $active,
+            'termasuk_manual' => (bool) $a?->termasuk_manual,
+            'html' => $active || ! $a ? null : view('folders.partials.detail', $this->viewData($folder, $a, $this->startBlocker($budget)))->render(),
+        ]);
+    }
+
     /** @param bool $all true = semua file dibaca ulang; false = hanya file yang berubah */
     private function start(FtpFolder $folder, int $userId, bool $all = false): FolderAnalysis
     {
@@ -412,6 +439,7 @@ class FolderController extends Controller
             'kodeOn' => $kodeOn = SettingController::codeSuggestionsOn(),
             'codes' => $kodeOn ? $this->latestCodes($folder) : collect(),
             'bpjs' => auth()->user()?->hasRole('koordinator') ? $this->bpjs($folder) : null,
+            'manualFiles' => auth()->user()?->hasRole('koordinator') ? $folder->manualFiles()->with('uploader:id,name')->get() : collect(),
         ];
     }
 

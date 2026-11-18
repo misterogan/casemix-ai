@@ -50,6 +50,13 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/bpjs/klaim/{noSep}', [\App\Http\Controllers\BpjsController::class, 'show'])->name('bpjs.klaim.show');
         Route::post('/bpjs/klaim/{noSep}/histori-pelayanan', [\App\Http\Controllers\BpjsController::class, 'histori'])->middleware('throttle:30,1')->name('bpjs.klaim.histori');
         Route::post('/folders/{folder}/histori-pelayanan', [FolderController::class, 'histori'])->middleware('throttle:30,1')->name('folders.histori');
+        // Unggah dokumen manual (dianalisa dengan pipeline folder yang sama)
+        Route::get('/unggah', [\App\Http\Controllers\ManualUploadController::class, 'create'])->name('manual.create');
+        Route::get('/unggah/cek-sep', [\App\Http\Controllers\ManualUploadController::class, 'lookup'])->name('manual.lookup');
+        Route::post('/unggah/file', [\App\Http\Controllers\ManualUploadController::class, 'store'])->middleware('throttle:120,1')->name('manual.store');
+        Route::post('/unggah/{folder}/analisa', [\App\Http\Controllers\ManualUploadController::class, 'analyze'])->name('manual.analyze');
+        Route::get('/folders/{folder}/manual/{file}', [\App\Http\Controllers\ManualUploadController::class, 'show'])->whereNumber('file')->name('manual.show');
+        Route::delete('/folders/{folder}/manual/{file}', [\App\Http\Controllers\ManualUploadController::class, 'destroy'])->whereNumber('file')->name('manual.destroy');
         // Lonceng notifikasi: buka (tandai dibaca lalu ke tautan) dan tandai semua dibaca.
         Route::post('/notifikasi/{id}/baca', function (string $id) {
             $n = auth()->user()->notifications()->findOrFail($id);
@@ -70,6 +77,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/verifikasi', [FolderController::class, 'index'])->name('folders.index');
         Route::get('/verifikasi/{folder}', [FolderController::class, 'show'])->name('folders.show');
         Route::get('/verifikasi/{folder}/status', [FolderController::class, 'status'])->name('folders.status');
+        Route::get('/folders/{folder}/status-analisa', [FolderController::class, 'statusAnalisa'])->name('folders.status_analisa');
         Route::get('/verifikasi/{folder}/dokumen/{index}', [FolderController::class, 'file'])->whereNumber('index')->name('folders.file');
         Route::post('/verifikasi/{folder}/analisa', [FolderController::class, 'analyze'])->middleware('permission:folders.analyze')->name('folders.analyze');
         Route::post('/verifikasi/{folder}/lanjutkan', [FolderController::class, 'resume'])->middleware('permission:folders.analyze')->name('folders.resume');

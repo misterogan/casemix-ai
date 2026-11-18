@@ -17,6 +17,8 @@
          'icon' => 'M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z'],
         ['route' => 'work-queue.index', 'match' => 'work-queue.*', 'label' => 'Antrean kerja', 'role' => 'koordinator',
          'icon' => 'M4 6h16M4 12h16M4 18h10'],
+        ['route' => 'manual.create', 'match' => 'manual.*', 'label' => 'Unggah manual', 'role' => 'koordinator',
+         'icon' => 'M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12l-4 4m4-4l4 4'],
         ['route' => 'bpjs.index', 'match' => 'bpjs.*', 'label' => 'Klaim BPJS', 'role' => 'koordinator',
          'icon' => 'M3 10h18M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2zm2 9h4'],
         ['route' => 'folders.index', 'match' => 'folders.*', 'label' => 'Verifikasi berkas', 'can' => 'folders.view',

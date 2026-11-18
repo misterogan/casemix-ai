@@ -15,11 +15,13 @@
     @endphp
 
     {{-- Urutan: kepala → status → Daftar periksa → Saran DPJP → detail analisa → file. Halaman dimuat ulang saat analisa selesai. --}}
-    <div class="mt-6 flex min-h-0 flex-1 flex-col gap-6" data-docs data-muat-ulang="1" data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
+    <div class="mt-6 flex min-h-0 flex-1 flex-col gap-6" data-docs data-status-url="{{ route('folders.status', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">
         <header class="flex shrink-0 flex-wrap items-start justify-between gap-4" data-kepala>
             <div class="min-w-0">
-                <p class="truncate text-sm text-url">FTP Enigma › {{ $folder->name }}</p>
-                <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}</h1>
+                <p class="truncate text-sm text-url">{{ $folder->isManual() ? 'Unggah manual' : 'FTP Enigma' }} › {{ $folder->name }}</p>
+                <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}
+                    @if ($folder->isManual())<span class="ml-2 rounded-full bg-purple-100 px-2 py-0.5 align-middle text-xs font-medium text-purple-800">Manual</span>@endif
+                </h1>
                 <p class="num mt-1 text-sm text-abu">
                     RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ \App\Support\Eklaim::JENIS_RAWAT[$folder->jenis_rawat] ?? 'Jenis rawat tidak terbaca' }} · {{ $folder->file_count }} dokumen
                     @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
@@ -144,7 +146,13 @@
             @include('folders.partials.suggestions')
         @endif
 
+        @if (auth()->user()->hasRole('koordinator'))
+            @include('folders.partials.manual')
+        @endif
+
         {{-- Detail analisa: progres, ringkasan, galat --}}
+        <p class="rounded-md bg-blue-50 px-3 py-2 text-sm text-arang" role="status" hidden
+           data-status-analisa-url="{{ route('folders.status_analisa', $folder) }}" data-active="{{ $berjalan ? '1' : '0' }}">Sedang dianalisa…</p>
         <div id="detail-folder" class="min-w-0">
             @include('folders.partials.detail', ['done' => $done ? (clone $done)->setAttribute('suggestions', []) : null])
         </div>
@@ -180,4 +188,5 @@
         </div>
     </div>
 </div>
+@vite(['resources/js/folder-status.js', 'resources/js/manual-upload.js'])
 </x-app-layout>

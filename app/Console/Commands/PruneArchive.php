@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\FolderDocument;
 use App\Models\FtpFolder;
+use App\Models\ManualFile;
+use App\Services\Manual\ManualStorage;
 use App\Models\VclaimSyncRun;
 use App\Support\Audit;
 use Illuminate\Console\Command;
@@ -46,7 +48,15 @@ class PruneArchive extends Command
                     $bytes += (int) $r->stored_size;
                 }
             }
-            $folders = $rows->unique('ftp_folder_id')->count();
+            // File fisik unggahan manual dengan aturan masa simpan yang sama (baris tetap untuk jejak audit)
+            $manual = $scope(ManualFile::withTrashed()->whereNull('dimusnahkan_at')->where('created_at', '<', $cutoff))->get();
+            foreach ($manual as $m) {
+                ManualStorage::deletePhysical($m);
+                $m->forceFill(['dimusnahkan_at' => now()])->saveQuietly();
+                $files++;
+                $bytes += (int) $m->ukuran;
+            }
+            $folders = $rows->pluck('ftp_folder_id')->merge($manual->pluck('ftp_folder_id'))->unique()->count();
             $kategori[$key] = ['bulan' => $months, 'cutoff' => $cutoff->toDateTimeString(), 'files' => $files, 'folders' => $folders, 'documents' => $docs, 'bytes' => $bytes];
             foreach (['files', 'folders', 'documents', 'bytes'] as $k) {
                 $sum[$k] += $kategori[$key][$k];

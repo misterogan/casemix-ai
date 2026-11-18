@@ -18,8 +18,15 @@
             </div>
             <nav class="flex flex-wrap gap-1" aria-label="Periode">
                 @foreach (\App\Services\Dashboard\DashboardStats::PERIODS as $k => $l)
-                    <a href="{{ route('control.index', ['periode' => $k]) }}" @if ($period === $k) aria-current="page" @endif
+                    <a href="{{ route('control.index', ['periode' => $k, 'sumber' => request('sumber')]) }}" @if ($period === $k) aria-current="page" @endif
                        @class(['rounded-full px-3 py-1 text-sm', 'bg-biru text-white' => $period === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => $period !== $k])>{{ $l }}</a>
+                @endforeach
+            </nav>
+            <nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="Sumber">
+                <span class="text-abu">Sumber:</span>
+                @foreach (['' => 'Semua', 'ftp' => 'FTP', 'manual' => 'Manual'] as $k => $l)
+                    <a href="{{ route('control.index', array_filter(['periode' => $period, 'sumber' => $k])) }}" @if (request('sumber', '') === $k) aria-current="page" @endif
+                       @class(['rounded-full px-3 py-1', 'bg-biru text-white' => request('sumber', '') === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => request('sumber', '') !== $k])>{{ $l }}</a>
                 @endforeach
             </nav>
         </div>

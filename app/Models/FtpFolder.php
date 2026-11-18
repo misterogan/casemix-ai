@@ -23,6 +23,28 @@ class FtpFolder extends Model
         'gagal' => 'Analisa gagal',
     ];
 
+    /** Filter kecil "Sumber: Semua | FTP | Manual" di Antrean kerja dan Dashboard (?sumber=ftp|manual). */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('sumber_filter', function (Builder $q) {
+            $sumber = self::sumberFilter();
+            if ($sumber) {
+                $q->where($q->getModel()->getTable() . '.sumber', $sumber);
+            }
+        });
+    }
+
+    public static function sumberFilter(): ?string
+    {
+        if (app()->runningInConsole() && ! app()->runningUnitTests()) {
+            return null;
+        }
+        $r = request();
+        $s = $r?->query('sumber');
+
+        return $r?->route() && $r->routeIs('work-queue.index', 'control.index') && in_array($s, ['ftp', 'manual'], true) ? $s : null;
+    }
+
     protected function casts(): array
     {
         return [
@@ -52,6 +74,21 @@ class FtpFolder extends Model
     public function vclaimKunjungan(): HasOne
     {
         return $this->hasOne(VclaimKunjungan::class, 'no_sep', 'no_sep');
+    }
+
+    public function manualFiles(): HasMany
+    {
+        return $this->hasMany(ManualFile::class)->whereNull('dimusnahkan_at')->orderBy('id');
+    }
+
+    public function isManual(): bool
+    {
+        return $this->sumber === 'manual';
+    }
+
+    public function scopeSumber(Builder $q, ?string $sumber): Builder
+    {
+        return in_array($sumber, ['ftp', 'manual'], true) ? $q->where('ftp_folders.sumber', $sumber) : $q;
     }
 
     public function documents(): HasMany

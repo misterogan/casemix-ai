@@ -62,6 +62,14 @@
                 @endforeach
             </select>
         </div>
+        <div>
+            <label for="sumber" class="block text-xs text-ink-muted">Sumber</label>
+            <select id="sumber" name="sumber" class="field rounded-control">
+                @foreach (['' => 'Semua', 'ftp' => 'FTP', 'manual' => 'Manual'] as $k => $l)
+                    <option value="{{ $k }}" @selected(request('sumber', '') === $k)>{{ $l }}</option>
+                @endforeach
+            </select>
+        </div>
         @if ($tampilPenugasan)
             <label class="flex h-[38px] items-center gap-2 text-sm text-ink"><input type="checkbox" name="saya" value="1" @checked($filters['saya'])> Tugas saya saja</label>
         @endif
@@ -95,7 +103,7 @@
                     <tr class="relative border-t border-line transition-colors hover:bg-paper" data-folder="{{ $f->id }}">
                         <td class="border-l-4 {{ $edge($r['vonis']) }} px-4 py-3" data-prioritas="{{ $r['prioritas'] }}"><x-priority-meter :value="$r['prioritas']"/></td>
                         <td class="px-4 py-3">
-                            <a href="{{ route('folders.show', $f) }}" class="font-semibold text-ink after:absolute after:inset-0 after:content-['']">{{ $r['pasien'] }}</a>
+                            <a href="{{ route('folders.show', $f) }}" class="font-semibold text-ink after:absolute after:inset-0 after:content-['']">{{ $r['pasien'] }}</a>@if ($f->isManual())<span class="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">Manual</span>@endif
                             <span class="tabular block text-xs text-ink-muted">RM {{ $r['rm'] ?: '—' }} · {{ $f->no_sep ? 'SEP ' . $f->no_sep : 'SEP belum ada' }}</span>
                             @if ($r['tindak_bpjs'])<span class="chip chip-kritis mt-1" data-tindak-bpjs>Perlu tindak lanjut BPJS</span>@endif
                         </td>

@@ -11,6 +11,8 @@ use App\Models\ClaimDocument;
 use App\Models\FolderAnalysis;
 use App\Models\FolderDocument;
 use App\Models\FtpFolder;
+use App\Models\ManualFile;
+use App\Services\Manual\ManualStorage;
 use App\Services\Ai\AiRequest;
 use App\Services\Documents\DocumentReader;
 use App\Services\Import\DocumentGuesser;
@@ -100,6 +102,30 @@ class FolderAnalyzer
                 'finished_at' => $prev ? now() : null,
             ]);
         }
+
+        // Dokumen unggahan manual (yang tidak dihapus) dibaca sebagai bagian berkas yang sama
+        $manual = $folder->manualFiles()->get();
+        foreach ($manual as $j => $m) {
+            $name = 'Manual: ' . $m->nama_asli;
+            $fp = 'manual|' . $m->sha256;
+            $prev = FolderDocument::where('ftp_folder_id', $folder->id)->where('name', $name)->where('file_fingerprint', $fp)
+                ->where('status', ReviewStatus::Selesai->value)->latest('id')->first();
+            FolderDocument::create([
+                'folder_analysis_id' => $a->id,
+                'ftp_folder_id' => $folder->id,
+                'manual_file_id' => $m->id,
+                'file_index' => 10000 + $j,
+                'name' => $name,
+                'file_fingerprint' => $fp,
+                'doc_type' => $m->docType() ?? DocumentGuesser::type($m->nama_asli)->value,
+                'status' => $prev ? ReviewStatus::Selesai : ReviewStatus::Antre,
+                'reused' => (bool) $prev,
+                'summary' => $prev?->summary,
+                'findings' => $prev?->findings,
+                'finished_at' => $prev ? now() : null,
+            ]);
+        }
+        $a->update(['termasuk_manual' => $manual->isNotEmpty()]);
     }
 
     // ------------------------------------------------------------ tahap 1: per dokumen
@@ -114,6 +140,16 @@ class FolderAnalyzer
         $local = $tmp . '/dokumen.' . Str::lower(pathinfo($f['name'] ?? $d->name, PATHINFO_EXTENSION));
 
         try {
+            if ($d->manual_file_id) {
+                $m = ManualFile::find($d->manual_file_id);
+                $contents = $m ? ManualStorage::contents($m) : null;
+                if ($contents === null) {
+                    throw new RuntimeException('File unggahan manual sudah tidak ada.');
+                }
+                $disk->put($local = $tmp . '/dokumen.' . Str::lower(pathinfo($m->nama_asli, PATHINFO_EXTENSION)), $contents);
+
+                return $this->buildDocumentRequest($d, $folder, $config, $disk, $local);
+            }
             $fromFtp = false;
             // Salinan arsip dengan sidik sama (mis. arsip otomatis saat sinkron): dipakai tanpa unduh ulang
             $stored = $d->stored_path ? $d : ReadFolderDocument::storedSibling($d);
@@ -145,6 +181,16 @@ class FolderAnalyzer
             } catch (Throwable $e) {
                 report($e);
             }
+
+            return $this->buildDocumentRequest($d, $folder, $config, $disk, $local);
+        } finally {
+            $disk->deleteDirectory($tmp);
+        }
+    }
+
+    private function buildDocumentRequest(FolderDocument $d, FtpFolder $folder, ProviderConfig $config, $disk, string $local): ?AiRequest
+    {
+        {
             $mime = $disk->mimeType($local) ?: 'application/octet-stream';
             if (! in_array($mime, config('casemix.upload.content_types'), true)) {
                 return null;
@@ -183,8 +229,6 @@ class FolderAnalyzer
             }
 
             return $req;
-        } finally {
-            $disk->deleteDirectory($tmp);
         }
     }
 

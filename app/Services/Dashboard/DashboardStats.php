@@ -37,7 +37,7 @@ class DashboardStats
 
         $gen = (int) Cache::get('dashboard.stats.gen', 0);
 
-        return Cache::remember("dashboard.stats.$gen.$period", 300, fn () => $this->compute($period)) + ['vclaim' => $this->vclaim()];
+        return Cache::remember("dashboard.stats.$gen.$period." . (FtpFolder::sumberFilter() ?? 'semua'), 300, fn () => $this->compute($period)) + ['vclaim' => $this->vclaim()];
     }
 
     public static function forget(): void

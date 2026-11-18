@@ -22,6 +22,7 @@ class FolderAnalysis extends Model
             'extracted' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'termasuk_manual' => 'boolean',
         ];
     }
 
