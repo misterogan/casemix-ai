@@ -105,10 +105,10 @@
     @endif
 
     {{-- Folder dipindahkan --}}
-    <x-card class="col-span-12 min-w-0 xl:col-span-8" title="Folder dipindahkan dari FTP" subtitle="Perkiraan dari waktu folder hilang di FTP.">
+    <x-card class="col-span-12 min-w-0 xl:col-span-8" title="Folder dipindahkan dari FTP">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             @foreach ([['dipindahkan', 'Sudah dipindahkan (perkiraan diajukan)', $s['pindah']['dipindahkan']], ['pindah_belum_siap', 'Dipindah dalam status belum siap', $s['pindah']['belum_siap']], ['tanpa_periksa', 'Dipindah tanpa diperiksa CERMAT', $s['pindah']['tanpa_periksa']], ['median_hari', 'Median hari masuk FTP → dipindahkan', $s['pindah']['median_hari'] ?? '—']] as [$k, $l, $n])
-                <div class="rounded-xl bg-gray-50 px-4 py-3 dark:bg-white/[.03]"><p class="text-xs text-gray-500">{{ $l }}</p><p class="num mt-1 text-xl font-semibold text-gray-800 dark:text-white/90" data-kartu="{{ $k }}">{{ $n }}</p></div>
+                <div class="rounded-xl bg-gray-50 px-4 py-3 dark:bg-white/[.03]"><p class="text-xs text-gray-500">{{ $l }}</p><p class="num mt-1 text-xl font-semibold text-gray-800 dark:text-white/90" data-kartu="{{ $k }}">{{ $n }}</p><p class="mt-0.5 text-xs text-gray-400">perkiraan dari waktu folder hilang di FTP</p></div>
             @endforeach
         </div>
     </x-card>
