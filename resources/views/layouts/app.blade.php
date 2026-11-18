@@ -17,6 +17,8 @@
          'icon' => 'M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z'],
         ['route' => 'work-queue.index', 'match' => 'work-queue.*', 'label' => 'Antrean kerja', 'role' => 'koordinator',
          'icon' => 'M4 6h16M4 12h16M4 18h10'],
+        ['route' => 'bpjs.index', 'match' => 'bpjs.*', 'label' => 'Klaim BPJS', 'role' => 'koordinator',
+         'icon' => 'M3 10h18M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2zm2 9h4'],
         ['route' => 'folders.index', 'match' => 'folders.*', 'label' => 'Verifikasi berkas', 'can' => 'folders.view',
          'icon' => 'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
         ['route' => 'audit.index', 'match' => 'audit.*', 'label' => 'Riwayat aktivitas', 'can' => 'audit.view',

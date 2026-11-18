@@ -44,6 +44,12 @@ Route::middleware(['auth', 'active'])->group(function () {
     // Pusat Kendali Klaim: Koordinator saja (Admin tidak, privasi)
     Route::get('/dashboard', \App\Http\Controllers\Dashboard\DashboardController::class)->middleware('role:koordinator')->name('control.index');
     Route::get('/antrean', \App\Http\Controllers\WorkQueueController::class)->middleware('role:koordinator')->name('work-queue.index');
+    Route::middleware('role:koordinator')->group(function () {
+        Route::get('/bpjs', [\App\Http\Controllers\BpjsController::class, 'index'])->name('bpjs.index');
+        Route::get('/bpjs/unduh', [\App\Http\Controllers\BpjsController::class, 'csv'])->name('bpjs.csv');
+        Route::get('/bpjs/klaim/{noSep}', [\App\Http\Controllers\BpjsController::class, 'show'])->name('bpjs.klaim.show');
+        Route::post('/bpjs/klaim/{noSep}/riwayat', [\App\Http\Controllers\BpjsController::class, 'fetchHistori'])->middleware('throttle:10,1')->name('bpjs.klaim.riwayat');
+    });
 
     // Verifikasi langsung dari folder FTP
     Route::middleware('permission:folders.view')->group(function () {
