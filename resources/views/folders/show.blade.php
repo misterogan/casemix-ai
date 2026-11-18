@@ -19,7 +19,7 @@
         <header class="flex shrink-0 flex-wrap items-start justify-between gap-4" data-kepala>
             <div class="min-w-0">
                 <p class="truncate text-sm text-url">{{ $folder->isManual() ? 'Unggah manual' : 'FTP Enigma' }} › {{ $folder->name }}</p>
-                <h1 class="mt-1 text-[26px] leading-8 font-normal text-arang">{{ $folder->nama_pasien ?: $folder->name }}
+                <h1 class="mt-1 text-xl font-semibold text-gray-800 dark:text-white/90">{{ $folder->nama_pasien ?: $folder->name }}
                     @if ($folder->isManual())<span class="ml-2 rounded-full bg-purple-100 px-2 py-0.5 align-middle text-xs font-medium text-purple-800">Manual</span>@endif
                 </h1>
                 <p class="num mt-1 text-sm text-abu">
@@ -79,7 +79,7 @@
             <div class="divide-y divide-gray-100">
                 @foreach ($rubric as $kelompok => $butir)
                     <div class="px-4 py-3">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-abu">{{ $kelompok }}</h3>
+                        <h3 class="text-xs font-medium tracking-wide text-abu">{{ $kelompok }}</h3>
                         <ul class="mt-2 space-y-2">
                             @foreach ($butir as $i)
                                 @php
@@ -93,7 +93,7 @@
                                     $url = $tautan($i->dokumen, $i->halaman);
                                 @endphp
                                 <li class="flex items-start gap-3" data-butir="{{ $i->kode }}" data-butir-status="{{ $i->status ?? 'belum' }}">
-                                    <span class="mt-0.5 w-4 shrink-0 text-center font-bold {{ $warna }}" aria-hidden="true">{{ $ikon }}</span>
+                                    <span class="mt-0.5 w-4 shrink-0 text-center font-semibold {{ $warna }}" aria-hidden="true">{{ $ikon }}</span>
                                     <div class="min-w-0 flex-1">
                                         <p class="text-sm text-arang">{{ $i->label() }}<span class="sr-only">: {{ $teks }}</span>
                                             @unless ($i->required())<span class="text-xs text-abu">(bila ada)</span>@endunless
@@ -162,7 +162,7 @@
         <div class="min-h-0 lg:overflow-y-auto lg:overscroll-contain" data-gulir-file>
         @if ($total)
             {{-- Accordion file: detail per dokumen --}}
-            <section class="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white" aria-labelledby="judul-file">
+            <section class="flex min-w-0 flex-col rounded-2xl border border-gray-200 bg-white" aria-labelledby="judul-file">
                 <div class="sticky top-0 z-10 shrink-0 rounded-t-lg border-b border-gray-200 bg-white px-4 py-3">
                     <div class="flex items-baseline justify-between gap-3">
                         <h2 id="judul-file" class="font-semibold text-arang">File ({{ $total }})</h2>

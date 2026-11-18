@@ -4,7 +4,7 @@
     $num = fn ($n) => number_format((float) $n, 0, ',', '.');
     $dec = fn ($n) => $n === null ? '—' : number_format((float) $n, 1, ',', '.');
     $pt = fn ($n) => BpjsStats::pctTeks($n);
-    $panel = 'rounded-[10px] border border-line bg-white p-5';
+    $panel = 'rounded-2xl border border-line bg-white p-5';
     $ket = 'mt-1 text-xs text-ink-muted';
     $judulBagian = 'pt-2 text-lg font-semibold text-ink';
     $tidakBerlaku = 'Tidak berlaku untuk rawat jalan. Pilih jenis "Semua" atau "Rawat inap".';
@@ -25,7 +25,7 @@
                         <span class="text-sm text-ink-muted">Severity {{ $s }}</span>
                         <span class="tabular mt-1 block text-2xl font-semibold text-ink">{{ $num($c['n']) }}</span>
                         <span class="tabular block text-xs text-ink-muted">{{ $pt($c['pct_inap']) }} dari rawat inap</span>
-                        <span class="tabular mt-1 inline-block rounded-[6px] px-2 py-0.5 text-xs {{ $c['tinggi'] ? 'bg-triage-red-soft text-triage-red' : 'bg-gray-100 text-ink-muted' }}" @if ($c['tinggi']) data-sev-tinggi @endif>{{ $pt($c['pct_pending']) }} pending</span>
+                        <span class="tabular mt-1 inline-block rounded-lg px-2 py-0.5 text-xs {{ $c['tinggi'] ? 'bg-triage-red-soft text-triage-red' : 'bg-gray-100 text-ink-muted' }}" @if ($c['tinggi']) data-sev-tinggi @endif>{{ $pt($c['pct_pending']) }} pending</span>
                     </a>
                 @endforeach
             </div>
@@ -40,7 +40,7 @@
         <h2 class="{{ $judulBagian }}">Kasus &amp; tarif</h2>
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div data-toggle-grup>
-                <div class="mb-2 inline-flex rounded-[6px] border border-line bg-white p-0.5 text-xs" role="group" aria-label="Urutkan menurut">
+                <div class="mb-2 inline-flex rounded-lg border border-line bg-white p-0.5 text-xs" role="group" aria-label="Urutkan menurut">
                     <button type="button" class="rounded-[4px] bg-brand-soft px-2 py-1 font-medium text-brand" data-toggle="jumlah" aria-pressed="true">Jumlah</button>
                     <button type="button" class="rounded-[4px] px-2 py-1 text-ink-muted" data-toggle="nilai" aria-pressed="false">Nilai</button>
                 </div>

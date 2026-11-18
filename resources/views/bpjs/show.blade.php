@@ -8,7 +8,7 @@
     <header class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <a href="{{ route('bpjs.index', ['tab' => 'klaim']) }}" class="text-sm text-biru-aktif">&larr; Daftar klaim</a>
-            <h1 class="mt-1 text-xl font-bold text-ink">{{ $klaim?->nama ?? $kunjungan?->nama ?? 'Pasien' }}</h1>
+            <h1 class="mt-1 text-xl font-semibold text-ink">{{ $klaim?->nama ?? $kunjungan?->nama ?? 'Pasien' }}</h1>
             <p class="tabular text-sm text-ink-muted">SEP {{ $noSep }} @if ($klaim?->no_mr) · RM {{ $klaim->no_mr }} @endif</p>
         </div>
         <div class="flex items-center gap-2">

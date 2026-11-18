@@ -16,7 +16,7 @@
 @endphp
 <x-app-layout title="Verifikasi berkas">
     <div class="mx-auto max-w-[960px]">
-        <h1 class="text-[26px] leading-8 font-normal text-arang">Verifikasi berkas</h1>
+        <h1 class="text-xl font-semibold text-gray-800 dark:text-white/90">Verifikasi berkas</h1>
         <p class="mt-1 text-xs text-abu">
             @if ($syncAt)
                 Daftar folder dari FTP Enigma diperbarui otomatis tiap 15 menit · terakhir {{ \Illuminate\Support\Carbon::parse($syncAt)->timezone(config('app.timezone'))->translatedFormat('d M Y H:i') }}

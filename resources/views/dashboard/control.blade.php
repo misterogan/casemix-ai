@@ -10,23 +10,23 @@
 
 <div class="space-y-6">
     {{-- 1. Kepala --}}
-    <section class="panel px-5 py-4" aria-labelledby="judul-dashboard">
+    <section class="panel p-5 md:p-6" aria-labelledby="judul-dashboard">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
-                <h1 id="judul-dashboard" class="text-xl font-bold text-arang">Pusat Kendali Klaim</h1>
+                <h1 id="judul-dashboard" class="text-xl font-semibold text-arang">Pusat Kendali Klaim</h1>
                 <p class="text-sm text-abu">{{ config('casemix.hospital_name') }} · <span data-total>{{ $s['total'] }}</span> folder diperiksa</p>
             </div>
             <nav class="flex flex-wrap gap-1" aria-label="Periode">
                 @foreach (\App\Services\Dashboard\DashboardStats::PERIODS as $k => $l)
                     <a href="{{ route('control.index', ['periode' => $k, 'sumber' => request('sumber')]) }}" @if ($period === $k) aria-current="page" @endif
-                       @class(['rounded-full px-3 py-1 text-sm', 'bg-biru text-white' => $period === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => $period !== $k])>{{ $l }}</a>
+                       @class(['rounded-lg px-3 py-1.5 text-sm font-medium', 'bg-biru text-white' => $period === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => $period !== $k])>{{ $l }}</a>
                 @endforeach
             </nav>
             <nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="Sumber">
                 <span class="text-abu">Sumber:</span>
                 @foreach (['' => 'Semua', 'ftp' => 'FTP', 'manual' => 'Manual'] as $k => $l)
                     <a href="{{ route('control.index', array_filter(['periode' => $period, 'sumber' => $k])) }}" @if (request('sumber', '') === $k) aria-current="page" @endif
-                       @class(['rounded-full px-3 py-1', 'bg-biru text-white' => request('sumber', '') === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => request('sumber', '') !== $k])>{{ $l }}</a>
+                       @class(['rounded-lg px-3 py-1.5 font-medium', 'bg-biru text-white' => request('sumber', '') === $k, 'bg-abu-muda text-arang hover:bg-biru-muda' => request('sumber', '') !== $k])>{{ $l }}</a>
                 @endforeach
             </nav>
         </div>
@@ -53,20 +53,20 @@
 
     {{-- 3. Kartu --}}
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <section class="panel flex items-center gap-4 px-5 py-4">
+        <section class="panel flex items-center gap-4 p-5 md:p-6">
             <div class="relative grid size-20 shrink-0 place-items-center rounded-full" style="background: conic-gradient(var(--color-sesuai) {{ $skor * 3.6 }}deg, var(--color-abu-muda) 0)" role="img" aria-label="Skor klaim bersih {{ $s['skor'] ?? '—' }} persen">
-                <span class="grid size-14 place-items-center rounded-full bg-white text-lg font-bold text-arang" data-skor>{{ $s['skor'] !== null ? $s['skor'] . '%' : '—' }}</span>
+                <span class="grid size-14 place-items-center rounded-full bg-white text-lg font-semibold text-arang" data-skor>{{ $s['skor'] !== null ? $s['skor'] . '%' : '—' }}</span>
             </div>
             <div><p class="text-sm font-medium text-arang">Skor klaim bersih</p><p class="text-xs text-abu"><span data-kartu="siap">{{ $v['siap'] }}</span> siap dari {{ $s['dianalisa'] }} dianalisa</p></div>
         </section>
         @foreach ([['tinjau', 'Tinjau', $v['tinjau'], 'text-waspada'], ['blokir', 'Blokir', $v['blokir'], 'text-kritis'], ['belum', 'Belum dianalisa', $v['belum'], 'text-arang'], ['dpjp', 'Saran menunggu DPJP', $s['menunggu_dpjp'], 'text-biru-aktif']] as [$k, $l, $n, $c])
-            <section class="panel px-5 py-4"><p class="text-sm text-abu">{{ $l }}</p><p class="mt-1 text-3xl font-bold {{ $c }}" data-kartu="{{ $k }}">{{ $n }}</p></section>
+            <section class="panel p-5 md:p-6"><p class="text-sm text-abu">{{ $l }}</p><p class="num mt-2 text-[28px] leading-9 font-semibold {{ $c }}" data-kartu="{{ $k }}">{{ $n }}</p></section>
         @endforeach
-        <section class="panel px-5 py-4"><p class="text-sm text-abu">Biaya AI bulan ini</p><p class="mt-1 text-3xl font-bold text-arang" data-kartu="biaya">US$ {{ number_format($s['biaya_ai'], 2) }}</p></section>
+        <section class="panel p-5 md:p-6"><p class="text-sm text-abu">Biaya AI bulan ini</p><p class="num mt-2 text-[28px] leading-9 font-semibold text-arang" data-kartu="biaya">US$ {{ number_format($s['biaya_ai'], 2) }}</p></section>
         @if ($vc = $s['vclaim'])
-            <section class="panel px-5 py-4" data-vclaim-kartu="pending"><p class="text-sm text-abu">Pending verifikasi BPJS</p><p class="mt-1 text-3xl font-bold text-kritis">{{ $vc['pending'] }}</p></section>
-            <section class="panel px-5 py-4" data-vclaim-kartu="layak"><p class="text-sm text-abu">Klaim layak bulan ini</p><p class="mt-1 text-3xl font-bold text-sesuai">{{ $vc['layak'] }}</p><p class="text-xs tabular-nums text-abu">Rp {{ number_format($vc['layak_total'], 0, ',', '.') }} disetujui</p></section>
-            <section class="panel px-5 py-4" data-vclaim-kartu="selisih"><p class="text-sm text-abu">Selisih diajukan vs disetujui bulan ini</p><p class="mt-1 text-2xl font-bold tabular-nums text-arang">Rp {{ number_format($vc['selisih'], 0, ',', '.') }}</p></section>
+            <section class="panel p-5 md:p-6" data-vclaim-kartu="pending"><p class="text-sm text-abu">Pending verifikasi BPJS</p><p class="num mt-2 text-[28px] leading-9 font-semibold text-kritis">{{ $vc['pending'] }}</p></section>
+            <section class="panel p-5 md:p-6" data-vclaim-kartu="layak"><p class="text-sm text-abu">Klaim layak bulan ini</p><p class="num mt-2 text-[28px] leading-9 font-semibold text-sesuai">{{ $vc['layak'] }}</p><p class="text-xs tabular-nums text-abu">Rp {{ number_format($vc['layak_total'], 0, ',', '.') }} disetujui</p></section>
+            <section class="panel p-5 md:p-6" data-vclaim-kartu="selisih"><p class="text-sm text-abu">Selisih diajukan vs disetujui bulan ini</p><p class="mt-1 text-2xl font-semibold tabular-nums text-arang">Rp {{ number_format($vc['selisih'], 0, ',', '.') }}</p></section>
         @else
             <section class="panel border-dashed bg-abu-muda px-5 py-4 text-gray-500"><p class="text-sm">Nilai klaim &amp; status BPJS — tersedia setelah VClaim tersambung</p></section>
         @endif
@@ -77,7 +77,7 @@
         <p class="text-xs text-abu">perkiraan dari waktu folder hilang di FTP</p>
         <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             @foreach ([['dipindahkan', 'Sudah dipindahkan (perkiraan diajukan)', $s['pindah']['dipindahkan']], ['pindah_belum_siap', 'Dipindah dalam status belum siap', $s['pindah']['belum_siap']], ['tanpa_periksa', 'Dipindah tanpa diperiksa CERMAT', $s['pindah']['tanpa_periksa']], ['median_hari', 'Median hari masuk FTP → dipindahkan', $s['pindah']['median_hari'] ?? '—']] as [$k, $l, $n])
-                <section class="panel px-4 py-3"><p class="text-xs text-abu">{{ $l }}</p><p class="mt-1 text-xl font-bold text-arang" data-kartu="{{ $k }}">{{ $n }}</p></section>
+                <section class="panel px-4 py-3"><p class="text-xs text-abu">{{ $l }}</p><p class="mt-1 text-xl font-semibold text-arang" data-kartu="{{ $k }}">{{ $n }}</p></section>
             @endforeach
         </div>
     </section>

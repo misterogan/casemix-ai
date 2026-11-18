@@ -16,7 +16,7 @@
     $daftar = fn ($v) => collect(is_array($v) ? $v : [])->filter(fn ($x) => is_string($x) && $x !== '')->values();
     $biaya = collect(is_array($isi['biaya'] ?? null) ? $isi['biaya'] : [])->filter(fn ($b) => is_array($b) && filled($b['komponen'] ?? null));
 @endphp
-<details id="dok-{{ $d->id }}" data-doc="{{ $d->id }}" data-doc-status="{{ $st }}" class="group rounded-lg border border-gray-200 bg-white" @if ($buka) open @endif>
+<details id="dok-{{ $d->id }}" data-doc="{{ $d->id }}" data-doc-status="{{ $st }}" class="group rounded-2xl border border-gray-200 bg-white" @if ($buka) open @endif>
     <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span class="shrink-0" aria-hidden="true">
             @switch($st)

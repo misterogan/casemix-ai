@@ -24,7 +24,7 @@
             @foreach ($kelompok as $peran => $judul)
                 @php $baris = $codes->where('peran', $peran); @endphp
                 @continue($baris->isEmpty())
-                <h3 class="mt-3 text-xs font-semibold uppercase tracking-wide text-tinta-3 first:mt-0">{{ $judul }}</h3>
+                <h3 class="mt-3 text-xs font-medium tracking-wide text-tinta-3 first:mt-0">{{ $judul }}</h3>
                 <ul class="mt-1 space-y-2">
                     @foreach ($baris as $c)
                         @php

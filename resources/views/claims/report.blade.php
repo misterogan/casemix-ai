@@ -21,7 +21,7 @@
     <header class="flex items-start justify-between border-b-2 border-tinta pb-3">
         <div>
             <p class="text-xs text-tinta-2">{{ config('casemix.hospital_name') }} · Unit Casemix</p>
-            <h1 class="text-xl font-bold">Laporan pemeriksaan berkas klaim JKN</h1>
+            <h1 class="text-xl font-semibold">Laporan pemeriksaan berkas klaim JKN</h1>
             <p class="text-xs text-tinta-3">Dicetak {{ now()->translatedFormat('d F Y H:i') }} oleh {{ auth()->user()->name }}</p>
         </div>
         @if ($claim->isLocked())
@@ -46,10 +46,10 @@
         </tbody>
     </table>
 
-    <h2 class="mt-6 text-base font-bold">Dokumen ({{ $claim->documents->count() }})</h2>
+    <h2 class="mt-6 text-base font-semibold">Dokumen ({{ $claim->documents->count() }})</h2>
     <p class="text-sm">{{ $claim->documents->map(fn ($d) => $d->type->label() . ': ' . $d->original_name)->implode('; ') ?: '—' }}</p>
 
-    <h2 class="mt-6 text-base font-bold">Hasil pemeriksaan</h2>
+    <h2 class="mt-6 text-base font-semibold">Hasil pemeriksaan</h2>
     @if (! $review)
         <p class="text-sm">Belum diperiksa.</p>
     @else
@@ -68,7 +68,7 @@
             </tbody>
         </table>
         @if (! empty($review->suggestions))
-            <h3 class="mt-4 font-bold">Kondisi untuk dikonfirmasi ke DPJP</h3>
+            <h3 class="mt-4 font-semibold">Kondisi untuk dikonfirmasi ke DPJP</h3>
             <ul class="mt-1 list-disc pl-5 text-sm">
                 @foreach ($review->suggestions as $s)
                     <li><strong>{{ $s['kondisi'] }}</strong>: {{ $s['bukti'] }}@if($s['catatan']) — {{ $s['catatan'] }}@endif</li>
@@ -77,7 +77,7 @@
         @endif
     @endif
 
-    <h2 class="mt-6 text-base font-bold">Daftar cek petugas</h2>
+    <h2 class="mt-6 text-base font-semibold">Daftar cek petugas</h2>
     <ul class="mt-1 text-sm">
         @foreach (Eklaim::CHECKLIST as $k => $l)
             <li>{{ ! empty($claim->checklist[$k]) ? '☑' : '☐' }} {{ $l }}</li>

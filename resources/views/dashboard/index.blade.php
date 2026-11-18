@@ -14,7 +14,7 @@
                 <li>
                     <a href="{{ route('claims.index', ['status' => $s->value]) }}" class="block px-5 py-4 hover:bg-kertas">
                         <span class="badge {{ $s->tone() }}">{{ $s->label() }}</span>
-                        <span class="num mt-2 block text-3xl font-bold text-tinta">{{ $counts[$s->value] }}</span>
+                        <span class="num mt-2 block num text-[28px] leading-9 font-semibold text-tinta">{{ $counts[$s->value] }}</span>
                     </a>
                 </li>
             @endforeach

@@ -5,7 +5,7 @@
 @endphp
 <div class="space-y-4">
     <header>
-        <h1 class="text-xl font-bold text-ink">Antrean kerja</h1>
+        <h1 class="text-xl font-semibold text-ink">Antrean kerja</h1>
         <p class="text-sm text-ink-muted" data-ringkasan>
             Hari ini <span class="tabular font-semibold text-ink" data-selesai>{{ $summary['selesai'] }}</span> selesai,
             <span class="tabular font-semibold text-ink" data-tersisa>{{ $summary['tersisa'] }}</span> tersisa,
@@ -19,7 +19,7 @@
             <div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                 <div class="min-w-0">
                     <p class="text-xs font-medium text-ink-muted">Kerjakan berikutnya</p>
-                    <p class="mt-1 truncate text-title font-bold text-ink">{{ $next['pasien'] }}</p>
+                    <p class="mt-1 truncate text-title font-semibold text-ink">{{ $next['pasien'] }}</p>
                     <p class="tabular mt-1 text-sm text-ink-muted">RM {{ $next['rm'] ?: '—' }} · {{ $nf->no_sep ? 'SEP ' . $nf->no_sep : 'SEP belum ada' }}</p>
                     <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
                         <x-verdict :status="$next['vonis']"/>

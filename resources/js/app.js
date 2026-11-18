@@ -384,3 +384,71 @@ document.addEventListener('click', async (e) => {
   isi.replaceChildren(el);
   if (!d.open) { d.dataset.scrollY = String(window.scrollY); d.showModal(); }
 });
+
+// ── Kerangka aplikasi: sidebar, mode gelap, Ctrl/⌘+K, submenu, dropdown ──
+function simpan(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* mode privat */ } }
+
+document.addEventListener('click', (e) => {
+  const html = document.documentElement;
+  const sidebar = document.querySelector('[data-sidebar]');
+  const overlay = document.querySelector('[data-sidebar-overlay]');
+  const drawer = (buka) => {
+    sidebar?.classList.toggle('-translate-x-full', !buka);
+    overlay?.classList.toggle('hidden', !buka);
+  };
+
+  if (e.target.closest('[data-sidebar-toggle]')) {
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      simpan('sidebar-ciut', html.classList.toggle('sidebar-ciut') ? '1' : '0');
+    } else {
+      drawer(sidebar?.classList.contains('-translate-x-full'));
+    }
+    return;
+  }
+  if (e.target.closest('[data-sidebar-tutup], [data-sidebar-overlay]')) { drawer(false); return; }
+
+  if (e.target.closest('[data-tema-toggle]')) {
+    simpan('tema', html.classList.toggle('dark') ? 'dark' : 'light');
+    document.dispatchEvent(new CustomEvent('tema-berubah'));
+    return;
+  }
+
+  const sub = e.target.closest('[data-submenu]');
+  if (sub) {
+    if (html.classList.contains('sidebar-ciut') && window.matchMedia('(min-width: 1024px)').matches) {
+      html.classList.remove('sidebar-ciut');
+      simpan('sidebar-ciut', '0');
+    }
+    const panel = document.getElementById(sub.getAttribute('aria-controls'));
+    const buka = sub.getAttribute('aria-expanded') !== 'true';
+    sub.setAttribute('aria-expanded', String(buka));
+    panel?.classList.toggle('is-buka', buka);
+    return;
+  }
+
+  // Tutup dropdown <details data-dropdown> saat klik di luar
+  document.querySelectorAll('details[data-dropdown][open]').forEach((d) => {
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    const cari = document.getElementById('cari-sep');
+    if (cari) { e.preventDefault(); cari.focus(); cari.select(); }
+  }
+  if (e.key === 'Escape') {
+    document.querySelectorAll('details[data-dropdown][open]').forEach((d) => d.removeAttribute('open'));
+    document.querySelector('[data-sidebar-overlay]:not(.hidden)')?.click();
+  }
+});
+
+if (!/Mac|iPhone|iPad/.test(navigator.platform || '')) {
+  document.addEventListener('DOMContentLoaded', () => {
+    const k = document.querySelector('[data-cari-kbd]');
+    if (k) k.textContent = 'Ctrl K';
+  });
+}
+
+// Tema Chart.js bersama hanya dimuat bila halaman punya grafik.
+if (document.querySelector('canvas, #bpjs-data')) import('./chart-theme.js');

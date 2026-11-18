@@ -5,7 +5,7 @@
 @endphp
 <div class="space-y-4">
     <header>
-        <h1 class="text-xl font-bold text-ink">Klaim BPJS</h1>
+        <h1 class="text-xl font-semibold text-ink">Klaim BPJS</h1>
         <p class="text-sm text-ink-muted">Data hanya dibaca dari hasil tarik VClaim. Halaman ini tidak memanggil BPJS.</p>
     </header>
 

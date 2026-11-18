@@ -10,27 +10,27 @@
     $payload = ['donut_status' => $ds + ['links' => $links['status']], 'donut_jenis' => $dj + ['links' => $links['jenis']],
         'tren' => $t + ['links' => $links['tren']], 'status_keys' => array_keys(BpjsStats::STATUS), 'status_label' => BpjsStats::STATUS_LABEL,
         'los' => $stats['analisis']['mutu']['los'] ?? null, 'readmisi' => $stats['analisis']['mutu']['readmisi']['tren'] ?? null];
-    $panel = 'rounded-[10px] border border-line bg-white p-5';
+    $panel = 'rounded-2xl border border-line bg-white p-5';
     $ket = 'mt-1 text-xs text-ink-muted';
     $warnaStatus = ['proses' => 'bg-triage-amber', 'pending' => 'bg-triage-red', 'tidak_layak' => 'bg-[#7F1D1D]', 'dispute' => 'bg-[#6B21A8]',
         'klaim' => 'bg-triage-green', 'lainnya' => 'bg-[#9AA0A6]'];
 @endphp
 
 {{-- Hero --}}
-<section class="rounded-[10px] bg-brand-soft p-6" data-hero>
+<section class="rounded-2xl bg-brand-soft p-6" data-hero>
     <div class="flex flex-wrap items-start justify-between gap-4">
         <h2 class="text-xl font-semibold text-ink">Pusat kendali klaim BPJS</h2>
         <form method="GET" action="{{ route('bpjs.index') }}" class="flex flex-wrap items-end gap-2 text-sm" data-filter-ringkasan>
             <input type="hidden" name="tab" value="ringkasan">
             <label class="flex flex-col gap-1"><span class="text-xs text-ink-muted">Periode (bulan tgl pulang)</span>
-                <input type="month" name="periode" value="{{ $periode }}" class="field num rounded-[6px]"></label>
+                <input type="month" name="periode" value="{{ $periode }}" class="field num rounded-lg"></label>
             <label class="flex flex-col gap-1"><span class="text-xs text-ink-muted">Jenis</span>
-                <select name="jenis" class="field rounded-[6px]">
+                <select name="jenis" class="field rounded-lg">
                     @foreach (['' => 'Semua', 'inap' => 'Rawat inap', 'jalan' => 'Rawat jalan'] as $v => $l)
                         <option value="{{ $v }}" @selected($jenisRingkasan === $v)>{{ $l }}</option>
                     @endforeach
                 </select></label>
-            <button type="submit" class="btn-primary rounded-[6px]">Terapkan</button>
+            <button type="submit" class="btn-primary rounded-lg">Terapkan</button>
         </form>
     </div>
 
@@ -39,13 +39,13 @@
             <div>
                 <p class="tabular max-w-3xl text-base leading-relaxed text-ink" data-kalimat>@foreach ($stats['kalimat'] as $p)@if (isset($p['b']))<strong class="font-semibold" @if (isset($p['title'])) title="{{ $p['title'] }}" @endif>{{ $p['b'] }}</strong>@else{{ $p['t'] }}@endif @endforeach</p>
                 <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                    <span class="rounded-[6px] bg-triage-green-soft px-2 py-0.5 text-triage-green" data-chip-resmi>Nilai resmi VClaim</span>
-                    <span class="rounded-[6px] bg-white px-2 py-0.5 text-ink-muted" data-chip-ditarik>Ditarik {{ $jam($lastSync) }}</span>
+                    <span class="rounded-lg bg-triage-green-soft px-2 py-0.5 text-triage-green" data-chip-resmi>Nilai resmi VClaim</span>
+                    <span class="rounded-lg bg-white px-2 py-0.5 text-ink-muted" data-chip-ditarik>Ditarik {{ $jam($lastSync) }}</span>
                 </div>
             </div>
             @php $tot = max(1, $stats['total_klaim']); @endphp
             <div data-bar-status>
-                <div class="flex h-3 overflow-hidden rounded-[6px] bg-white" role="img"
+                <div class="flex h-3 overflow-hidden rounded-lg bg-white" role="img"
                      aria-label="Komposisi status: {{ collect($ds['keys'])->map(fn ($k, $i) => $ds['labels'][$i] . ' ' . $ds['counts'][$i])->implode(', ') }}">
                     @foreach ($ds['keys'] as $i => $k)
                         @if ($ds['counts'][$i] > 0)<div class="{{ $warnaStatus[$k] }}" style="width: {{ round($ds['counts'][$i] * 100 / $tot, 2) }}%"></div>@endif
@@ -64,7 +64,7 @@
 </section>
 
 @isset($tanpaFolder)
-    <a href="{{ $tanpaFolder['url'] }}" data-kartu="tanpa_folder" class="flex items-center justify-between gap-3 rounded-[10px] border border-line bg-white px-5 py-3 text-sm hover:border-biru-aktif focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif">
+    <a href="{{ $tanpaFolder['url'] }}" data-kartu="tanpa_folder" class="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white px-5 py-3 text-sm hover:border-biru-aktif focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif">
         <span><span class="font-medium text-ink">Berkas belum ada di FTP</span>
             <span class="block text-xs text-ink-muted">SEP pulang lebih dari 7 hari lalu tanpa folder berkas di FTP</span></span>
         <span class="tabular text-2xl font-semibold text-ink" data-angka>{{ $num($tanpaFolder['n']) }}</span>
@@ -72,7 +72,7 @@
 @endisset
 
 {{-- Status sinkron --}}
-<div class="grid gap-3 rounded-[10px] border border-line bg-white px-5 py-3 text-sm md:grid-cols-2" data-sinkron>
+<div class="grid gap-3 rounded-2xl border border-line bg-white px-5 py-3 text-sm md:grid-cols-2" data-sinkron>
     @foreach (['klaim' => 'Data klaim', 'kunjungan' => 'Data kunjungan'] as $j => $judul)
         @php $s = $sinkron[$j] ?? null; @endphp
         <p class="flex items-start gap-2" data-sinkron-{{ $j }}>
@@ -110,8 +110,8 @@
                 $dasar = ['belum' => 'SEP terbit', 'kurang' => 'klaim layak'][$k] ?? 'total klaim';
                 $fmtD = fn ($x) => $uang ? BpjsStats::rupiahRingkas(abs($x)) : $num(abs($x));
             @endphp
-            <a href="{{ $links['kartu'][$k] }}" data-kartu="{{ $k }}" class="block rounded-[10px] border border-line bg-white p-4 hover:border-biru-aktif focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif">
-                <span class="inline-flex h-8 w-8 items-center justify-center rounded-[6px] {{ $tema[$k][1] }} {{ $tema[$k][0] }}" aria-hidden="true">
+            <a href="{{ $links['kartu'][$k] }}" data-kartu="{{ $k }}" class="block rounded-2xl border border-line bg-white p-4 hover:border-biru-aktif focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif">
+                <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg {{ $tema[$k][1] }} {{ $tema[$k][0] }}" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ $ikon[$k] }}"/></svg>
                 </span>
                 @if ($uang)
@@ -146,14 +146,14 @@
             @php $n = $stats['aksi'][$k]; @endphp
             @continue($k === 'tidak_layak' && $n === 0)
             @if ($n === 0)
-                <div class="rounded-[10px] bg-triage-green-soft p-5" data-aksi="{{ $k }}" data-aksi-aman>
-                    <span class="tabular block text-3xl font-semibold text-triage-green">0</span>
+                <div class="rounded-2xl bg-triage-green-soft p-5" data-aksi="{{ $k }}" data-aksi-aman>
+                    <span class="tabular block num text-[28px] leading-9 font-semibold text-triage-green">0</span>
                     <span class="mt-1 block font-medium text-ink">{{ $judul }}</span>
                     <p class="mt-2 text-sm text-triage-green">Tidak ada yang perlu dikejar</p>
                 </div>
             @else
-                <div class="rounded-[10px] {{ $bg }} p-5" data-aksi="{{ $k }}">
-                    <span class="tabular block text-3xl font-semibold {{ $fg }}" data-aksi-n>{{ $num($n) }}</span>
+                <div class="rounded-2xl {{ $bg }} p-5" data-aksi="{{ $k }}">
+                    <span class="tabular block num text-[28px] leading-9 font-semibold {{ $fg }}" data-aksi-n>{{ $num($n) }}</span>
                     <span class="mt-1 block font-medium text-ink">{{ $judul }}</span>
                     @if ($k === 'pending14' && $stats['aksi']['pending14_rp'] > 0)
                         <span class="tabular block text-xs text-ink-muted" title="{{ BpjsStats::rupiahPenuh($stats['aksi']['pending14_rp']) }}">{{ BpjsStats::rupiahRingkas($stats['aksi']['pending14_rp']) }} nilai tertahan</span>
@@ -239,7 +239,7 @@
                         <li>
                             <div class="flex justify-between gap-2 text-sm"><span>{{ $f['label'] }}</span>
                                 <span class="tabular">{{ $num($f['n']) }}@if ($i > 0)<span class="text-xs text-ink-muted"> · {{ $stats['funnel'][$i - 1]['n'] ? $pctf($f['n'] * 100 / $stats['funnel'][$i - 1]['n']) : '—' }} dari tahap sebelumnya</span>@endif</span></div>
-                            <div class="mt-1 h-3 rounded-[6px] bg-gray-100"><div class="h-3 rounded-[6px] {{ ['bg-ink-muted', 'bg-triage-amber', 'bg-triage-green'][$i] }}" style="width: {{ round($f['n'] * 100 / $maks, 1) }}%"></div></div>
+                            <div class="mt-1 h-3 rounded-lg bg-gray-100"><div class="h-3 rounded-lg {{ ['bg-ink-muted', 'bg-triage-amber', 'bg-triage-green'][$i] }}" style="width: {{ round($f['n'] * 100 / $maks, 1) }}%"></div></div>
                         </li>
                     @endforeach
                 </ol>

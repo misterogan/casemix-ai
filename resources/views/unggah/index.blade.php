@@ -18,8 +18,8 @@
                     <x-field name="no_sep" label="No. SEP" hint="Opsional, 19 karakter. Bila cocok dengan data BPJS, isian lain terisi otomatis.">
                         <x-slot:aside><span class="num text-xs text-abu" data-sep-count aria-live="polite">0/19</span></x-slot:aside>
                         <x-input name="no_sep" maxlength="19" class="font-mono tracking-wide" placeholder="0030R0011125V000123" autocomplete="off" data-field="no_sep" :hint="true" />
-                        <div class="mt-2 rounded-[6px] border border-giok/25 bg-giok-muda px-3 py-2 text-sm text-giok-tua" data-vclaim hidden role="status"></div>
-                        <div class="mt-2 rounded-[6px] border border-brand/25 bg-brand-soft px-3 py-2.5 text-sm text-tinta" data-existing hidden role="status">
+                        <div class="mt-2 rounded-lg border border-giok/25 bg-giok-muda px-3 py-2 text-sm text-giok-tua" data-vclaim hidden role="status"></div>
+                        <div class="mt-2 rounded-lg border border-brand/25 bg-brand-soft px-3 py-2.5 text-sm text-tinta" data-existing hidden role="status">
                             <p>Folder untuk SEP ini sudah ada: <a class="font-medium text-brand underline" data-existing-link></a></p>
                             <button type="button" class="btn-secondary mt-2" data-use-existing>Tambahkan ke folder itu</button>
                         </div>

@@ -3,7 +3,7 @@
 @if ($acuan?->isNotEmpty())
     <details class="relative inline-block text-xs" data-acuan="{{ $kode }}">
         <summary class="cursor-pointer text-url underline">Acuan</summary>
-        <div class="absolute left-0 z-20 mt-1 w-80 max-w-[80vw] space-y-3 rounded-md border border-gray-200 bg-white p-3 text-sm shadow-lg" role="note">
+        <div class="absolute left-0 z-20 mt-1 w-80 max-w-[80vw] space-y-3 rounded-2xl border border-gray-200 bg-white p-3 text-sm shadow-overlay" role="note">
             @foreach ($acuan as $r)
                 <div>
                     <p class="font-medium text-arang">{{ $r->judul }}@if ($r->pasal) · {{ $r->pasal }}@endif</p>

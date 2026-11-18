@@ -1,17 +1,17 @@
 <x-guest-layout>
 <div class="grid min-h-screen lg:grid-cols-[1fr_minmax(420px,520px)]">
-    <section class="relative hidden overflow-hidden bg-hutan p-12 text-white lg:flex lg:flex-col lg:justify-between">
+    <section class="relative hidden overflow-hidden bg-brand-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div class="flex items-center gap-2.5">
             <svg viewBox="0 0 32 32" class="size-9" aria-hidden="true">
                 <rect x="3" y="7" width="26" height="20" rx="3" fill="#EADFC4"/>
                 <path d="M3 10a3 3 0 013-3h7l3 3h10a3 3 0 013 3" fill="none" stroke="#D8C89F" stroke-width="2"/>
                 <path d="M10 18l4 4 8-9" fill="none" stroke="#0E6B57" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="text-lg font-bold">{{ config('casemix.app_name') }}</span>
+            <span class="text-lg font-semibold">{{ config('casemix.app_name') }}</span>
         </div>
 
         <div class="max-w-lg">
-            <p class="text-[40px] leading-[1.1] font-bold tracking-tight">Berkas lengkap dan konsisten sebelum masuk E-Klaim.</p>
+            <p class="text-[40px] leading-[1.1] font-semibold tracking-tight">Berkas lengkap dan konsisten sebelum masuk E-Klaim.</p>
             <p class="mt-5 max-w-md text-[15px] leading-relaxed text-white/70">
                 AI membantu mencocokkan SEP, resume medis, penunjang, dan rincian biaya. Keputusan akhir tetap pada petugas casemix.
             </p>
@@ -34,7 +34,7 @@
 
     <section class="flex items-center justify-center px-6 py-12">
         <div class="w-full max-w-sm">
-            <h1 class="text-2xl font-bold">Masuk</h1>
+            <h1 class="text-[30px] leading-9 font-semibold text-gray-800 dark:text-white/90">Masuk</h1>
             <p class="mt-1 text-sm text-tinta-2">{{ config('casemix.hospital_name') }} · Unit Casemix</p>
 
             @if ($errors->any())

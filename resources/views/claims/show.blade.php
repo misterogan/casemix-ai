@@ -138,7 +138,7 @@
             {{-- Dokumen --}}
             <section aria-labelledby="dokumen">
                 <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
-                    <h2 id="dokumen" class="text-lg font-bold">Dokumen</h2>
+                    <h2 id="dokumen" class="text-lg font-semibold">Dokumen</h2>
                     @if ($canEdit)
                         <a href="{{ route('claims.history', $claim) }}" class="text-sm font-medium text-giok hover:underline">Ambil dari riwayat pasien di FTP</a>
                     @endif
@@ -161,7 +161,7 @@
                                     <ul class="divide-y divide-garis">
                                         @foreach ($docs as $d)
                                             <li class="flex items-center gap-3 px-4 py-2.5">
-                                                <span class="grid size-8 shrink-0 place-items-center rounded bg-kertas text-[10px] font-bold text-tinta-2">{{ $d->isPdf() ? 'PDF' : 'IMG' }}</span>
+                                                <span class="grid size-8 shrink-0 place-items-center rounded bg-kertas text-[10px] font-semibold text-tinta-2">{{ $d->isPdf() ? 'PDF' : 'IMG' }}</span>
                                                 <div class="min-w-0 flex-1">
                                                     <a href="{{ route('claims.documents.show', [$claim, $d]) }}" target="_blank" class="block truncate text-sm font-medium hover:text-giok">{{ $d->original_name }}</a>
                                                     <p class="text-xs text-tinta-3">
@@ -173,7 +173,7 @@
                                                 @if ($canEdit)
                                                     <details class="relative">
                                                         <summary class="btn-ghost cursor-pointer list-none px-2 py-1" aria-label="Aksi dokumen">⋯</summary>
-                                                        <div class="absolute right-0 z-10 mt-1 w-56 rounded-md border border-garis bg-white p-2 shadow-lg">
+                                                        <div class="absolute right-0 z-10 mt-1 w-56 dropdown-panel">
                                                             <form method="POST" action="{{ route('claims.documents.update', [$claim, $d]) }}" class="flex gap-1">
                                                                 @csrf @method('PATCH')
                                                                 <select name="type" class="field py-1 text-xs" aria-label="Ganti jenis">

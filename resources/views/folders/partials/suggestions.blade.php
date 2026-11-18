@@ -35,7 +35,7 @@
                         </p>
                     @endif
 
-                    <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-purple-900/70">Langkah tindak lanjut</p>
+                    <p class="mt-3 text-xs font-medium tracking-wide text-purple-900/70">Langkah tindak lanjut</p>
                     <ol class="mt-1 list-decimal space-y-2 pl-5 text-sm text-arang">
                         <li>Cek bukti di dokumen @if ($url)(<a href="{{ $url }}" data-preview="{{ $s->dokumen }}" target="_blank" rel="noopener" class="text-url underline">buka {{ $s->dokumen }} hal. {{ $s->halaman ?: '–' }}</a>)@endif.</li>
                         <li>
