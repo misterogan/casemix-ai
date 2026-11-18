@@ -29,7 +29,7 @@
                     @endforeach
                 </tbody></table>
             @else
-                <x-empty-state title="Belum terlihat di data klaim"/>
+                <x-empty-state title="Sudah pulang, tagihan belum tercatat di BPJS"/>
             @endif
         </x-panel>
 

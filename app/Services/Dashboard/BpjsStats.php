@@ -67,7 +67,7 @@ class BpjsStats
             'proses' => ['Proses verifikasi', $total, null],
             'pending' => ['Pending verifikasi', $total, false],
             'klaim' => ['Klaim layak (diterima)', $total, true],
-            'belum' => ['Belum masuk data klaim', $kini['sep'], false],
+            'belum' => ['Sudah pulang, tagihan belum tercatat di BPJS', $kini['sep'], false],
             'kurang' => ['Disetujui kurang dari diajukan', $kini['klaim'], false],
             'tolak' => ['Tidak layak / dispute', $total, false],
             'tertahan' => ['Nilai tertahan di pending', null, false],
@@ -194,7 +194,24 @@ class BpjsStats
             'tidak_layak_rp' => (float) $this->klaimBulan($awal, $jenis)->where('status_kategori', 'tidak_layak')->sum('by_pengajuan'),
             'belum7' => $this->sepBulan($awal, $jenis)->whereRaw('COALESCE(tgl_plg_sep, tgl_sep) < ?', [$batas7])
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'))->count(),
+            'belum_umur' => $this->umurBelum($awal, $jenis),
         ];
+    }
+
+    /** Rincian umur SEP yang tagihannya belum tercatat, dihitung dari tanggal pulang (atau tanggal SEP). */
+    private function umurBelum(Carbon $awal, string $jenis): array
+    {
+        $hari = self::selisihHari("'" . now()->toDateString() . "'", 'COALESCE(tgl_plg_sep, tgl_sep)');
+        $rows = $this->sepBulan($awal, $jenis)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'))
+            ->selectRaw("$hari umur, COUNT(*) n")->groupBy('umur')->get();
+        $ember = ['≤7 hari (wajar)' => 0, '8–30 hari' => 0, '>30 hari (dahulukan)' => 0];
+        foreach ($rows as $r) {
+            $u = (int) $r->umur;
+            $ember[$u <= 7 ? '≤7 hari (wajar)' : ($u <= 30 ? '8–30 hari' : '>30 hari (dahulukan)')] += (int) $r->n;
+        }
+
+        return $ember;
     }
 
     /** Status sinkron per jenis tarikan: run terakhir, jumlah hari itu. Tidak di-cache. */

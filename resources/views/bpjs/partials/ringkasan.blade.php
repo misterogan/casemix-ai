@@ -114,6 +114,8 @@
                 <span class="mt-1 block text-sm text-ink">{{ $c['label'] }}</span>
                 @if ($c['pct'] !== null)<span class="block text-xs text-ink-muted"><span class="tabular">{{ $pctf($c['pct']) }}</span> dari {{ $dasar }}</span>@endif
                 @if ($c['rp'] !== null)<span class="tabular block text-xs text-ink-muted" title="{{ BpjsStats::rupiahPenuh($c['rp']) }}">{{ BpjsStats::rupiahRingkas($c['rp']) }} diajukan</span>@endif
+                @if ($k === 'belum')<span class="mt-1 block text-xs text-ink-muted" data-belum-catatan>SEP sudah terbit (pelayanan dijamin BPJS), tetapi tagihan klaimnya belum tercatat di BPJS. Bisa belum diajukan dari E-Klaim atau belum diproses.</span>
+                    <span class="mt-1 block text-xs text-ink-muted" data-belum-umur>@foreach ($stats['aksi']['belum_umur'] ?? [] as $u => $nu)<span class="tabular">{{ $num($nu) }}</span> {{ $u }}@if (! $loop->last) · @endif @endforeach</span>@endif
                 @if ($k === 'tolak')<span class="mt-1 block text-xs text-ink-muted" data-tolak-catatan>Alasan tidak tersedia di VClaim. Lihat umpan balik verifikator.</span>@endif
                 <span class="tabular mt-1 block text-xs {{ $warna }}" data-delta>{{ $d > 0 ? '+' . $fmtD($d) : ($d < 0 ? '−' . $fmtD($d) : 'sama') }} vs bulan lalu</span>
             </a>
@@ -125,8 +127,8 @@
         $aksi = [
             'pending14' => ['Pending lebih dari 14 hari', 'klaim tertahan dan berisiko melewati batas tanggapan.',
                 'periksa umpan balik verifikator, lengkapi berkas, ajukan ulang.', 'bg-triage-red-soft', 'text-triage-red'],
-            'belum7' => ['Belum terlihat di data klaim (>7 hari sejak pulang)', 'bisa belum diajukan atau belum diproses BPJS.',
-                'cocokkan dengan daftar pengajuan E-Klaim.', 'bg-triage-amber-soft', 'text-triage-amber'],
+            'belum7' => ['Sudah pulang, tagihan belum tercatat di BPJS (>7 hari sejak pulang)', 'Layanan sudah diberikan, tetapi klaimnya belum sampai ke BPJS.',
+                'Cek di E-Klaim apakah sudah diajukan; yang lebih dari 30 hari sejak pulang didahulukan.', 'bg-triage-amber-soft', 'text-triage-amber'],
             'tidak_layak' => ['Klaim tidak layak', 'BPJS menolak klaim ini.',
                 'telusuri alasan dari verifikator, nilai apakah layak diajukan dispute.', 'bg-triage-red-soft', 'text-[#7F1D1D]'],
         ];

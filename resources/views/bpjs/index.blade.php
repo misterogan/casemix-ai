@@ -112,7 +112,7 @@
                                     <td class="px-3 py-2">{{ $r->jns_pelayanan }}</td>
                                     <td class="px-3 py-2">{{ $r->diagnosa ?: '—' }}</td>
                                     <td class="px-3 py-2">@if (isset($folders[$r->no_sep]))<a href="{{ route('folders.show', $folders[$r->no_sep]->id) }}" class="text-biru-aktif underline" data-folder-link>ya</a>@else tidak @endif</td>
-                                    <td class="px-3 py-2">@if (isset($klaimStatus[$r->no_sep]))@include('folders.partials.bpjs-chip', ['kat' => $klaimStatus[$r->no_sep]])@else<span class="text-xs text-ink-muted">Belum terlihat di data klaim</span>@endif</td>
+                                    <td class="px-3 py-2">@if (isset($klaimStatus[$r->no_sep]))@include('folders.partials.bpjs-chip', ['kat' => $klaimStatus[$r->no_sep]])@else<span class="text-xs text-ink-muted">Sudah pulang, tagihan belum tercatat di BPJS</span>@endif</td>
                                 </tr>
                             @endforeach
                         </tbody>

@@ -111,7 +111,7 @@ class BpjsListTest extends TestCase
         $this->klaim('SEPK2', 3);
 
         $this->actingAs($this->koor)->get(route('bpjs.index', ['tab' => 'sep']))->assertOk()
-            ->assertSee('SEPK1')->assertSee('Belum terlihat di data klaim')->assertSee('data-bpjs-status="klaim"', false);
+            ->assertSee('SEPK1')->assertSee('Sudah pulang, tagihan belum tercatat di BPJS')->assertSee('data-bpjs-status="klaim"', false);
     }
 
     public function test_detail_menampilkan_riwayat_status(): void

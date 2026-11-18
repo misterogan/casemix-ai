@@ -225,6 +225,13 @@ class BpjsDashboardTest extends TestCase
         $res = $this->ringkasan();
         $this->assertSame(['pending14' => 0, 'belum7' => 2], array_intersect_key($res->viewData('stats')['aksi'], ['pending14' => 1, 'belum7' => 1]));
         $res->assertSee('data-aksi="pending14" data-aksi-aman', false)->assertSee('Tidak ada yang perlu dikejar');
+        $res->assertSee('Sudah pulang, tagihan belum tercatat di BPJS')->assertSee('klaimnya belum sampai ke BPJS')
+            ->assertSee('Cek di E-Klaim apakah sudah diajukan')->assertSee('&gt;30 hari (dahulukan)', false)->assertSee('8–30 hari');
+        $kartu = $res->viewData('stats')['kartu']['belum']['label'];
+        $this->assertSame('Sudah pulang, tagihan belum tercatat di BPJS', $kartu);
+        $html = $res->getContent();
+        $i = strpos($html, 'data-kartu="belum"');
+        $this->assertStringNotContainsStringIgnoringCase('tidak layak', substr($html, $i, strpos($html, '</a>', $i) - $i));
 
         cache()->flush();
         $this->klaim(2, ['status_changed_at' => '2026-11-03 08:00:00']); // 15 hari
