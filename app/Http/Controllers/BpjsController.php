@@ -40,6 +40,9 @@ class BpjsController extends Controller
             $seps = $rows->pluck('no_sep')->all();
             $data['rows'] = $rows;
             $data['folders'] = FtpFolder::whereIn('no_sep', $seps)->orderByDesc('id')->get(['id', 'no_sep'])->unique('no_sep')->keyBy('no_sep');
+            if ($tab === 'klaim') {
+                $data['rentangData'] = VclaimKlaim::selectRaw('MIN(tgl_pulang) mn, MAX(tgl_pulang) mx')->first();
+            }
             if ($tab === 'sep') {
                 $data['klaimStatus'] = VclaimKlaim::whereIn('no_sep', $seps)->pluck('status_kode', 'no_sep');
             }
@@ -157,10 +160,15 @@ class BpjsController extends Controller
     private function filters(Request $request): array
     {
         $tgl = fn ($k, $def) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query($k)) ? $request->query($k) : $def;
+        $bulan = now();
+        if ($request->query('tab') !== 'sep' && ! ($request->filled('dari') && $request->filled('sampai'))) {
+            $max = VclaimKlaim::max('tgl_pulang');
+            $bulan = $max ? Carbon::parse($max) : now()->subMonthNoOverflow();
+        }
 
         return [
-            'dari' => $tgl('dari', now()->startOfMonth()->toDateString()),
-            'sampai' => $tgl('sampai', now()->endOfMonth()->toDateString()),
+            'dari' => $tgl('dari', $bulan->copy()->startOfMonth()->toDateString()),
+            'sampai' => $tgl('sampai', $bulan->copy()->endOfMonth()->toDateString()),
             'jenis' => in_array($request->query('jenis'), ['inap', 'jalan'], true) ? $request->query('jenis') : '',
             'status' => array_key_exists((string) $request->query('status'), self::STATUS) ? $request->query('status') : '',
             'q' => mb_substr(trim((string) $request->query('q')), 0, 100),

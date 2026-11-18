@@ -25,6 +25,9 @@
         @if ($tab === 'ringkasan')
             @include('bpjs.partials.ringkasan')
         @else
+            @if ($tab === 'klaim' && ($rentangData->mx ?? null))
+                <p class="text-xs text-ink-muted">Data tersedia {{ \Illuminate\Support\Carbon::parse($rentangData->mn)->format('d/m/Y') }} s.d. {{ \Illuminate\Support\Carbon::parse($rentangData->mx)->format('d/m/Y') }}</p>
+            @endif
             <form method="GET" action="{{ route('bpjs.index') }}" class="flex flex-wrap items-end gap-2 text-sm">
                 <input type="hidden" name="tab" value="{{ $tab }}">
                 @foreach (['belum', 'kurang'] as $h)

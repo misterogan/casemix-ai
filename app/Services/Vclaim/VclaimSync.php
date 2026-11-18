@@ -25,7 +25,7 @@ class VclaimSync
                     $r = $this->run('klaim', $tgl, (string) $jns, function () use ($tgl, $jns, $status) {
                         $rows = $this->client->klaim($tgl, $jns, $status);
                         foreach ($rows as $row) {
-                            $this->upsertKlaim($row, $status);
+                            $this->upsertKlaim($row, $status, $jns);
                         }
 
                         return count($rows);
@@ -107,7 +107,7 @@ class VclaimSync
         });
     }
 
-    public function upsertKlaim(array $row, int $status): void
+    public function upsertKlaim(array $row, int $status, ?int $jns = null): void
     {
         $noSep = $row['noSEP'] ?? $row['noSep'] ?? null;
         if (! $noSep) {
@@ -123,15 +123,15 @@ class VclaimSync
 
         $klaim->fill([
             'status_kode' => $status,
-            'status_teks' => $row['status'] ?? VclaimKlaim::STATUS[$status],
+            'status_teks' => self::statusTeks($row['status'] ?? null) ?? VclaimKlaim::STATUS[$status],
             'tgl_sep' => self::date($row['tglSep'] ?? null),
             'tgl_pulang' => self::date($row['tglPulang'] ?? null),
-            'jns_pelayanan' => $row['jnsPelayanan'] ?? null,
-            'kelas_rawat' => $row['kelasRawat'] ?? null,
-            'poli' => $row['poli'] ?? null,
-            'no_fpk' => $row['noFPK'] ?? null,
-            'inacbg_kode' => $cbg['kode'] ?? null,
-            'inacbg_nama' => $cbg['nama'] ?? null,
+            'jns_pelayanan' => $jns !== null ? (string) $jns : self::kosong($row['jnsPelayanan'] ?? null),
+            'kelas_rawat' => self::kosong($row['kelasRawat'] ?? null),
+            'poli' => self::kosong($row['poli'] ?? null),
+            'no_fpk' => self::kosong($row['noFPK'] ?? null),
+            'inacbg_kode' => self::kosong($cbg['kode'] ?? null),
+            'inacbg_nama' => self::kosong($cbg['nama'] ?? null),
             'by_pengajuan' => self::money($by['byPengajuan'] ?? null),
             'by_setujui' => self::money($by['bySetujui'] ?? null),
             'by_tarif_gruper' => self::money($by['byTarifGruper'] ?? null),
@@ -144,6 +144,7 @@ class VclaimSync
         ]);
         if (! $klaim->exists) {
             $klaim->first_seen_at = $now;
+            $klaim->status_changed_at = $now;
         } elseif ($lama !== $status) {
             $klaim->status_changed_at = $now;
             VclaimKlaimStatusHistory::create([
@@ -151,6 +152,22 @@ class VclaimSync
             ]);
         }
         $klaim->save();
+    }
+
+    /** "", "-", "null" dianggap kosong. */
+    public static function kosong(mixed $v): ?string
+    {
+        $v = $v === null ? null : trim((string) $v);
+
+        return in_array($v, [null, '', '-'], true) || strtolower($v) === 'null' ? null : $v;
+    }
+
+    /** "2#Klaim Pending" -> "Klaim Pending". */
+    public static function statusTeks(mixed $v): ?string
+    {
+        $v = self::kosong($v);
+
+        return $v !== null && preg_match('/^\d+#(.+)$/', $v, $m) ? trim($m[1]) : $v;
     }
 
     public static function money(mixed $v): ?string

@@ -58,6 +58,22 @@ class BpjsListTest extends TestCase
         $this->assertSame(1, $res->viewData('rows')->total());
     }
 
+    public function test_periode_bawaan_bulan_data_terakhir(): void
+    {
+        $this->klaim('SEPAGU', 3, ['tgl_pulang' => '2026-08-20']);
+        $this->klaim('SEPSEP', 3, ['tgl_pulang' => '2026-09-15']);
+
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', ['tab' => 'klaim']))->assertOk()
+            ->assertSee('Data tersedia 20/08/2026 s.d. 15/09/2026')->assertSee('SEPSEP')->assertDontSee('SEPAGU');
+        $this->assertSame(['2026-09-01', '2026-09-30'], [$res->viewData('filters')['dari'], $res->viewData('filters')['sampai']]);
+    }
+
+    public function test_periode_bawaan_bulan_lalu_bila_kosong(): void
+    {
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', ['tab' => 'klaim']))->assertOk();
+        $this->assertSame('2026-10-01', $res->viewData('filters')['dari']);
+    }
+
     public function test_tautan_folder_bila_sep_cocok(): void
     {
         $this->klaim('SEPADA', 1);

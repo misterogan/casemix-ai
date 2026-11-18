@@ -115,6 +115,30 @@ class VclaimTest extends TestCase
         Http::assertNotSent(fn (Request $r) => $r->method() !== 'GET');
     }
 
+    public function test_pemetaan_klaim_jns_status_teks_dan_kosong(): void
+    {
+        $sync = app(\App\Services\Vclaim\VclaimSync::class);
+        $row = ['poli' => '-', 'noFPK' => 'null', 'kelasRawat' => ''] + $this->klaimRow('2#Klaim Pending');
+        $this->travelTo(Carbon::parse('2026-11-12 08:00'));
+        $sync->upsertKlaim($row, 2, 2);
+        $k = VclaimKlaim::sole();
+        $this->assertSame('2', $k->jns_pelayanan);
+        $this->assertSame('Klaim Pending', $k->status_teks);
+        $this->assertNull($k->poli);
+        $this->assertNull($k->no_fpk);
+        $this->assertNull($k->kelas_rawat);
+        $this->assertSame('2026-11-12 08:00:00', $k->status_changed_at->format('Y-m-d H:i:s'));
+
+        $this->travelTo(Carbon::parse('2026-11-13 08:00'));
+        $sync->upsertKlaim($row, 2, 2);
+        $this->assertSame('2026-11-12 08:00:00', $k->refresh()->status_changed_at->format('Y-m-d H:i:s'));
+        $this->assertSame(0, VclaimKlaimStatusHistory::count());
+
+        $sync->upsertKlaim($row, 3, 1);
+        $this->assertSame('2026-11-13 08:00:00', $k->refresh()->status_changed_at->format('Y-m-d H:i:s'));
+        $this->assertSame('1', $k->jns_pelayanan);
+    }
+
     public function test_disabled_tanpa_panggilan_http(): void
     {
         config(['casemix.vclaim.enabled' => false]);
