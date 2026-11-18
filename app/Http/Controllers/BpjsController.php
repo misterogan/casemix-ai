@@ -8,6 +8,7 @@ use App\Models\VclaimHistori;
 use App\Models\VclaimKlaim;
 use App\Models\VclaimKunjungan;
 use App\Models\VclaimSyncRun;
+use App\Services\Dashboard\BpjsStats;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -29,6 +30,10 @@ class BpjsController extends Controller
         $filters = $this->filters($request);
         $data = ['tab' => $tab, 'enabled' => $enabled, 'filters' => $filters, 'rows' => null, 'folders' => collect(), 'klaimStatus' => collect(),
             'lastSync' => VclaimSyncRun::where('status', 'ok')->latest('id')->value('created_at')];
+
+        if ($enabled && $tab === 'ringkasan') {
+            $data += $this->ringkasan($request);
+        }
 
         if ($enabled && $tab !== 'ringkasan') {
             $rows = ($tab === 'klaim' ? $this->klaimQuery($filters) : $this->sepQuery($filters))->paginate(50)->withQueryString();
@@ -124,6 +129,31 @@ class BpjsController extends Controller
         return $k->status_changed_at ? (int) $k->status_changed_at->copy()->startOfDay()->diffInDays(now()->startOfDay()) : null;
     }
 
+    private function ringkasan(Request $request): array
+    {
+        $periode = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $request->query('periode'))
+            ? $request->query('periode') : now()->subMonthNoOverflow()->format('Y-m');
+        $jenis = in_array($request->query('jenis'), ['inap', 'jalan'], true) ? $request->query('jenis') : '';
+        $stats = app(BpjsStats::class)->get($periode, $jenis);
+
+        $rentang = fn (string $b) => ['dari' => Carbon::createFromFormat('!Y-m', $b)->toDateString(),
+            'sampai' => Carbon::createFromFormat('!Y-m', $b)->endOfMonth()->toDateString()];
+        $j = array_filter(['jenis' => $jenis]);
+        $p = $rentang($periode) + $j;
+        $klaim = fn (array $x) => route('bpjs.index', ['tab' => 'klaim'] + $x + $p);
+        $links = [
+            'kartu' => ['sep' => route('bpjs.index', ['tab' => 'sep'] + $p), 'belum' => route('bpjs.index', ['tab' => 'sep', 'belum' => 1] + $p),
+                'proses' => $klaim(['status' => 'proses']), 'pending' => $klaim(['status' => 'pending']), 'klaim' => $klaim(['status' => 'klaim']),
+                'kurang' => $klaim(['status' => 'klaim', 'kurang' => 1])],
+            'status' => array_map(fn ($s) => $klaim(['status' => $s]), $stats['donut_status']['keys']),
+            'jenis' => array_map(fn ($x) => route('bpjs.index', ['tab' => 'klaim', 'jenis' => $x] + $rentang($periode)), $stats['donut_jenis']['keys']),
+            'tren' => array_map(fn ($b) => array_map(fn ($s) => route('bpjs.index', ['tab' => 'klaim', 'status' => $s] + $rentang($b) + $j),
+                array_keys(BpjsStats::STATUS)), $stats['tren']['bulan']),
+        ];
+
+        return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links];
+    }
+
     private function filters(Request $request): array
     {
         $tgl = fn ($k, $def) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query($k)) ? $request->query($k) : $def;
@@ -134,16 +164,14 @@ class BpjsController extends Controller
             'jenis' => in_array($request->query('jenis'), ['inap', 'jalan'], true) ? $request->query('jenis') : '',
             'status' => array_key_exists((string) $request->query('status'), self::STATUS) ? $request->query('status') : '',
             'q' => mb_substr(trim((string) $request->query('q')), 0, 100),
+            'belum' => $request->query('belum') === '1' ? '1' : '',
+            'kurang' => $request->query('kurang') === '1' ? '1' : '',
         ];
     }
 
     private function jenis(Builder $q, string $jenis): void
     {
-        if ($jenis === 'inap') {
-            $q->where(fn ($w) => $w->where('jns_pelayanan', '1')->orWhere('jns_pelayanan', 'like', '%inap%'));
-        } elseif ($jenis === 'jalan') {
-            $q->where(fn ($w) => $w->where('jns_pelayanan', '2')->orWhere('jns_pelayanan', 'like', '%jalan%'));
-        }
+        BpjsStats::jenis($q, $jenis);
     }
 
     private function klaimQuery(array $f): Builder
@@ -152,6 +180,9 @@ class BpjsController extends Controller
         $this->jenis($q, $f['jenis']);
         if ($f['status']) {
             $q->where('status_kode', self::STATUS[$f['status']]);
+        }
+        if ($f['kurang']) {
+            $q->where('status_kode', 3)->whereColumn('by_setujui', '<', 'by_pengajuan');
         }
         if ($f['q'] !== '') {
             $like = '%' . addcslashes($f['q'], '%_\\') . '%';
@@ -165,6 +196,9 @@ class BpjsController extends Controller
     {
         $q = VclaimKunjungan::query()->whereBetween('tgl_sep', [$f['dari'], $f['sampai']]);
         $this->jenis($q, $f['jenis']);
+        if ($f['belum']) {
+            $q->whereNotExists(fn ($s) => $s->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'));
+        }
         if ($f['q'] !== '') {
             $like = '%' . addcslashes($f['q'], '%_\\') . '%';
             $q->where(fn ($w) => $w->where('no_sep', 'like', $like)->orWhere('nama', 'like', $like));

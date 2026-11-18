@@ -3,6 +3,8 @@
 return [
     'app_name' => env('CASEMIX_APP_NAME', 'CERMAT'),
     'hospital_name' => env('CASEMIX_HOSPITAL_NAME', 'Rumah Sakit'),
+    // Tanggal CERMAT mulai dipakai (Y-m-d); ditandai di grafik tren Klaim BPJS.
+    'go_live_date' => env('CASEMIX_GO_LIVE_DATE'),
 
     // Modul lama berkas klaim/impor/unggah; dimatikan karena verifikasi kini langsung dari FTP.
     'legacy_claims' => (bool) env('CASEMIX_LEGACY_CLAIMS', false),
