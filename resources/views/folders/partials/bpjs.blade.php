@@ -33,40 +33,5 @@
 </x-panel>
 
 @unless ($bpjs['tanpa_sep'])
-<x-panel aria-labelledby="judul-riwayat" data-panel-riwayat>
-    <div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <h2 id="judul-riwayat" class="font-semibold text-arang">Riwayat pelayanan peserta (90 hari)</h2>
-        <form method="GET" action="{{ route('folders.show', $folder) }}">
-            <input type="hidden" name="ambil_riwayat" value="1">
-            <button type="submit" class="btn-secondary text-sm" @disabled(! $bpjs['no_kartu'])>Ambil riwayat</button>
-        </form>
-    </div>
-    <div class="px-4 py-3 text-sm">
-        @if (session('status'))<p class="mb-2 text-xs text-biru-aktif" role="status">{{ session('status') }}</p>@endif
-        @if (! $bpjs['no_kartu'])
-            <p class="text-xs text-abu">Nomor kartu peserta belum diketahui; tunggu sinkron VClaim berikutnya.</p>
-        @elseif ($bpjs['riwayat']->isEmpty())
-            <p class="text-xs text-abu">Belum ada riwayat tersimpan. Klik Ambil riwayat.</p>
-        @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                    <thead class="text-left text-abu"><tr><th class="py-1 pr-2 font-medium">Tgl SEP</th><th class="py-1 pr-2 font-medium">Tgl pulang</th><th class="py-1 pr-2 font-medium">Jenis</th><th class="py-1 pr-2 font-medium">PPK</th><th class="py-1 font-medium">Diagnosa</th></tr></thead>
-                    <tbody class="divide-y divide-gray-100">
-                        @foreach ($bpjs['riwayat'] as $r)
-                            <tr @class(['bg-waspada-muda' => $r->readmisi]) @if ($r->readmisi) data-readmisi @endif>
-                                <td class="py-1 pr-2 tabular-nums">{{ $r->tgl_sep?->format('d/m/Y') }}</td>
-                                <td class="py-1 pr-2 tabular-nums">{{ $r->tgl_plg_sep?->format('d/m/Y') ?? '—' }}</td>
-                                <td class="py-1 pr-2">{{ $r->jns_pelayanan }}</td>
-                                <td class="py-1 pr-2">{{ $r->ppk_pelayanan }}</td>
-                                <td class="py-1">{{ $r->diagnosa }}
-                                    @if ($r->readmisi)<span class="chip chip-waspada mt-1">Kemungkinan readmisi</span>@endif
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        @endif
-    </div>
-</x-panel>
+    @include('bpjs.partials.histori-panel', ['url' => route('folders.histori', $folder), 'noKartu' => $bpjs['no_kartu'], 'histori' => $bpjs['histori']])
 @endunless

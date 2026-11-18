@@ -107,6 +107,7 @@ return [
         'cons_id' => env('VCLAIM_CONS_ID'),
         'secret' => env('VCLAIM_SECRET'),
         'user_key' => env('VCLAIM_USER_KEY'),
+        'ppk_nama' => env('VCLAIM_PPK_NAMA'),
         'timeout' => 30,
         'jeda_ms' => 300,
         'window_klaim_hari' => 60,

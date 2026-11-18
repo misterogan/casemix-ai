@@ -3,12 +3,13 @@
 namespace App\Jobs;
 
 use App\Services\Vclaim\VclaimClient;
-use App\Services\Vclaim\VclaimSync;
+use App\Services\Vclaim\VclaimHistoriService;
 use App\Support\Audit;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
-/** Histori pelayanan VClaim satu peserta (hanya GET), cache 24 jam. */
+/** Histori pelayanan VClaim satu peserta (hanya GET), simpanan 24 jam lewat VclaimHistoriService. */
 class FetchVclaimHistori implements ShouldQueue
 {
     use Queueable;
@@ -17,13 +18,18 @@ class FetchVclaimHistori implements ShouldQueue
 
     public function __construct(public string $noKartu) {}
 
-    public function handle(VclaimSync $sync): void
+    public function handle(): void
     {
         if (! VclaimClient::enabled() || trim($this->noKartu) === '') {
             return;
         }
-        $n = $sync->histori($this->noKartu);
-        Audit::system('vclaim.histori', null,
-            $n === null ? 'Ambil histori pelayanan VClaim gagal' : "Ambil histori pelayanan VClaim: {$n} baris");
+        [$mulai, $akhir] = VclaimHistoriService::rentang(null);
+        try {
+            $res = app(VclaimHistoriService::class)->fetch($this->noKartu, $mulai, $akhir);
+            $msg = 'Ambil histori pelayanan VClaim: '.$res['rows']->count().' baris'.($res['from_cache'] ? ' (dari simpanan)' : '');
+        } catch (Throwable) {
+            $msg = 'Ambil histori pelayanan VClaim gagal';
+        }
+        Audit::system('vclaim.histori', null, $msg);
     }
 }

@@ -2,19 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\FetchVclaimHistori;
 use App\Models\FtpFolder;
-use App\Models\VclaimHistori;
 use App\Models\VclaimKlaim;
 use App\Models\VclaimKunjungan;
 use App\Models\VclaimSyncRun;
 use App\Services\Dashboard\BpjsStats;
+use App\Services\Vclaim\VclaimHistoriService;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
-/** Menu Klaim BPJS (Koordinator): hanya membaca tabel vclaim_*; tidak memanggil BPJS kecuali antre histori. */
+/** Menu Klaim BPJS (Koordinator): hanya membaca tabel vclaim_*; tidak memanggil BPJS kecuali tombol riwayat pelayanan. */
 class BpjsController extends Controller
 {
     public const TABS = ['ringkasan' => 'Ringkasan', 'klaim' => 'Daftar klaim', 'sep' => 'SEP terbit'];
@@ -96,31 +95,20 @@ class BpjsController extends Controller
         abort_unless($klaim || $kunjungan, 404);
 
         $noKartu = $klaim?->no_kartu ?: $kunjungan?->no_kartu;
-        $tglSep = $klaim?->tgl_sep ?? $kunjungan?->tgl_sep;
-        $ppk = substr($noSep, 0, 8);
-        $riwayat = $noKartu ? VclaimHistori::where('no_kartu', $noKartu)->where('tgl_sep', '>=', now()->subDays(90)->toDateString())
-            ->orderByDesc('tgl_sep')->get() : collect();
-        foreach ($riwayat as $r) {
-            $r->readmisi = $tglSep && $r->no_sep !== $noSep && $r->tgl_plg_sep
-                && str_starts_with($r->no_sep, $ppk) && self::inap($r->jns_pelayanan)
-                && $r->tgl_plg_sep->lte($tglSep) && $r->tgl_plg_sep->gte($tglSep->copy()->subDays(30));
-        }
 
         return view('bpjs.show', [
-            'noSep' => $noSep, 'klaim' => $klaim, 'kunjungan' => $kunjungan, 'noKartu' => $noKartu, 'riwayat' => $riwayat, 'enabled' => $enabled,
+            'noSep' => $noSep, 'klaim' => $klaim, 'kunjungan' => $kunjungan, 'noKartu' => $noKartu, 'enabled' => $enabled,
+            'histori' => $noKartu ? app(VclaimHistoriService::class)->simpanan($noSep) : null,
             'folder' => FtpFolder::where('no_sep', $noSep)->orderByDesc('id')->first(['id', 'no_sep']),
         ]);
     }
 
-    public function fetchHistori(string $noSep)
+    /** Tombol "Ambil riwayat pelayanan": JSON, tanpa muat ulang dan tanpa antrean. */
+    public function histori(Request $request, string $noSep, VclaimHistoriService $svc)
     {
-        abort_unless(config('casemix.vclaim.enabled'), 404);
-        $noKartu = VclaimKlaim::where('no_sep', $noSep)->value('no_kartu') ?: VclaimKunjungan::where('no_sep', $noSep)->value('no_kartu');
-        abort_unless($noKartu, 422, 'Nomor kartu peserta belum diketahui.');
-        FetchVclaimHistori::dispatch($noKartu);
-        Audit::log('vclaim.riwayat.ambil', null, 'Meminta riwayat pelayanan peserta dari VClaim', ['no_sep' => $noSep]);
+        abort_unless(VclaimKlaim::where('no_sep', $noSep)->exists() || VclaimKunjungan::where('no_sep', $noSep)->exists(), 404);
 
-        return redirect()->route('bpjs.klaim.show', $noSep)->with('status', 'Riwayat pelayanan sedang diambil. Muat ulang halaman sebentar lagi.');
+        return $svc->jawab($request, $noSep, null, ['no_sep' => $noSep]);
     }
 
     public static function selisih(VclaimKlaim $k): ?float
@@ -240,10 +228,5 @@ class BpjsController extends Controller
         }
 
         return $q->orderByDesc('tgl_sep')->orderBy('id');
-    }
-
-    private static function inap(?string $jns): bool
-    {
-        return $jns === '1' || str_contains(strtolower((string) $jns), 'inap');
     }
 }

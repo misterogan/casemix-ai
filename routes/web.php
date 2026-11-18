@@ -48,7 +48,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/bpjs', [\App\Http\Controllers\BpjsController::class, 'index'])->name('bpjs.index');
         Route::get('/bpjs/unduh', [\App\Http\Controllers\BpjsController::class, 'csv'])->name('bpjs.csv');
         Route::get('/bpjs/klaim/{noSep}', [\App\Http\Controllers\BpjsController::class, 'show'])->name('bpjs.klaim.show');
-        Route::post('/bpjs/klaim/{noSep}/riwayat', [\App\Http\Controllers\BpjsController::class, 'fetchHistori'])->middleware('throttle:10,1')->name('bpjs.klaim.riwayat');
+        Route::post('/bpjs/klaim/{noSep}/histori-pelayanan', [\App\Http\Controllers\BpjsController::class, 'histori'])->middleware('throttle:30,1')->name('bpjs.klaim.histori');
+        Route::post('/folders/{folder}/histori-pelayanan', [FolderController::class, 'histori'])->middleware('throttle:30,1')->name('folders.histori');
     });
 
     // Verifikasi langsung dari folder FTP

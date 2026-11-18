@@ -63,7 +63,8 @@ class VclaimViewTest extends TestCase
     {
         $f = $this->folder(null);
         $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()->assertSee('SEP belum ada')->assertDontSee('Ambil riwayat');
-        $this->actingAs($this->koor)->get(route('folders.show', [$f, 'ambil_riwayat' => 1]))->assertStatus(422);
+        config(['casemix.vclaim.enabled' => true]);
+        $this->actingAs($this->koor)->postJson(route('folders.histori', $f))->assertStatus(422);
         Queue::assertNotPushed(FetchVclaimHistori::class);
     }
 
@@ -80,8 +81,9 @@ class VclaimViewTest extends TestCase
         $this->assertSame(1, substr_count($html, 'data-readmisi'));
         $this->assertMatchesRegularExpression('/data-readmisi[^>]*>(?:(?!<\/tr>).)*READMISI-A/s', $html);
 
-        $this->actingAs($this->koor)->get(route('folders.show', [$f, 'ambil_riwayat' => 1]))->assertRedirect(route('folders.show', $f));
-        Queue::assertPushed(FetchVclaimHistori::class, fn ($j) => $j->noKartu === '0001234567890');
+        config(['casemix.vclaim.enabled' => true]);
+        $this->actingAs($this->koor)->postJson(route('folders.histori', $f))->assertOk()->assertJson(['from_cache' => true, 'ringkasan' => ['readmisi' => 1]]);
+        Queue::assertNotPushed(FetchVclaimHistori::class);
         $log = AuditLog::where('action', 'vclaim.riwayat.ambil')->firstOrFail();
         $this->assertStringNotContainsString('0001234567890', json_encode($log->toArray()));
     }
@@ -98,7 +100,7 @@ class VclaimViewTest extends TestCase
         $this->klaim($f->no_sep, 3);
         $admin = User::factory()->create(['is_active' => true])->assignRole('admin');
         $this->actingAs($admin)->get(route('folders.show', $f))->assertForbidden();
-        $this->actingAs($admin)->get(route('folders.show', [$f, 'ambil_riwayat' => 1]))->assertForbidden();
+        $this->actingAs($admin)->postJson(route('folders.histori', $f))->assertForbidden();
     }
 
     public function test_dashboard_enabled_false_tanpa_kartu_vclaim(): void
