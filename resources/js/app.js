@@ -1,4 +1,5 @@
 // Interaksi kecil tanpa framework.
+import './page-loader.js';
 
 // Konfirmasi sebelum aksi penting: <form data-confirm="...">
 document.addEventListener('submit', (e) => {

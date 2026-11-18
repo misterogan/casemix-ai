@@ -36,9 +36,12 @@
             </div>
 
             @if ($active)
-                <div class="border-b border-garis-g px-5 py-5">
+                <div class="flex items-center gap-4 border-b border-garis-g px-5 py-5">
+                    <x-robot-loader :size="64" class="shrink-0" />
+                    <div class="min-w-0">
                     <p class="text-[15px] font-medium text-biru-aktif" aria-live="polite" data-tahap='@json($tahap)' data-lewat="{{ $lewat }}">{{ $tahap[min(count($tahap) - 1, intdiv($lewat, 8))] }}</p>
                     <p class="mt-1 text-sm text-abu">AI sedang membaca {{ $folder->file_count }} dokumen di folder ini. Biasanya 1–3 menit; hasil muncul di sini tanpa memuat ulang halaman.</p>
+                    </div>
                 </div>
             @endif
             @if ($failed && ! $active)

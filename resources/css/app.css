@@ -419,3 +419,29 @@
 .dark :is(.text-blue-700, .text-blue-800) { color: #9CB9FF; }
 .dark :is(.text-purple-700, .text-purple-800, .text-purple-900) { color: #BDB4FE; }
 .dark :is(.border-amber-200, .border-purple-200, .border-red-300, .border-green-300) { border-color: #344054; }
+
+/* Indikator pindah halaman (page-loader.js) + robot (x-robot-loader) */
+.muat-bilah { position: fixed; inset: 0 auto auto 0; z-index: 70; height: 3px; width: 0; background: var(--color-brand-500); opacity: 0; transition: width .4s ease-out, opacity .3s; pointer-events: none; }
+.muat-bilah.aktif { opacity: 1; }
+.muat-overlay { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; background: rgb(255 255 255 / .85); backdrop-filter: blur(4px); pointer-events: none; }
+.dark .muat-overlay { background: rgb(12 17 29 / .85); }
+.muat-overlay[hidden] { display: none; }
+.robot-loader { color: var(--color-gray-400); }
+.rl-gigi { transform-origin: 100px 22px; animation: rl-putar 3s linear infinite; }
+.rl-antena { animation: rl-kedip 1.2s steps(2, jump-none) infinite; }
+.rl-mata { transform-origin: 44px 38.5px; animation: rl-mata 3.5s infinite; }
+.rl-bar { transform-box: fill-box; transform-origin: bottom; animation: rl-bar 1.2s ease-in-out infinite; }
+.rl-b2 { animation-delay: -.4s; } .rl-b3 { animation-delay: -.8s; }
+.rl-lengan { animation: rl-sapu 2.4s ease-in-out infinite alternate; }
+@keyframes rl-putar { to { transform: rotate(360deg); } }
+@keyframes rl-kedip { 50% { opacity: .25; } }
+@keyframes rl-mata { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes rl-bar { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@keyframes rl-sapu { from { transform: translate(-2px, -6px); } to { transform: translate(8px, 18px); } }
+@media (prefers-reduced-motion: reduce) {
+  .robot-loader, .robot-loader * { animation: none !important; }
+  .muat-bilah { display: none; }
+  .muat-overlay .robot-loader, .muat-overlay [data-muat-teks] { display: none; }
+}
+.muat-overlay [data-muat-tenang] { display: none; }
+@media (prefers-reduced-motion: reduce) { .muat-overlay [data-muat-tenang] { display: block; } }

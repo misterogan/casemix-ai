@@ -113,4 +113,7 @@ return [
         'window_klaim_hari' => 60,
         'window_kunjungan_hari' => 7,
     ],
+
+    // GIF loader sendiri (path relatif di public/); kosong = robot SVG bawaan.
+    'loader_gif' => env('CASEMIX_LOADER_GIF'),
 ];

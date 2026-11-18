@@ -98,4 +98,22 @@ class LayoutTest extends TestCase
     {
         $this->get(route('login'))->assertOk()->assertDontSee('fonts.googleapis.com', false);
     }
+
+    public function test_layout_memuat_loader_pindah_halaman(): void
+    {
+        $r = $this->actingAs($this->user('petugas'))->get(route('folders.index'))->assertOk();
+        $r->assertSee('data-page-loader', false)->assertSee('data-muat-bilah', false)
+            ->assertSee('class="robot-loader', false)->assertSee('role="status" aria-live="polite"', false)
+            ->assertDontSee('data-robot-gif', false);
+        $this->assertStringContainsString("import './page-loader.js'", file_get_contents(resource_path('js/app.js')));
+        $this->assertLessThan(6144, filesize(resource_path('views/components/robot-loader.blade.php')));
+    }
+
+    public function test_loader_gif_dipakai_bila_diatur(): void
+    {
+        config(['casemix.loader_gif' => 'img/robot.gif']);
+        $this->actingAs($this->user('petugas'))->get(route('folders.index'))->assertOk()
+            ->assertSee('data-robot-gif', false)->assertSee('img/robot.gif', false)
+            ->assertDontSee('rl-antena', false);
+    }
 }

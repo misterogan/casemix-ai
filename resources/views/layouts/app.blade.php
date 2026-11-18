@@ -18,6 +18,13 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body @class(['min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-950 dark:text-gray-100', 'lg:h-full lg:overflow-hidden' => $fullHeight])>
+{{-- Indikator pindah halaman (resources/js/page-loader.js) --}}
+<div class="muat-bilah" data-muat-bilah aria-hidden="true"></div>
+<div class="muat-overlay" data-muat-overlay data-page-loader role="status" aria-live="polite" hidden>
+    <x-robot-loader :size="120" />
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-200" data-muat-teks>Menyiapkan halaman…</p>
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-200" data-muat-tenang>Memuat…</p>
+</div>
 @php
     $u = auth()->user();
     $koor = $u->hasRole('koordinator');
