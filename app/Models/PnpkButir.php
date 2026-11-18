@@ -22,11 +22,11 @@ class PnpkButir extends Model
     ];
 
     protected $fillable = ['dokumen_id', 'jenis', 'ringkasan', 'kutipan', 'halaman', 'halaman_pdf', 'level_bukti', 'cocok_kutipan', 'status',
-        'alasan_tolak', 'ditinjau_oleh', 'ditinjau_at'];
+        'alasan_tolak', 'ditinjau_oleh', 'ditinjau_at', 'diperiksa_manusia'];
 
     protected function casts(): array
     {
-        return ['cocok_kutipan' => 'boolean', 'halaman' => 'integer', 'halaman_pdf' => 'integer', 'ditinjau_at' => 'datetime'];
+        return ['cocok_kutipan' => 'boolean', 'diperiksa_manusia' => 'boolean', 'halaman' => 'integer', 'halaman_pdf' => 'integer', 'ditinjau_at' => 'datetime'];
     }
 
     public function dokumen(): BelongsTo
@@ -44,6 +44,12 @@ class PnpkButir extends Model
     public function halamanBuka(): int
     {
         return (int) ($this->halaman_pdf ?: $this->halaman);
+    }
+
+    /** Hanya butir disetujui yang sudah diperiksa koder/dokter (wajib untuk draf sanggahan). */
+    public function scopeDiperiksaManusia($q)
+    {
+        return $q->where('status', 'disetujui')->where('diperiksa_manusia', true);
     }
 
     public function jenisLabel(): string

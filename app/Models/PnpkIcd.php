@@ -10,11 +10,11 @@ class PnpkIcd extends Model
 {
     protected $table = 'pnpk_icd';
 
-    protected $fillable = ['dokumen_id', 'kode', 'sumber', 'status', 'alasan_tolak', 'ditinjau_oleh', 'ditinjau_at'];
+    protected $fillable = ['dokumen_id', 'kode', 'sumber', 'status', 'diperiksa_manusia', 'alasan_tolak', 'ditinjau_oleh', 'ditinjau_at'];
 
     protected function casts(): array
     {
-        return ['ditinjau_at' => 'datetime'];
+        return ['ditinjau_at' => 'datetime', 'diperiksa_manusia' => 'boolean'];
     }
 
     public function dokumen(): BelongsTo

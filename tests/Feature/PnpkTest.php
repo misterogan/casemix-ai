@@ -167,6 +167,63 @@ class PnpkTest extends TestCase
         $this->assertTrue(app(PnpkAcuan::class)->forFolder($tanpa)->isEmpty());
     }
 
+    public function test_migrasi_menandai_yang_sudah_disetujui_diperiksa_manusia(): void
+    {
+        $m = require database_path('migrations/2026_11_18_000110_add_pnpk_diperiksa_manusia.php');
+        $m->down();
+        $d = $this->dokumen();
+        $b = $this->setujui($d);
+        $u = PnpkButir::create(['dokumen_id' => $d->id, 'jenis' => 'tata_laksana', 'ringkasan' => 'U', 'kutipan' => 'x', 'halaman' => 1,
+            'cocok_kutipan' => true, 'status' => 'usulan']);
+        $m->up();
+
+        $this->assertTrue($b->fresh()->diperiksa_manusia);
+        $this->assertFalse($u->fresh()->diperiksa_manusia);
+        $this->assertTrue(PnpkIcd::first()->diperiksa_manusia);
+    }
+
+    public function test_persetujuan_otomatis_berlabel_dan_konfirmasi(): void
+    {
+        $d = $this->dokumen(['status_proses' => 'siap_tinjau']);
+        $auto = $this->setujui($d);
+        $icd = PnpkIcd::first();
+        $usulan = PnpkButir::create(['dokumen_id' => $d->id, 'jenis' => 'tata_laksana', 'ringkasan' => 'T', 'kutipan' => 'perlu dirawat inap',
+            'halaman' => 1, 'cocok_kutipan' => true, 'status' => 'usulan']);
+        $this->assertFalse($auto->fresh()->diperiksa_manusia);
+        $f = $this->folder();
+
+        // Butir otomatis tetap dipakai, berlabel kuning
+        $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()
+            ->assertSee('Rawat inap bila CURB-65')->assertSee('Belum diperiksa koder/dokter');
+        $this->actingAs($this->koor)->get(route('acuan.pnpk.index'))->assertSee('1 belum diperiksa');
+        $this->actingAs($this->koor)->get(route('acuan.pnpk.show', $d))->assertSee('data-otomatis', false)
+            ->assertSee('Konfirmasi semua di jenis ini');
+        $this->assertSame([], PnpkButir::diperiksaManusia()->pluck('id')->all(), 'draf sanggahan mengabaikan butir otomatis');
+
+        // Setujui di UI → diperiksa manusia
+        $this->actingAs($this->koor)->post(route('acuan.pnpk.butir', [$d, $usulan]), ['aksi' => 'setujui'])->assertRedirect();
+        $this->assertTrue($usulan->fresh()->diperiksa_manusia);
+        $this->assertNotNull($usulan->fresh()->ditinjau_oleh);
+
+        // Konfirmasi: isi tetap, label hilang
+        $this->actingAs($this->koor)->post(route('acuan.pnpk.butir', [$d, $auto]), ['aksi' => 'konfirmasi'])->assertRedirect();
+        $this->actingAs($this->koor)->post(route('acuan.pnpk.icd', [$d, $icd]), ['aksi' => 'konfirmasi'])->assertRedirect();
+        $b = $auto->fresh();
+        $this->assertSame([true, 'disetujui', 'Rawat inap bila CURB-65 ≥ 2', $this->koor->id], [$b->diperiksa_manusia, $b->status, $b->ringkasan, $b->ditinjau_oleh]);
+        $this->assertTrue($icd->fresh()->diperiksa_manusia);
+        $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()->assertDontSee('Belum diperiksa koder/dokter');
+        $this->assertCount(2, PnpkButir::diperiksaManusia()->get());
+        $this->assertSame(1, AuditLog::where('action', 'pnpk.butir_konfirmasi')->count());
+        $this->assertSame(1, AuditLog::where('action', 'pnpk.icd_konfirmasi')->count());
+
+        // Konfirmasi massal per jenis
+        $lain = PnpkButir::create(['dokumen_id' => $d->id, 'jenis' => 'tata_laksana', 'ringkasan' => 'L', 'kutipan' => 'x', 'halaman' => 1,
+            'cocok_kutipan' => true, 'status' => 'disetujui']);
+        $this->actingAs($this->koor)->post(route('acuan.pnpk.butir.massal', $d), ['jenis' => 'tata_laksana', 'aksi' => 'konfirmasi'])->assertRedirect();
+        $this->assertTrue($lain->fresh()->diperiksa_manusia);
+        $this->assertSame(1, AuditLog::where('action', 'pnpk.butir_konfirmasi_massal')->count());
+    }
+
     public function test_versi_diganti_dipakai_sesuai_tanggal_pulang(): void
     {
         $baru = $this->dokumen(['judul' => 'PNPK Pneumonia 2025', 'tanggal_berlaku' => '2025-01-01']);

@@ -30,6 +30,9 @@
                             <li class="flex items-center gap-1 rounded-lg border border-garis px-2 py-1" data-icd="{{ $i->kode }}">
                                 <span class="num font-medium">{{ $i->kode }}</span>
                                 <x-badge :variant="['disetujui' => 'success', 'ditolak' => 'error'][$i->status] ?? 'info'">{{ ucfirst($i->status) }}</x-badge>
+                                @if ($i->status === 'disetujui' && ! $i->diperiksa_manusia)<x-badge variant="warning" data-otomatis>Otomatis</x-badge>
+                                    @if ($bolehTinjau)<form method="POST" action="{{ route('acuan.pnpk.icd', [$dokumen, $i]) }}">@csrf<input type="hidden" name="aksi" value="konfirmasi"><button class="btn-ghost text-xs" data-konfirmasi>Konfirmasi</button></form>@endif
+                                @endif
                                 <span class="text-xs text-tinta-3">{{ ['ai' => 'AI', 'teks' => 'teks dokumen'][$i->sumber] ?? 'manual' }}@if ($i->alasan_tolak) · {{ $i->alasan_tolak }}@endif</span>
                                 @if ($bolehTinjau && $i->status === 'usulan')
                                     <form method="POST" action="{{ route('acuan.pnpk.icd', [$dokumen, $i]) }}">@csrf<input type="hidden" name="aksi" value="setujui"><button class="btn-ghost text-xs">Setujui</button></form>
@@ -62,12 +65,19 @@
                             <form method="POST" action="{{ route('acuan.pnpk.butir.massal', $dokumen) }}">@csrf<input type="hidden" name="jenis" value="{{ $jenis }}">
                                 <button class="btn-ghost text-xs">Setujui semua yang cocok</button></form>
                         @endif
+                        @if ($bolehTinjau && $items->where('status', 'disetujui')->where('diperiksa_manusia', false)->isNotEmpty())
+                            <form method="POST" action="{{ route('acuan.pnpk.butir.massal', $dokumen) }}">@csrf<input type="hidden" name="jenis" value="{{ $jenis }}"><input type="hidden" name="aksi" value="konfirmasi">
+                                <button class="btn-ghost text-xs" data-konfirmasi-semua>Konfirmasi semua di jenis ini</button></form>
+                        @endif
                     </div>
                     <ul class="divide-y divide-garis">
                         @foreach ($items as $b)
                             <li class="space-y-2 px-5 py-3 text-sm" data-butir="{{ $b->id }}">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <x-badge :variant="['disetujui' => 'success', 'ditolak' => 'error'][$b->status] ?? 'info'">{{ ucfirst($b->status) }}</x-badge>
+                                    @if ($b->status === 'disetujui' && ! $b->diperiksa_manusia)<x-badge variant="warning" data-otomatis>Otomatis</x-badge>
+                                        @if ($bolehTinjau)<form method="POST" action="{{ route('acuan.pnpk.butir', [$dokumen, $b]) }}">@csrf<input type="hidden" name="aksi" value="konfirmasi"><button class="btn-ghost text-xs" data-konfirmasi>Konfirmasi</button></form>@endif
+                                    @endif
                                     <x-badge :variant="$b->cocok_kutipan ? 'success' : 'error'">{{ $b->cocok_kutipan ? 'Kutipan cocok' : 'Kutipan tidak cocok' }}</x-badge>
                                     <button type="button" class="text-xs text-url" data-goto="{{ $b->halamanBuka() }}" @if ($b->halaman_pdf && $b->halaman_pdf !== $b->halaman) title="Label AI: hal. {{ $b->halaman }}" @endif>hal. {{ $b->halamanBuka() }}</button>
                                     @if ($b->level_bukti)<span class="text-xs text-tinta-3">Level bukti {{ $b->level_bukti }}</span>@endif

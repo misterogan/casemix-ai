@@ -25,7 +25,8 @@ class PnpkController extends Controller
         $status = $request->query('status');
         $list = PnpkDokumen::query()
             ->withCount(['icd as icd_disetujui' => fn ($w) => $w->where('status', 'disetujui'),
-                'butir as butir_disetujui' => fn ($w) => $w->where('status', 'disetujui')])
+                'butir as butir_disetujui' => fn ($w) => $w->where('status', 'disetujui'),
+                'butir as butir_belum_diperiksa' => fn ($w) => $w->where('status', 'disetujui')->where('diperiksa_manusia', false)])
             ->when(isset(PnpkDokumen::STATUS[$status]), fn ($w) => $w->where('status', $status))
             ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('judul', 'like', "%$q%")->orWhere('nomor_kmk', 'like', "%$q%")
                 ->orWhereHas('icd', fn ($i) => $i->where('status', 'disetujui')->where('kode', 'like', PnpkIcd::normalize($q) . '%'))))
@@ -131,28 +132,40 @@ class PnpkController extends Controller
     public function butir(Request $request, PnpkDokumen $pnpk, PnpkButir $butir)
     {
         abort_unless($butir->dokumen_id === $pnpk->id, 404);
-        $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak,ringkasan'], 'alasan' => ['required_if:aksi,tolak', 'nullable', 'string', 'max:255'],
+        $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak,ringkasan,konfirmasi'], 'alasan' => ['required_if:aksi,tolak', 'nullable', 'string', 'max:255'],
             'ringkasan' => ['required_if:aksi,ringkasan', 'nullable', 'string', 'max:300']]);
-        $lama = $butir->only(['status', 'ringkasan', 'alasan_tolak']);
-        $tinjau = ['ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()];
+        $lama = $butir->only(['status', 'ringkasan', 'alasan_tolak', 'diperiksa_manusia']);
+        $tinjau = ['ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now(), 'diperiksa_manusia' => true];
         match ($v['aksi']) {
             'setujui' => $butir->cocok_kutipan
                 ? $butir->update(['status' => 'disetujui', 'alasan_tolak' => null] + $tinjau)
                 : throw ValidationException::withMessages(['aksi' => PnpkVerifier::TOLAK_KUTIPAN . '; butir tidak bisa disetujui.']),
             'tolak' => $butir->update(['status' => 'ditolak', 'alasan_tolak' => $v['alasan']] + $tinjau),
             'ringkasan' => $butir->update(['ringkasan' => trim($v['ringkasan'])] + $tinjau),
+            // Konfirmasi persetujuan otomatis: isi tidak berubah, hanya ditandai sudah diperiksa manusia.
+            'konfirmasi' => $butir->status === 'disetujui'
+                ? $butir->update($tinjau)
+                : throw ValidationException::withMessages(['aksi' => 'Hanya butir disetujui yang bisa dikonfirmasi.']),
         };
         Audit::log('pnpk.butir_' . $v['aksi'], $butir, "Butir PNPK {$pnpk->judul} hal. {$butir->halaman}: {$v['aksi']}",
-            ['lama' => $lama, 'baru' => $butir->only(['status', 'ringkasan', 'alasan_tolak'])]);
+            ['lama' => $lama, 'baru' => $butir->only(['status', 'ringkasan', 'alasan_tolak', 'diperiksa_manusia'])]);
 
-        return $this->balik($request, ['status' => $butir->status, 'ringkasan' => $butir->ringkasan]);
+        return $this->balik($request, ['status' => $butir->status, 'ringkasan' => $butir->ringkasan, 'diperiksa_manusia' => true]);
     }
 
     public function butirMassal(Request $request, PnpkDokumen $pnpk)
     {
-        $v = $request->validate(['jenis' => ['required', 'in:' . implode(',', array_keys(PnpkButir::JENIS))]]);
+        $v = $request->validate(['jenis' => ['required', 'in:' . implode(',', array_keys(PnpkButir::JENIS))], 'aksi' => ['nullable', 'in:setujui,konfirmasi']]);
+        $tinjau = ['ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now(), 'diperiksa_manusia' => true];
+        if (($v['aksi'] ?? 'setujui') === 'konfirmasi') {
+            $ids = $pnpk->butir()->where('jenis', $v['jenis'])->where('status', 'disetujui')->where('diperiksa_manusia', false)->pluck('id')->all();
+            PnpkButir::whereIn('id', $ids)->update($tinjau);
+            Audit::log('pnpk.butir_konfirmasi_massal', $pnpk, "Mengonfirmasi " . count($ids) . " butir {$v['jenis']} PNPK {$pnpk->judul}", ['butir' => $ids]);
+
+            return back()->with('ok', count($ids) . ' butir dikonfirmasi.');
+        }
         $ids = $pnpk->butir()->where('jenis', $v['jenis'])->where('status', 'usulan')->where('cocok_kutipan', true)->pluck('id')->all();
-        PnpkButir::whereIn('id', $ids)->update(['status' => 'disetujui', 'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
+        PnpkButir::whereIn('id', $ids)->update(['status' => 'disetujui'] + $tinjau);
         Audit::log('pnpk.butir_setujui_massal', $pnpk, "Menyetujui " . count($ids) . " butir {$v['jenis']} PNPK {$pnpk->judul}", ['butir' => $ids]);
 
         return back()->with('ok', count($ids) . ' butir disetujui.');
@@ -161,13 +174,22 @@ class PnpkController extends Controller
     public function icd(Request $request, PnpkDokumen $pnpk, PnpkIcd $icd)
     {
         abort_unless($icd->dokumen_id === $pnpk->id, 404);
-        $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak'], 'alasan' => ['nullable', 'string', 'max:255']]);
+        $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak,konfirmasi'], 'alasan' => ['nullable', 'string', 'max:255']]);
+        if ($v['aksi'] === 'konfirmasi') {
+            if ($icd->status !== 'disetujui') {
+                throw ValidationException::withMessages(['aksi' => 'Hanya ICD disetujui yang bisa dikonfirmasi.']);
+            }
+            $icd->update(['diperiksa_manusia' => true, 'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
+            Audit::log('pnpk.icd_konfirmasi', $icd, "Konfirmasi ICD {$icd->kode} PNPK {$pnpk->judul}");
+
+            return $this->balik($request, ['status' => $icd->status, 'diperiksa_manusia' => true]);
+        }
         if ($v['aksi'] === 'setujui' && ! PnpkIcd::adaDiMaster($icd->kode)) {
             throw ValidationException::withMessages(['aksi' => PnpkVerifier::TOLAK_ICD]);
         }
         $lama = $icd->status;
         $icd->update(['status' => $v['aksi'] === 'setujui' ? 'disetujui' : 'ditolak', 'alasan_tolak' => $v['aksi'] === 'tolak' ? ($v['alasan'] ?? null) : null,
-            'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
+            'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now(), 'diperiksa_manusia' => true]);
         Audit::log('pnpk.icd_' . $v['aksi'], $icd, "ICD {$icd->kode} PNPK {$pnpk->judul}: {$v['aksi']}", ['lama' => $lama, 'baru' => $icd->status]);
 
         return $this->balik($request, ['status' => $icd->status]);
@@ -181,7 +203,7 @@ class PnpkController extends Controller
             throw ValidationException::withMessages(['kode' => PnpkVerifier::TOLAK_ICD]);
         }
         $icd = PnpkIcd::updateOrCreate(['dokumen_id' => $pnpk->id, 'kode' => $kode],
-            ['sumber' => 'manual', 'status' => 'disetujui', 'alasan_tolak' => null, 'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
+            ['sumber' => 'manual', 'status' => 'disetujui', 'diperiksa_manusia' => true, 'alasan_tolak' => null, 'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
         Audit::log('pnpk.icd_setujui', $icd, "Menambah ICD {$kode} pada PNPK {$pnpk->judul}", ['sumber' => 'manual']);
 
         return back()->with('ok', "ICD $kode ditambahkan.");

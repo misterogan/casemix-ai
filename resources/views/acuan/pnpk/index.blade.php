@@ -46,7 +46,7 @@
                                 <x-badge :variant="\App\Models\PnpkDokumen::STATUS_TONE[$d->status] ?? 'gray'">{{ \App\Models\PnpkDokumen::STATUS[$d->status] ?? $d->status }}</x-badge>
                                 @if ($d->perlu_dilengkapi)<x-badge variant="warning">Perlu dilengkapi</x-badge>@endif</p>
                             <p class="num text-xs text-tinta-3">{{ $d->nomor_kmk ?? 'Nomor KMK belum ada' }} · {{ $d->tahun }} · berlaku {{ $d->tanggal_berlaku?->translatedFormat('d M Y') }}
-                                · {{ $d->icd_disetujui }} ICD · {{ $d->butir_disetujui }} butir disetujui · {{ \App\Models\PnpkDokumen::PROSES[$d->status_proses] ?? $d->status_proses }}</p>
+                                · {{ $d->icd_disetujui }} ICD · {{ $d->butir_disetujui }} butir disetujui @if ($d->butir_belum_diperiksa > 0)<span class="text-warning-600">· {{ $d->butir_belum_diperiksa }} belum diperiksa</span> @endif· {{ \App\Models\PnpkDokumen::PROSES[$d->status_proses] ?? $d->status_proses }}</p>
                         </div>
                         <div class="flex gap-2">
                             <a href="{{ route('acuan.pnpk.show', $d) }}" class="btn-secondary">{{ auth()->user()->hasRole('koordinator') ? 'Tinjau' : 'Lihat' }}</a>

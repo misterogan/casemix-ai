@@ -9,7 +9,8 @@
         @foreach ($acuanPnpk as $x)
             @php $d = $x['dokumen']; @endphp
             <details class="border-b border-garis px-5 py-3 last:border-0" @if ($loop->first) open @endif>
-                <summary class="cursor-pointer text-sm font-medium text-arang">{{ $d->judul }} <span class="num text-xs font-normal text-tinta-3">· {{ $d->nomor_kmk }} · {{ $d->tahun }}</span></summary>
+                <summary class="cursor-pointer text-sm font-medium text-arang">{{ $d->judul }} <span class="num text-xs font-normal text-tinta-3">· {{ $d->nomor_kmk }} · {{ $d->tahun }}</span>
+                    @if ($d->butir->contains('diperiksa_manusia', false))<x-badge variant="warning" data-belum-diperiksa>Belum diperiksa koder/dokter</x-badge>@endif</summary>
                 @foreach (\App\Models\PnpkButir::JENIS as $jenis => $label)
                     @continue(! $x['butir']->has($jenis))
                     <p class="mt-3 text-xs font-semibold uppercase text-tinta-3">{{ $label }}</p>
