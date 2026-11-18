@@ -24,7 +24,7 @@ class PnpkDokumen extends Model
 
     protected function casts(): array
     {
-        return ['tanggal_berlaku' => 'date', 'tahun' => 'integer', 'jumlah_halaman' => 'integer'];
+        return ['tanggal_berlaku' => 'date', 'tahun' => 'integer', 'jumlah_halaman' => 'integer', 'finished_at' => 'datetime'];
     }
 
     public function halaman(): HasMany

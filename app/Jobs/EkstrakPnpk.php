@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\PnpkDokumen;
+use App\Services\Ai\AiBudget;
 use App\Models\PnpkHalaman;
 use App\Services\Pnpk\PnpkTextExtractor;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,7 +25,7 @@ class EkstrakPnpk implements ShouldQueue
         $this->onQueue(config('casemix.ai.queue'));
     }
 
-    public function handle(PnpkTextExtractor $extractor): void
+    public function handle(PnpkTextExtractor $extractor, AiBudget $budget): void
     {
         $d = PnpkDokumen::find($this->dokumenId);
         if (! $d) {
@@ -32,6 +33,7 @@ class EkstrakPnpk implements ShouldQueue
         }
         try {
             $d->update(['status_proses' => 'ekstrak', 'error' => null]);
+            $extractor->onAi = fn ($res, $providerId) => $budget->charge($d, $res, $providerId); // biaya OCR
             $pages = $extractor->pages($d->pdfPath());
             DB::transaction(function () use ($d, $pages) {
                 PnpkHalaman::where('dokumen_id', $d->id)->delete();

@@ -2,6 +2,7 @@
 
 namespace App\Services\Pnpk;
 
+use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
 use App\Services\Ai\AiRequest;
 use Illuminate\Support\Facades\File;
@@ -15,7 +16,10 @@ class PnpkTextExtractor
 {
     public const MIN_CHARS = 50;
 
-    public function __construct(private AiManager $ai) {}
+    /** Dipanggil tiap respons OCR supaya biayanya dicatat AiBudget pada dokumen PNPK. @var ?callable */
+    public $onAi = null;
+
+    public function __construct(private AiManager $ai, private AiBudget $budget) {}
 
     /** @return array<int, string> nomor halaman (mulai 1) => teks */
     public function pages(string $path): array
@@ -61,12 +65,20 @@ class PnpkTextExtractor
         $data = base64_encode(file_get_contents($files[0]));
         array_map('unlink', $files);
 
+        if ($blocked = $this->budget->runBlocker()) {
+            throw new \RuntimeException($blocked);
+        }
         $config = $this->ai->defaultConfig();
         $req = (new AiRequest($config->model_fast ?: $config->model_standard,
             'Anda alat OCR. Salin seluruh teks pada gambar halaman dokumen apa adanya, urut dari atas ke bawah. Jangan meringkas, menafsirkan, atau menambah apa pun.',
             min((int) $config->max_tokens, 8000), 0.0))
             ->image('image/png', $data)->text("Halaman $page. Tulis teksnya saja.");
 
-        return trim($this->ai->for($config)->generate($req)->text);
+        $res = $this->ai->for($config)->generate($req);
+        if ($this->onAi) {
+            ($this->onAi)($res, $config->id);
+        }
+
+        return trim($res->text);
     }
 }

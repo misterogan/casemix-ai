@@ -48,7 +48,9 @@ class UsulkanButirPnpk implements ShouldQueue
                     throw new RuntimeException($blocked);
                 }
                 $req = $proposer->request($config->model_standard, (int) $config->max_tokens ?: 4096, $d->judul, $chunk);
-                $parsed = $proposer->parse((array) $ai->for($config)->generate($req)->json(), array_map('intval', array_keys($chunk)));
+                $res = $ai->for($config)->generate($req);
+                $budget->charge($d, $res, $config->id); // biaya usulan, dijumlah dengan OCR
+                $parsed = $proposer->parse((array) $res->json(), array_map('intval', array_keys($chunk)));
 
                 foreach ($parsed['icd'] as $kode) {
                     if (in_array($kode, $ada, true)) {

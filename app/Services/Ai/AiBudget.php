@@ -9,6 +9,7 @@ use App\Models\AppSetting;
 use App\Models\ClaimExtraction;
 use App\Models\FolderAnalysis;
 use App\Models\FolderDocument;
+use App\Models\PnpkDokumen;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -33,7 +34,13 @@ class AiBudget
         FolderDocument::class => 'Verifikasi folder (baca dokumen)',
         AiReview::class => 'Pemeriksaan berkas',
         ClaimExtraction::class => 'Usulan isian',
+        PnpkDokumen::class => 'PNPK (OCR & usulan butir)',
     ];
+
+    /** Sumber yang kolom status/penggunanya berbeda dari bawaan (status antre|berjalan, requested_by). */
+    private const STATUS_COLUMN = [PnpkDokumen::class => ['status_proses', ['antre', 'ekstrak', 'usulan']]];
+
+    private const USER_COLUMN = [FolderDocument::class => null, PnpkDokumen::class => 'diunggah_oleh'];
 
     /** Anggaran bulanan dalam USD, atau null bila tidak dibatasi. */
     public function budget(): ?float
@@ -140,7 +147,11 @@ class AiBudget
     {
         $active = [ReviewStatus::Antre->value, ReviewStatus::Berjalan->value];
 
-        return collect(array_keys(self::SOURCES))->sum(fn ($m) => $m::whereIn('status', $active)->count());
+        return collect(array_keys(self::SOURCES))->sum(function ($m) use ($active) {
+            [$col, $values] = self::STATUS_COLUMN[$m] ?? ['status', $active];
+
+            return $m::whereIn($col, $values)->count();
+        });
     }
 
     /**
@@ -187,10 +198,11 @@ class AiBudget
         $from = $this->monthStart()->subMonths($months - 1);
         $rows = collect();
         foreach (self::SOURCES as $model => $label) {
+            $user = array_key_exists($model, self::USER_COLUMN) ? self::USER_COLUMN[$model] : 'requested_by';
             $rows = $rows->merge($model::query()->where('finished_at', '>=', $from)->whereNotNull('finished_at')
-                ->get(array_merge(['finished_at', 'cost_usd', 'tokens_in', 'tokens_out'], $model === FolderDocument::class ? [] : ['requested_by']))
+                ->get(array_merge(['finished_at', 'cost_usd', 'tokens_in', 'tokens_out'], $user ? [$user] : []))
                 ->map(fn ($r) => ['bulan' => $r->finished_at->format('Y-m'), 'fitur' => $label, 'biaya' => (float) $r->cost_usd,
-                    'token' => (int) $r->tokens_in + (int) $r->tokens_out, 'user' => $r->requested_by]));
+                    'token' => (int) $r->tokens_in + (int) $r->tokens_out, 'user' => $user ? $r->{$user} : null]));
         }
         $thisMonth = $rows->where('bulan', now()->format('Y-m'));
         $users = DB::table('users')->whereIn('id', $thisMonth->pluck('user')->filter()->unique())->pluck('name', 'id');
