@@ -102,6 +102,9 @@ class FolderController extends Controller
         }
 
         $data = $this->viewData($folder, $latest, $blocker);
+        // Bagian Temuan: gabungan semua file, tanda "Sudah dicek" per kunci stabil
+        $data['temuan'] = \App\Models\FolderTemuanCek::temuan($data['done'], $data['documents']);
+        $data['dicek'] = \App\Models\FolderTemuanCek::where('folder_id', $folder->id)->pluck('temuan_key')->flip();
         if ($data['bpjs'] && $folder->no_sep && ! $request->ajax()) {
             Audit::log('vclaim.riwayat.buka', $folder, 'Membuka panel riwayat pelayanan peserta', ['folder_id' => $folder->id]);
         }

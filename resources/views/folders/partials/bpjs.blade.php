@@ -1,6 +1,6 @@
 {{-- Status klaim & riwayat pelayanan dari VClaim (hanya baca). Koordinator saja. --}}
 @php $rp = fn ($n) => $n === null ? '—' : 'Rp ' . number_format((float) $n, 0, ',', '.'); @endphp
-<x-card lapang aria-labelledby="judul-bpjs" data-panel-bpjs>
+<x-card lapang id="bagian-bpjs" data-bagian="bpjs" aria-labelledby="judul-bpjs" data-panel-bpjs>
     <x-slot:header><h2 id="judul-bpjs" class="text-base font-semibold text-gray-800 dark:text-white/90">Status di BPJS</h2></x-slot:header>
     <div class="space-y-3 text-sm">
         @if ($bpjs['tanpa_sep'])
@@ -35,5 +35,7 @@
 </x-card>
 
 @unless ($bpjs['tanpa_sep'])
+    <section id="bagian-riwayat" data-bagian="riwayat">
     @include('bpjs.partials.histori-panel', ['url' => route('folders.histori', $folder), 'noKartu' => $bpjs['no_kartu'], 'histori' => $bpjs['histori']])
+    </section>
 @endunless

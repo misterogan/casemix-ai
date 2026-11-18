@@ -15,7 +15,7 @@
         <x-slot:actions><button type="button" class="btn-secondary btn-sm h-9" data-salin="{{ $daftarKoder }}" data-salin-ok="Daftar kode tersalin">Salin daftar kode untuk koder</button></x-slot:actions>
     @endif
 
-    <div class="text-sm">
+    <div class="text-[15px] leading-relaxed">
         @if ($codes->isEmpty())
             <p class="text-abu">Belum ada saran kode dari AI untuk folder ini.</p>
         @else
@@ -23,7 +23,7 @@
                 @php $baris = $codes->where('peran', $peran); @endphp
                 @continue($baris->isEmpty())
                 <h3 class="mt-3 text-xs font-medium tracking-wide text-tinta-3 first:mt-0">{{ $judul }}</h3>
-                <ul class="mt-1 space-y-2">
+                <ul class="mt-2 space-y-4">
                     @foreach ($baris as $c)
                         @php
                             $dok = $c->document?->name;
@@ -32,9 +32,9 @@
                             $pesan = sprintf('Dok, mohon konfirmasi untuk pasien %s. Di %s hal. %s tercatat: %s. Apakah %s perlu dicantumkan di resume medis? Bila ya, mohon dilengkapi di Enigma. Bila tidak, tidak perlu ada perubahan. Terima kasih.',
                                 $pasien, $dok ?: 'dokumen', $c->halaman, rtrim($c->bukti, '. '), $c->title);
                         @endphp
-                        <li class="rounded-md border p-3 {{ $oranye ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white' }}" data-kode-item="{{ $c->id }}">
+                        <li class="rounded-xl border p-5 {{ $oranye ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white' }}" data-kode-item="{{ $c->id }}">
                             <div class="flex flex-wrap items-start justify-between gap-2">
-                                <p><strong class="num">{{ $c->code }}</strong> {{ $c->title }}</p>
+                                <p><strong class="num text-lg font-bold">{{ $c->code }}</strong> {{ $c->title }}</p>
                                 @if ($oranye)
                                     <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Hanya di {{ $c->sumber }} — perlu konfirmasi DPJP</span>
                                 @else
@@ -49,11 +49,11 @@
                                     @endforeach
                                 </p>
                             @endif
-                            @if ($c->alasan)<p class="mt-1 text-arang">{{ $c->alasan }}</p>@endif
-                            @if ($c->kaidah_koding)<p class="mt-0.5 text-xs text-abu">Kaidah: {{ $c->kaidah_koding }}</p>@endif
-                            <p class="mt-1 text-xs text-abu">Sumber: {{ $c->sumber }} · Keyakinan: {{ $c->keyakinan }}</p>
-                            <p class="mt-1 text-abu">Bukti: “{{ $c->bukti }}”
-                                @if ($url) · <a href="{{ $url }}" data-preview="{{ $dok }}" target="_blank" rel="noopener" class="text-url underline">{{ $dok }} hal. {{ $c->halaman }}</a>
+                            @if ($c->alasan)<p class="vf-teks mt-2 text-arang">{{ $c->alasan }}</p>@endif
+                            @if ($c->kaidah_koding)<p class="mt-1 text-[13px] text-gray-500">Kaidah: {{ $c->kaidah_koding }}</p>@endif
+                            <p class="mt-1 text-[13px] text-gray-500">Sumber: {{ $c->sumber }} · Keyakinan: {{ $c->keyakinan }}</p>
+                            <p class="vf-kutipan mt-2">Bukti: “{{ $c->bukti }}”
+                                @if ($url) · <a href="{{ $url }}" data-preview="{{ $dok }}" target="_blank" rel="noopener" class="not-italic text-url underline">{{ $dok }} hal. {{ $c->halaman }}</a>
                                 @elseif ($dok) · {{ $dok }} hal. {{ $c->halaman }}@endif
                             </p>
 

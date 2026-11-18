@@ -88,6 +88,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::delete('/verifikasi/{folder}/rubrik/{kode}/terima', [FolderController::class, 'unacceptRubric'])->middleware('permission:folders.analyze')->name('folders.rubric.unaccept');
         Route::post('/verifikasi/{folder}/saran/{suggestion}/status', [FolderController::class, 'suggestionStatus'])->whereNumber('suggestion')->middleware('permission:folders.analyze')->name('folders.suggestion.status');
         Route::post('/verifikasi/{folder}/kode/{code}/status', [FolderController::class, 'codeStatus'])->whereNumber('code')->middleware('permission:folders.analyze')->name('folders.code.status');
+        Route::post('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'store'])->middleware('role:koordinator')->name('folders.temuan_cek.store');
+        Route::delete('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'destroy'])->middleware('role:koordinator')->name('folders.temuan_cek.destroy');
         Route::put('/verifikasi/{folder}/penugasan', [FolderController::class, 'assign'])->middleware('role:koordinator')->name('folders.assign');
     });
 

@@ -63,7 +63,7 @@
             @if ($done)
                 <div @class(['transition-opacity duration-200', 'opacity-60' => $active])>
                     <div class="panel-body">
-                        @if ($done->summary)<p class="max-w-[72ch] text-[15px] leading-relaxed text-arang">{{ $done->summary }}</p>@endif
+                        @if ($done->summary)<p class="max-w-[72ch] text-base leading-relaxed text-arang">{{ $done->summary }}</p>@endif
                         <div class="mt-3 flex flex-wrap gap-2">
                             <span class="chip chip-kritis">{{ $done->countBy('kritis') }} kritis</span>
                             <span class="chip chip-waspada">{{ $done->countBy('perhatian') }} perhatian</span>
@@ -71,26 +71,8 @@
                         </div>
                     </div>
 
-                    @if ($masalah->isNotEmpty())
-                        <ul class="space-y-3 px-5 pb-5">
-                            @foreach ($masalah as $f)
-                                @include('folders.partials.finding', ['f' => $f])
-                            @endforeach
-                        </ul>
-                    @endif
-
-                    @if ($sesuai->isNotEmpty())
-                        <details class="group border-t border-garis-g px-5 py-3">
-                            <summary class="flex cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium text-sesuai [&::-webkit-details-marker]:hidden">
-                                <svg class="size-4 transition-transform duration-200 group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                {{ $sesuai->count() }} bagian sudah sesuai
-                            </summary>
-                            <ul class="mt-3 space-y-3 pb-2">
-                                @foreach ($sesuai as $f)
-                                    @include('folders.partials.finding', ['f' => $f])
-                                @endforeach
-                            </ul>
-                        </details>
+                    @if ($findings->isNotEmpty())
+                        <p class="px-5 pb-5 text-[15px]"><a href="#bagian-temuan" class="font-medium text-url underline" data-lompat>Lihat {{ $masalah->count() }} temuan perlu ditinjau{{ $sesuai->isNotEmpty() ? ' dan ' . $sesuai->count() . ' info' : '' }}</a></p>
                     @endif
 
                     @if (! empty($done->suggestions))
