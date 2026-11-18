@@ -10,6 +10,7 @@ use App\Models\VclaimSyncRun;
 use App\Services\Dashboard\BpjsStats;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** Tab Ringkasan Klaim BPJS: kartu status, donut, tren dari tabel vclaim_*. */
@@ -220,5 +221,116 @@ class BpjsDashboardTest extends TestCase
         foreach (['penghasilan', 'naik', 'fraud', 'upcoding', 'uplift'] as $kata) {
             $this->assertStringNotContainsString($kata, $html, "Kata terlarang: $kata");
         }
+    }
+
+    public function test_parse_severity_dan_rawat_jalan_tidak_berlaku(): void
+    {
+        $this->assertSame('I', BpjsStats::severity('K-1-14-I', 'Rawat Inap'));
+        $this->assertSame('II', BpjsStats::severity('K-1-14-II', '1'));
+        $this->assertSame('III', BpjsStats::severity('I-4-10-III', 'Rawat Inap'));
+        $this->assertSame('tidak berlaku', BpjsStats::severity('K-1-14-I', 'Rawat Jalan'));
+        $this->assertSame('tidak berlaku', BpjsStats::severity('Q-5-44-0', 'Rawat Inap'));
+
+        $this->klaim(2, ['inacbg_kode' => 'I-4-10-III']);
+        $this->klaim(3, ['inacbg_kode' => 'I-4-10-III']);
+        $this->klaim(3, ['inacbg_kode' => 'K-1-14-II']);
+        $this->klaim(3, ['inacbg_kode' => 'K-1-14-I']);
+        $this->klaim(2, ['inacbg_kode' => 'K-1-14-I', 'jns_pelayanan' => 'Rawat Jalan']);
+        $sv = $this->ringkasan()->viewData('stats')['analisis']['severity'];
+
+        $this->assertSame([1, 1, 2], [$sv['kartu']['I']['n'], $sv['kartu']['II']['n'], $sv['kartu']['III']['n']]);
+        $this->assertSame(4, $sv['total_inap']);
+        $this->assertTrue($sv['kartu']['III']['tinggi']);
+        $this->assertSame('I-4-10-III', $sv['iii_pending']['items'][0]['kode']);
+        $this->assertNull($this->ringkasan(['jenis' => 'jalan'])->viewData('stats')['analisis']['severity']);
+    }
+
+    public function test_rank_list_urut_dan_kategori_lain(): void
+    {
+        $rows = [];
+        foreach (range(1, 9) as $i) {
+            $rows[] = ['kode' => "K$i", 'nama' => '', 'nilai' => $i, 'klaim' => $i, 'chip' => null, 'filter' => []];
+        }
+        $r = BpjsStats::peringkat($rows);
+        $this->assertSame(['K9', 'K8', 'K7', 'K6', 'K5', 'K4', 'K3'], array_column($r['items'], 'kode'));
+        $this->assertSame([9, 45, 2, 3], [$r['kategori'], $r['klaim'], $r['lain_kategori'], $r['lain_klaim']]);
+
+        foreach (range(1, 9) as $i) {
+            foreach (range(1, $i) as $_) {
+                $this->klaim(3, ['inacbg_kode' => "A-1-0$i-I", 'inacbg_nama' => 'KELOMPOK UJI']);
+            }
+        }
+        $this->ringkasan()->assertSee('+ 2 kategori lain · 3 klaim')->assertSee('9 kategori · 45 klaim')->assertSee('Kelompok uji');
+    }
+
+    public function test_kategori_diagnosis_nama_master_dan_pending_min_5(): void
+    {
+        DB::table('icd_codes')->insert([
+            ['system' => 'icd10', 'code' => 'A09', 'title' => 'Diarrhoea and gastroenteritis', 'created_at' => now(), 'updated_at' => now()],
+            ['system' => 'icd10', 'code' => 'A09.9', 'title' => 'Gastroenteritis unspecified', 'created_at' => now(), 'updated_at' => now()],
+            ['system' => 'icd10', 'code' => 'J18.9', 'title' => 'PNEUMONIA, UNSPECIFIED', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        foreach (range(1, 5) as $i) { // A09: 5 kasus, 1 pending
+            $this->sep("SEPA$i", ['diagnosa' => 'A09.9 - Gastroenteritis']);
+            $this->klaim($i === 1 ? 2 : 3, ['no_sep' => "SEPA$i"]);
+        }
+        foreach (range(1, 4) as $i) { // J18: 4 kasus, semua pending -> tidak masuk "pending tertinggi"
+            $this->sep("SEPJ$i", ['diagnosa' => 'J18.9']);
+            $this->klaim(2, ['no_sep' => "SEPJ$i"]);
+        }
+        $dx = $this->ringkasan()->viewData('stats')['analisis']['diagnosis'];
+
+        $kat = collect($dx['kategori']['items'])->keyBy('kode');
+        $this->assertSame('Diarrhoea and gastroenteritis', $kat['A09']['nama']);
+        $this->assertSame('Pneumonia, unspecified', $kat['J18']['nama']);
+        $this->assertSame('20,0% pending', $kat['A09']['chip']);
+        $this->assertNull($kat['J18']['chip']);
+        $this->assertSame(['A09'], array_column($dx['pending_tinggi']['items'], 'kode'));
+        $this->assertSame(1, $dx['pending_tinggi']['items'][0]['nilai']);
+    }
+
+    public function test_los_dan_readmisi_30_31_hari(): void
+    {
+        $this->klaim(3, ['tgl_sep' => '2026-10-03', 'tgl_pulang' => '2026-10-10']);
+        $this->klaim(3, ['tgl_sep' => '2026-10-01', 'tgl_pulang' => '2026-10-04']);
+        $this->klaim(3, ['tgl_sep' => '2026-10-09', 'tgl_pulang' => '2026-10-10', 'jns_pelayanan' => 'Rawat Jalan']);
+
+        $this->sep('R1', ['no_kartu' => '0001', 'tgl_sep' => '2026-09-01', 'tgl_plg_sep' => '2026-09-10']);
+        $this->sep('R2', ['no_kartu' => '0001', 'tgl_sep' => '2026-10-10']); // 30 hari -> readmisi
+        $this->sep('R3', ['no_kartu' => '0002', 'tgl_sep' => '2026-09-01', 'tgl_plg_sep' => '2026-09-09']);
+        $this->sep('R4', ['no_kartu' => '0002', 'tgl_sep' => '2026-10-10']); // 31 hari -> bukan
+        $this->sep('R5', ['no_kartu' => '0003', 'tgl_sep' => '2026-09-25', 'tgl_plg_sep' => '2026-09-28', 'jns_pelayanan' => 'Rawat Jalan']);
+        $this->sep('R6', ['no_kartu' => '0003', 'tgl_sep' => '2026-10-02']); // sebelumnya rawat jalan -> bukan
+
+        $m = $this->ringkasan()->viewData('stats')['analisis']['mutu'];
+        $this->assertEquals(5.0, $m['los']['median_kini']);
+        $this->assertEquals(5.0, $m['los']['rata_kini']);
+        $this->assertSame(1, $m['readmisi']['n']);
+        $this->assertSame(3, $m['readmisi']['dasar']);
+        $this->assertSame(33.3, $m['readmisi']['pct']);
+    }
+
+    public function test_cermat_n_kurang_dari_20_tampil_teks(): void
+    {
+        $this->dataset();
+        $res = $this->ringkasan();
+        $kel = $res->viewData('stats')['analisis']['cermat']['kelompok'];
+        $this->assertFalse($kel['tidak']['cukup']);
+        $this->assertNull($kel['tidak']['pct']);
+        $res->assertSee('Data belum cukup untuk dibandingkan')->assertSee('data-golive', false);
+    }
+
+    public function test_klik_baris_membawa_filter(): void
+    {
+        $this->klaim(2, ['inacbg_kode' => 'I-4-10-III', 'nama' => 'PASIEN BERAT']);
+        $this->klaim(2, ['inacbg_kode' => 'K-1-14-III', 'nama' => 'PASIEN LAIN']);
+        $html = $this->ringkasan()->getContent();
+        preg_match('#href="([^"]+)"[^>]*data-rank-row="I-4-10-III"#', $html, $m);
+        $this->assertNotEmpty($m);
+        $url = html_entity_decode($m[1]);
+        foreach (['tab=klaim', 'status=pending', 'inacbg=I-4-10-III', 'dari=2026-10-01', 'sampai=2026-10-31'] as $p) {
+            $this->assertStringContainsString($p, $url);
+        }
+        $this->actingAs($this->koor)->get($url)->assertOk()->assertSee('PASIEN BERAT')->assertDontSee('PASIEN LAIN');
     }
 }

@@ -8,7 +8,8 @@
     $ds = $stats['donut_status'];
     $dj = $stats['donut_jenis'];
     $payload = ['donut_status' => $ds + ['links' => $links['status']], 'donut_jenis' => $dj + ['links' => $links['jenis']],
-        'tren' => $t + ['links' => $links['tren']], 'status_keys' => array_keys(BpjsStats::STATUS)];
+        'tren' => $t + ['links' => $links['tren']], 'status_keys' => array_keys(BpjsStats::STATUS),
+        'los' => $stats['analisis']['mutu']['los'] ?? null, 'readmisi' => $stats['analisis']['mutu']['readmisi']['tren'] ?? null];
     $panel = 'rounded-[10px] border border-line bg-white p-5';
     $ket = 'mt-1 text-xs text-ink-muted';
     $warnaStatus = ['proses' => 'bg-triage-amber', 'pending' => 'bg-triage-red', 'klaim' => 'bg-triage-green'];
@@ -230,6 +231,8 @@
             </div>
         </div>
     </section>
+
+    @include('bpjs.partials.analisis')
 
     <script type="application/json" id="bpjs-data">@json($payload)</script>
     @vite('resources/js/bpjs-dashboard.js')

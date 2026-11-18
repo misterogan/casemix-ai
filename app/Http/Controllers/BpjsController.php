@@ -156,7 +156,8 @@ class BpjsController extends Controller
                 array_keys(BpjsStats::STATUS)), $stats['tren']['bulan']),
         ];
 
-        return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links, 'sinkron' => BpjsStats::sinkron()];
+        return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links, 'sinkron' => BpjsStats::sinkron(),
+            'dasarLink' => ['tab' => 'klaim'] + $p];
     }
 
     private function filters(Request $request): array
@@ -177,6 +178,9 @@ class BpjsController extends Controller
             'belum' => $request->query('belum') === '1' ? '1' : '',
             'kurang' => $request->query('kurang') === '1' ? '1' : '',
             'lama' => in_array($request->query('lama'), ['7', '14'], true) ? $request->query('lama') : '',
+            'inacbg' => preg_match('/^[A-Za-z0-9.\-]{1,20}$/', (string) $request->query('inacbg')) ? strtoupper($request->query('inacbg')) : '',
+            'sev' => in_array($request->query('sev'), ['I', 'II', 'III'], true) ? $request->query('sev') : '',
+            'dx' => preg_match('/^[A-Za-z]\d{2}$/', (string) $request->query('dx')) ? strtoupper($request->query('dx')) : '',
         ];
     }
 
@@ -197,6 +201,17 @@ class BpjsController extends Controller
         }
         if ($f['lama']) {
             $q->whereNotNull('status_changed_at')->whereDate('status_changed_at', '<', now()->startOfDay()->subDays((int) $f['lama'])->toDateString());
+        }
+        if ($f['inacbg']) {
+            $q->where('inacbg_kode', $f['inacbg']);
+        }
+        if ($f['sev']) {
+            BpjsStats::jenis($q, 'inap');
+            $q->where('inacbg_kode', 'like', '%-' . $f['sev']);
+        }
+        if ($f['dx']) {
+            $q->whereExists(fn ($s) => $s->selectRaw('1')->from('vclaim_kunjungan')->whereColumn('vclaim_kunjungan.no_sep', 'vclaim_klaim.no_sep')
+                ->whereRaw('UPPER(TRIM(vclaim_kunjungan.diagnosa)) LIKE ?', [$f['dx'] . '%']));
         }
         if ($f['q'] !== '') {
             $like = '%' . addcslashes($f['q'], '%_\\') . '%';

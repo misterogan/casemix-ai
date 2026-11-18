@@ -143,4 +143,48 @@ if (el) {
             },
         });
     }
+
+    // Toggle Jumlah | Nilai pada daftar INA-CBG teratas.
+    document.querySelectorAll('[data-toggle-grup]').forEach((grup) => {
+        grup.querySelectorAll('[data-toggle]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const pilih = btn.dataset.toggle;
+                grup.querySelectorAll('[data-toggle]').forEach((b) => {
+                    const aktif = b === btn;
+                    b.setAttribute('aria-pressed', String(aktif));
+                    b.classList.toggle('bg-brand-soft', aktif);
+                    b.classList.toggle('text-brand', aktif);
+                    b.classList.toggle('font-medium', aktif);
+                    b.classList.toggle('text-ink-muted', !aktif);
+                });
+                grup.querySelectorAll('[data-toggle-isi]').forEach((isi) => { isi.hidden = isi.dataset.toggleIsi !== pilih; });
+            });
+        });
+    });
+
+    const garis = (id, labels, sets, opsiY = {}) => {
+        const canvas = document.getElementById(id);
+        if (!canvas || !labels) return;
+        new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets: sets.map((s) => ({ pointRadius: 3, spanGaps: true, ...s })) },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: { y: { beginAtZero: true, ...opsiY } },
+            },
+        });
+    };
+
+    if (data.los) {
+        garis('chart-los', data.los.label, [
+            { label: 'Median (hari)', data: data.los.median, borderColor: token('--color-brand', '#1A5FD0'), backgroundColor: token('--color-brand', '#1A5FD0') },
+            { label: 'Rata-rata (hari)', data: data.los.rata, borderColor: warna.netral, backgroundColor: warna.netral, borderDash: [4, 3] },
+        ]);
+    }
+    if (data.readmisi) {
+        garis('chart-readmisi', data.readmisi.label, [
+            { label: '% readmisi ≤30 hari', data: data.readmisi.pct, borderColor: warna.proses, backgroundColor: warna.proses },
+        ], { ticks: { callback: (v) => v + '%' } });
+    }
 }

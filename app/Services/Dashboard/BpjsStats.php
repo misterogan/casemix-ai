@@ -9,6 +9,7 @@ use App\Models\VclaimSyncRun;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /** Ringkasan Klaim BPJS dari tabel vclaim_* saja (tanpa AI, tanpa panggilan BPJS). Cache 10 menit per filter. */
 class BpjsStats
@@ -21,7 +22,7 @@ class BpjsStats
 
     public function get(string $periode, string $jenis): array
     {
-        return Cache::remember("bpjs-stats:v2:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
+        return Cache::remember("bpjs-stats:v3:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
     }
 
     public static function jenis(Builder $q, string $jenis): void
@@ -31,6 +32,16 @@ class BpjsStats
         } elseif ($jenis === 'jalan') {
             $q->where(fn ($w) => $w->where('jns_pelayanan', '2')->orWhere('jns_pelayanan', 'like', '%jalan%'));
         }
+    }
+
+    /** Severity INA-CBG dari akhiran kode (-I/-II/-III); hanya rawat inap, selain itu "tidak berlaku". */
+    public static function severity(?string $kode, ?string $jns): string
+    {
+        if (self::kelompokJenis($jns) !== 'inap') {
+            return 'tidak berlaku';
+        }
+
+        return preg_match('/-(III|II|I)$/', strtoupper(trim((string) $kode)), $m) ? $m[1] : 'tidak berlaku';
     }
 
     public static function kelompokJenis(?string $jns): ?string
@@ -83,6 +94,7 @@ class BpjsStats
                 ['label' => 'Masuk data klaim', 'n' => $kini['sep'] - $kini['belum']],
                 ['label' => 'Klaim layak', 'n' => $kini['klaim']],
             ],
+            'analisis' => $this->analisis($awal, $jenis),
         ];
     }
 
@@ -260,5 +272,345 @@ class BpjsStats
         $t['go_live'] = $live && preg_match('/^\d{4}-\d{2}/', (string) $live) ? ($idx[substr((string) $live, 0, 7)] ?? null) : null;
 
         return $t;
+    }
+
+    /* ===================== Analisis (severity, kasus & tarif, diagnosis, pending, mutu, CERMAT) ===================== */
+
+    public const MIN_KASUS = 5;
+
+    public const MIN_BANDING = 20;
+
+    public const TAMPIL = 7;
+
+    public const CERMAT_LABEL = ['siap' => 'Dianalisa · Siap diajukan', 'belum' => 'Dianalisa · Belum siap', 'tidak' => 'Tidak dianalisa'];
+
+    private const PENDING_C = 'SUM(CASE WHEN c.status_kode = 2 THEN 1 ELSE 0 END)';
+
+    private static function inapSql(string $t = ''): string
+    {
+        $c = ($t ? "$t." : '') . 'jns_pelayanan';
+
+        return "($c = '1' OR LOWER($c) LIKE '%inap%')";
+    }
+
+    /** Kolom terhitung severity (tabel tidak diubah). */
+    public static function sevSql(string $t = ''): string
+    {
+        $k = 'UPPER(' . ($t ? "$t." : '') . 'inacbg_kode)';
+        $i = self::inapSql($t);
+
+        return "CASE WHEN $i AND $k LIKE '%-III' THEN 'III' WHEN $i AND $k LIKE '%-II' THEN 'II' WHEN $i AND $k LIKE '%-I' THEN 'I' ELSE 'tidak berlaku' END";
+    }
+
+    /** Selisih hari (akhir - awal) sebagai SQL, lintas driver. */
+    public static function selisihHari(string $akhir, string $awal): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "CAST(julianday(date($akhir)) - julianday(date($awal)) AS INTEGER)",
+            'pgsql' => "(($akhir)::date - ($awal)::date)",
+            default => "DATEDIFF($akhir, $awal)",
+        };
+    }
+
+    public static function kalimatCase(?string $s): string
+    {
+        $s = trim((string) $s);
+
+        return $s === '' ? '' : mb_strtoupper(mb_substr($s, 0, 1)) . mb_strtolower(mb_substr($s, 1));
+    }
+
+    public static function pctTeks(?float $v): string
+    {
+        return $v === null ? '—' : number_format($v, 1, ',', '.') . '%';
+    }
+
+    /**
+     * Daftar peringkat: urut nilai menurun (lalu kode), 7 baris pertama + ringkasan sisanya.
+     * Baris: kode, nama, nilai, klaim, chip, filter.
+     */
+    public static function peringkat(array $rows, array $filter = [], string $format = 'angka', int $tampil = self::TAMPIL): array
+    {
+        usort($rows, fn ($a, $b) => [$b['nilai'], $a['kode']] <=> [$a['nilai'], $b['kode']]);
+        $sisa = array_slice($rows, $tampil);
+
+        return [
+            'items' => array_slice($rows, 0, $tampil), 'format' => $format, 'filter' => $filter,
+            'kategori' => count($rows), 'klaim' => array_sum(array_column($rows, 'klaim')),
+            'lain_kategori' => count($sisa), 'lain_klaim' => array_sum(array_column($sisa, 'klaim')),
+        ];
+    }
+
+    /** Median dari distribusi [nilai => frekuensi]. */
+    public static function median(array $dist): ?float
+    {
+        ksort($dist);
+        $n = array_sum($dist);
+        if ($n === 0) {
+            return null;
+        }
+        $ambil = function (int $pos) use ($dist): float {
+            $c = 0;
+            foreach ($dist as $v => $f) {
+                $c += $f;
+                if ($c >= $pos) {
+                    return (float) $v;
+                }
+            }
+
+            return 0.0;
+        };
+
+        return $n % 2 ? $ambil(intdiv($n, 2) + 1) : ($ambil(intdiv($n, 2)) + $ambil(intdiv($n, 2) + 1)) / 2;
+    }
+
+    public static function rata(array $dist): ?float
+    {
+        $n = array_sum($dist);
+        $s = 0;
+        foreach ($dist as $v => $f) {
+            $s += $v * $f;
+        }
+
+        return $n ? round($s / $n, 1) : null;
+    }
+
+    /** Nama kategori 3 digit dari icd_codes; bila tidak ada, nama kode lengkap pertama berawalan sama. */
+    public static function namaKategori(array $kode): array
+    {
+        $kode = array_values(array_filter($kode));
+        if (! $kode) {
+            return [];
+        }
+        $rows = DB::table('icd_codes')->where('system', 'icd10')
+            ->where(function ($w) use ($kode) {
+                foreach ($kode as $k) {
+                    $w->orWhere('code', 'like', $k . '%');
+                }
+            })->orderBy('code')->get(['code', 'title']);
+        $tepat = [];
+        $awal = [];
+        foreach ($rows as $r) {
+            $c = strtoupper(str_replace('.', '', $r->code));
+            $k = substr($c, 0, 3);
+            if ($c === $k) {
+                $tepat[$k] = self::kalimatCase($r->title);
+            }
+            $awal[$k] ??= self::kalimatCase($r->title);
+        }
+
+        return $tepat + $awal;
+    }
+
+    private function klaimC(Carbon $awal, string $jenis)
+    {
+        $q = DB::table('vclaim_klaim as c')->whereBetween('c.tgl_pulang', [$awal->toDateString(), $awal->copy()->endOfMonth()->toDateString()]);
+        if ($jenis === 'inap') {
+            $q->whereRaw(self::inapSql('c'));
+        } elseif ($jenis === 'jalan') {
+            $q->where(fn ($w) => $w->where('c.jns_pelayanan', '2')->orWhere('c.jns_pelayanan', 'like', '%jalan%'));
+        }
+
+        return $q;
+    }
+
+    private function analisis(Carbon $awal, string $jenis): array
+    {
+        $inap = $jenis !== 'jalan';
+
+        return [
+            'inap_berlaku' => $inap,
+            'severity' => $inap ? $this->severityData($awal, $jenis) : null,
+            'tarif' => $this->tarifData($awal, $jenis),
+            'diagnosis' => $this->diagnosisData($awal, $jenis),
+            'pending' => $this->pendingData($awal, $jenis),
+            'mutu' => $inap ? $this->mutuData($awal, $jenis) : null,
+            'cermat' => $this->cermatData($awal, $jenis),
+        ];
+    }
+
+    private static function pct($n, $d): ?float
+    {
+        return $d > 0 ? round($n * 100 / $d, 1) : null;
+    }
+
+    private function severityData(Carbon $awal, string $jenis): array
+    {
+        $sev = self::sevSql('c');
+        $rows = $this->klaimC($awal, $jenis)->whereRaw(self::inapSql('c'))
+            ->selectRaw("$sev sev, COUNT(*) n, " . self::PENDING_C . ' p')->groupBy('sev')->get()->keyBy('sev');
+        $totN = (int) $rows->sum('n');
+        $rata = self::pct((int) $rows->sum('p'), $totN);
+        $kartu = [];
+        foreach (['I', 'II', 'III'] as $s) {
+            $n = (int) ($rows[$s]->n ?? 0);
+            $pp = self::pct((int) ($rows[$s]->p ?? 0), $n);
+            $kartu[$s] = ['n' => $n, 'pct_inap' => self::pct($n, $totN), 'pct_pending' => $pp, 'tinggi' => $pp !== null && $rata !== null && $pp > $rata];
+        }
+
+        $baris = $this->klaimC($awal, $jenis)->whereRaw(self::inapSql('c'))->whereRaw("UPPER(c.inacbg_kode) LIKE '%-III'")
+            ->selectRaw('c.inacbg_kode kode, MAX(c.inacbg_nama) nama, COUNT(*) n, ' . self::PENDING_C . ' p')
+            ->groupBy('c.inacbg_kode')->get()->filter(fn ($r) => $r->p > 0)
+            ->map(fn ($r) => ['kode' => $r->kode, 'nama' => self::kalimatCase($r->nama), 'nilai' => (int) $r->p, 'klaim' => (int) $r->p,
+                'chip' => self::pctTeks(self::pct((int) $r->p, (int) $r->n)) . ' pending', 'filter' => ['status' => 'pending', 'inacbg' => $r->kode]])
+            ->values()->all();
+
+        return ['kartu' => $kartu, 'rata_pending' => $rata, 'total_inap' => $totN,
+            'iii_pending' => self::peringkat($baris, ['status' => 'pending', 'sev' => 'III'])];
+    }
+
+    private function tarifData(Carbon $awal, string $jenis): array
+    {
+        $rows = $this->klaimC($awal, $jenis)->whereNotNull('c.inacbg_kode')->where('c.inacbg_kode', '<>', '')
+            ->selectRaw('c.inacbg_kode kode, MAX(c.inacbg_nama) nama, COUNT(*) n, COALESCE(SUM(c.by_pengajuan),0) rp')->groupBy('c.inacbg_kode')->get();
+        $jumlah = $rows->map(fn ($r) => ['kode' => $r->kode, 'nama' => self::kalimatCase($r->nama), 'nilai' => (int) $r->n, 'klaim' => (int) $r->n,
+            'chip' => self::rupiahRingkas((float) $r->rp), 'filter' => ['inacbg' => $r->kode]])->all();
+        $nilai = $rows->map(fn ($r) => ['kode' => $r->kode, 'nama' => self::kalimatCase($r->nama), 'nilai' => (float) $r->rp, 'klaim' => (int) $r->n,
+            'chip' => number_format((int) $r->n, 0, ',', '.') . ' klaim', 'filter' => ['inacbg' => $r->kode]])->all();
+
+        $sel = $this->klaimC($awal, $jenis)->whereNotNull('c.inacbg_kode')->whereColumn('c.by_tarif_rs', '>', 'c.by_tarif_gruper')
+            ->selectRaw('c.inacbg_kode kode, MAX(c.inacbg_nama) nama, COUNT(*) n, SUM(c.by_tarif_rs - c.by_tarif_gruper) sel')->groupBy('c.inacbg_kode')->get()
+            ->map(fn ($r) => ['kode' => $r->kode, 'nama' => self::kalimatCase($r->nama), 'nilai' => (float) $r->sel, 'klaim' => (int) $r->n,
+                'chip' => null, 'filter' => ['inacbg' => $r->kode]])->all();
+
+        return ['top_jumlah' => self::peringkat($jumlah), 'top_nilai' => self::peringkat($nilai, [], 'rupiah'),
+            'selisih' => self::peringkat($sel, [], 'rupiah')];
+    }
+
+    private function diagnosisData(Carbon $awal, string $jenis): array
+    {
+        $dx = 'UPPER(SUBSTR(TRIM(k.diagnosa),1,3))';
+        $rows = $this->klaimC($awal, $jenis)->join('vclaim_kunjungan as k', 'k.no_sep', '=', 'c.no_sep')
+            ->whereNotNull('k.diagnosa')->whereRaw("TRIM(k.diagnosa) <> ''")
+            ->selectRaw("$dx kode, COUNT(*) n, " . self::PENDING_C . ' p')->groupBy('kode')->get();
+
+        $semua = $rows->map(fn ($r) => ['kode' => $r->kode, 'nama' => '', 'nilai' => (int) $r->n, 'klaim' => (int) $r->n,
+            'chip' => $r->n >= self::MIN_KASUS ? self::pctTeks(self::pct((int) $r->p, (int) $r->n)) . ' pending' : null,
+            'filter' => ['dx' => $r->kode]])->all();
+        $tinggi = $rows->filter(fn ($r) => $r->n >= self::MIN_KASUS && $r->p > 0)
+            ->map(fn ($r) => ['kode' => $r->kode, 'nama' => '', 'nilai' => (int) $r->p, 'klaim' => (int) $r->p,
+                'chip' => self::pctTeks(self::pct((int) $r->p, (int) $r->n)) . ' pending', 'filter' => ['status' => 'pending', 'dx' => $r->kode]])
+            ->values()->all();
+
+        $kategori = self::peringkat($semua);
+        $pending = self::peringkat($tinggi, ['status' => 'pending']);
+        $nama = self::namaKategori(array_unique(array_merge(array_column($kategori['items'], 'kode'), array_column($pending['items'], 'kode'))));
+        $isi = fn (array $l) => ['items' => array_map(fn ($i) => ['nama' => $nama[$i['kode']] ?? 'Nama belum ada di master ICD'] + $i, $l['items'])] + $l;
+
+        return ['kategori' => $isi($kategori), 'pending_tinggi' => $isi($pending)];
+    }
+
+    private function pendingData(Carbon $awal, string $jenis): array
+    {
+        $hari = self::selisihHari("'" . now()->toDateString() . "'", 'c.status_changed_at');
+        $rows = $this->klaimC($awal, $jenis)->where('c.status_kode', 2)->whereNotNull('c.status_changed_at')
+            ->selectRaw("$hari umur, COUNT(*) n")->groupBy('umur')->get();
+        $ember = ['0–7 hari' => 0, '8–14 hari' => 0, '15–30 hari' => 0, '>30 hari' => 0];
+        $dist = [];
+        foreach ($rows as $r) {
+            $u = max(0, (int) $r->umur);
+            $dist[$u] = ($dist[$u] ?? 0) + (int) $r->n;
+            $ember[$u <= 7 ? '0–7 hari' : ($u <= 14 ? '8–14 hari' : ($u <= 30 ? '15–30 hari' : '>30 hari'))] += (int) $r->n;
+        }
+
+        $terlama = $this->klaimC($awal, $jenis)->where('c.status_kode', 2)->whereNotNull('c.status_changed_at')
+            ->orderBy('c.status_changed_at')->orderBy('c.id')->limit(10)
+            ->selectRaw("c.no_sep, c.nama, c.inacbg_kode, c.by_pengajuan, c.tgl_pulang, $hari umur")->get()
+            ->map(fn ($r) => (array) $r)->all();
+
+        return ['ember' => $ember, 'n' => array_sum($dist), 'median' => self::median($dist), 'rata' => self::rata($dist), 'terlama' => $terlama];
+    }
+
+    private function bulan12(Carbon $awal): array
+    {
+        $mulai = $awal->copy()->subMonths(11);
+        $nama = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        $out = [];
+        for ($i = 0; $i < 12; $i++) {
+            $m = $mulai->copy()->addMonths($i);
+            $out[$m->format('Y-m')] = $nama[$m->month - 1] . ' ' . $m->format('y');
+        }
+
+        return $out;
+    }
+
+    private function mutuData(Carbon $awal, string $jenis): array
+    {
+        $bulan = $this->bulan12($awal);
+        $dari = array_key_first($bulan) . '-01';
+        $sampai = $awal->copy()->endOfMonth()->toDateString();
+        $los = self::selisihHari('c.tgl_pulang', 'c.tgl_sep');
+
+        $rows = DB::table('vclaim_klaim as c')->whereBetween('c.tgl_pulang', [$dari, $sampai])->whereRaw(self::inapSql('c'))->whereNotNull('c.tgl_sep')
+            ->selectRaw("SUBSTR(c.tgl_pulang,1,7) bln, $los los, COUNT(*) n")->groupBy('bln', 'los')->get();
+        $dist = array_fill_keys(array_keys($bulan), []);
+        foreach ($rows as $r) {
+            if (isset($dist[$r->bln])) {
+                $l = max(0, (int) $r->los);
+                $dist[$r->bln][$l] = ($dist[$r->bln][$l] ?? 0) + (int) $r->n;
+            }
+        }
+        $kiniB = $awal->format('Y-m');
+
+        $cbg = $this->klaimC($awal, $jenis)->whereRaw(self::inapSql('c'))->whereNotNull('c.tgl_sep')->whereNotNull('c.inacbg_kode')
+            ->selectRaw("c.inacbg_kode kode, MAX(c.inacbg_nama) nama, COUNT(*) n, AVG($los) los")->groupBy('c.inacbg_kode')
+            ->havingRaw('COUNT(*) >= ' . self::MIN_KASUS)->get()
+            ->map(fn ($r) => ['kode' => $r->kode, 'nama' => self::kalimatCase($r->nama), 'nilai' => round((float) $r->los, 1), 'klaim' => (int) $r->n,
+                'chip' => number_format((int) $r->n, 0, ',', '.') . ' kasus', 'filter' => ['inacbg' => $r->kode, 'jenis' => 'inap']])->all();
+
+        $plg = self::selisihHari('b.tgl_sep', 'a.tgl_plg_sep');
+        $ulang = DB::table('vclaim_kunjungan as b')->whereBetween('b.tgl_sep', [$dari, $sampai])->whereRaw(self::inapSql('b'))->whereNotNull('b.no_kartu')
+            ->selectRaw("SUBSTR(b.tgl_sep,1,7) bln, COUNT(*) n, SUM(CASE WHEN EXISTS (SELECT 1 FROM vclaim_kunjungan a WHERE a.no_kartu = b.no_kartu
+                AND a.no_sep <> b.no_sep AND a.tgl_plg_sep IS NOT NULL AND a.tgl_sep <= b.tgl_sep AND " . self::inapSql('a') . "
+                AND $plg BETWEEN 0 AND 30) THEN 1 ELSE 0 END) r")
+            ->groupBy('bln')->get()->keyBy('bln');
+        $re = ['label' => array_values($bulan), 'n' => [], 'r' => [], 'pct' => []];
+        foreach (array_keys($bulan) as $b) {
+            $n = (int) ($ulang[$b]->n ?? 0);
+            $r = (int) ($ulang[$b]->r ?? 0);
+            $re['n'][] = $n;
+            $re['r'][] = $r;
+            $re['pct'][] = self::pct($r, $n) ?? 0;
+        }
+
+        return [
+            'los' => ['label' => array_values($bulan), 'median' => array_map(fn ($d) => self::median($d), array_values($dist)),
+                'rata' => array_map(fn ($d) => self::rata($d), array_values($dist)),
+                'median_kini' => self::median($dist[$kiniB] ?? []), 'rata_kini' => self::rata($dist[$kiniB] ?? [])],
+            'los_cbg' => self::peringkat($cbg, ['jenis' => 'inap'], 'hari'),
+            'readmisi' => ['n' => (int) ($ulang[$kiniB]->r ?? 0), 'dasar' => (int) ($ulang[$kiniB]->n ?? 0),
+                'pct' => self::pct((int) ($ulang[$kiniB]->r ?? 0), (int) ($ulang[$kiniB]->n ?? 0)), 'tren' => $re],
+        ];
+    }
+
+    private function cermatData(Carbon $awal, string $jenis): array
+    {
+        $rk = '(SELECT f.rubric_kurang FROM ftp_folders f WHERE f.no_sep = c.no_sep ORDER BY f.id DESC LIMIT 1)';
+        $kel = "CASE WHEN $rk = 0 THEN 'siap' WHEN $rk > 0 THEN 'belum' ELSE 'tidak' END";
+        $rows = $this->klaimC($awal, $jenis)->selectRaw("$kel kel, COUNT(*) n, " . self::PENDING_C . ' p')->groupBy('kel')->get()->keyBy('kel');
+        $kelompok = [];
+        foreach (self::CERMAT_LABEL as $k => $label) {
+            $n = (int) ($rows[$k]->n ?? 0);
+            $p = (int) ($rows[$k]->p ?? 0);
+            $kelompok[$k] = ['label' => $label, 'n' => $n, 'p' => $p, 'cukup' => $n >= self::MIN_BANDING,
+                'pct' => $n >= self::MIN_BANDING ? self::pct($p, $n) : null];
+        }
+
+        $golive = null;
+        $live = config('casemix.go_live_date');
+        if ($live && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $live)) {
+            $t = Carbon::parse($live)->startOfDay();
+            $hitung = function (Carbon $a, Carbon $b) use ($jenis) {
+                $q = VclaimKlaim::query()->whereBetween('tgl_pulang', [$a->toDateString(), $b->toDateString()]);
+                self::jenis($q, $jenis);
+                $r = $q->toBase()->selectRaw('COUNT(*) n, SUM(CASE WHEN status_kode = 2 THEN 1 ELSE 0 END) p')->first();
+
+                return ['n' => (int) $r->n, 'pct' => self::pct((int) $r->p, (int) $r->n), 'dari' => $a->toDateString(), 'sampai' => $b->toDateString()];
+            };
+            $golive = ['tanggal' => $t->toDateString(),
+                'sebelum' => $hitung($t->copy()->subMonthsNoOverflow(3), $t->copy()->subDay()),
+                'sesudah' => $hitung($t->copy(), $t->copy()->addMonthsNoOverflow(3)->subDay())];
+        }
+
+        return ['kelompok' => $kelompok, 'golive' => $golive];
     }
 }
