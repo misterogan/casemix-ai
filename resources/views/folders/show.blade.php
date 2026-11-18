@@ -72,13 +72,11 @@
             @include('folders.partials.bpjs')
         @endif
         {{-- Daftar periksa: 14 butir tetap per kelompok --}}
-        <section class="panel" aria-labelledby="judul-periksa" data-daftar-periksa>
-            <div class="panel-head border-b border-gray-200 px-4 py-3">
-                <h2 id="judul-periksa" class="font-semibold text-arang">Daftar periksa</h2>
-            </div>
+        <x-card lapang aria-labelledby="judul-periksa" data-daftar-periksa>
+            <x-slot:header><h2 id="judul-periksa" class="text-base font-semibold text-gray-800 dark:text-white/90">Daftar periksa</h2></x-slot:header>
             <div class="divide-y divide-gray-100">
                 @foreach ($rubric as $kelompok => $butir)
-                    <div class="px-4 py-3">
+                    <div class="py-3 first:pt-0 last:pb-0">
                         <h3 class="text-xs font-medium tracking-wide text-abu">{{ $kelompok }}</h3>
                         <ul class="mt-2 space-y-2">
                             @foreach ($butir as $i)
@@ -136,7 +134,7 @@
                     </div>
                 @endforeach
             </div>
-        </section>
+        </x-card>
 
         @if ($kodeOn)
             @include('folders.partials.codes')

@@ -91,6 +91,19 @@
         @endif
     </div>
 
+    {{-- Rawat inap vs rawat jalan (mengikuti filter periode) --}}
+    @if ($s['vclaim'])
+        @php
+            $periodeJenis = match ($period) {
+                '7' => now()->subDays(7)->toDateString() . '..' . now()->toDateString(),
+                '30' => now()->subDays(30)->toDateString() . '..' . now()->toDateString(),
+                'semua' => '2000-01-01..' . now()->toDateString(),
+                default => now()->format('Y-m'),
+            };
+        @endphp
+        <x-jenis-split class="col-span-12" :data="app(\App\Services\Dashboard\BpjsStats::class)->perJenis($periodeJenis)"/>
+    @endif
+
     {{-- Folder dipindahkan --}}
     <x-card class="col-span-12 min-w-0 xl:col-span-8" title="Folder dipindahkan dari FTP" subtitle="Perkiraan dari waktu folder hilang di FTP.">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

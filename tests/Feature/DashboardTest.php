@@ -108,4 +108,19 @@ class DashboardTest extends TestCase
 
         $this->actingAs($this->koor)->get(route('dashboard'))->assertOk()->assertSee('data-stat', false);
     }
+
+    public function test_bagian_rawat_inap_vs_jalan_di_dashboard(): void
+    {
+        config(['casemix.vclaim.enabled' => true]);
+        foreach (['Rawat Inap' => 2, 'Rawat Jalan' => 1] as $jns => $n) {
+            for ($i = 0; $i < $n; $i++) {
+                \App\Models\VclaimKlaim::create(['no_sep' => fake()->unique()->numerify('SEP#######'), 'status_kode' => 3, 'tgl_sep' => now()->toDateString(),
+                    'tgl_pulang' => now()->toDateString(), 'jns_pelayanan' => $jns, 'nama' => 'X', 'by_pengajuan' => 100, 'by_setujui' => 100]);
+            }
+        }
+        $html = $this->actingAs($this->koor)->get(route('control.index', ['periode' => 'bulan']))->assertOk()->getContent();
+        $this->assertStringContainsString('data-jenis-split', $html);
+        $this->assertMatchesRegularExpression('#data-jenis-kartu="inap".*?data-jenis-sel="layak" data-n="2"#s', $html);
+        $this->assertMatchesRegularExpression('#data-jenis-kartu="jalan".*?data-jenis-sel="layak" data-n="1"#s', $html);
+    }
 }

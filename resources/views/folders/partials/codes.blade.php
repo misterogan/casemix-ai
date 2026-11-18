@@ -9,15 +9,13 @@
             ! $c->tercantum_di_resume && $c->status_tindak_lanjut !== 'setuju' ? ' (menunggu DPJP)' : ''))
         ->implode("\n");
 @endphp
-<section class="panel" aria-labelledby="judul-kode" data-kode>
-    <div class="panel-head flex flex-wrap items-center justify-between gap-2">
-        <h2 id="judul-kode" class="panel-title">Saran diagnosis &amp; kode</h2>
-        @if ($codes->isNotEmpty())
-            <button type="button" class="btn-secondary" data-salin="{{ $daftarKoder }}" data-salin-ok="Daftar kode tersalin">Salin daftar kode untuk koder</button>
-        @endif
-    </div>
+<x-card lapang aria-labelledby="judul-kode" data-kode>
+    <x-slot:header><h2 id="judul-kode" class="text-base font-semibold text-gray-800 dark:text-white/90">Saran diagnosis &amp; kode</h2></x-slot:header>
+    @if ($codes->isNotEmpty())
+        <x-slot:actions><button type="button" class="btn-secondary btn-sm h-9" data-salin="{{ $daftarKoder }}" data-salin-ok="Daftar kode tersalin">Salin daftar kode untuk koder</button></x-slot:actions>
+    @endif
 
-    <div class="px-5 py-4 text-sm">
+    <div class="text-sm">
         @if ($codes->isEmpty())
             <p class="text-abu">Belum ada saran kode dari AI untuk folder ini.</p>
         @else
@@ -89,4 +87,4 @@
         @endif
         <p class="mt-4 text-xs text-abu">Saran ini bantuan, bukan keputusan koding. Koding final oleh koder di Edit Koreksi E-Klaim berdasarkan resume DPJP.</p>
     </div>
-</section>
+</x-card>

@@ -1,8 +1,8 @@
 {{-- Status klaim & riwayat pelayanan dari VClaim (hanya baca). Koordinator saja. --}}
 @php $rp = fn ($n) => $n === null ? '—' : 'Rp ' . number_format((float) $n, 0, ',', '.'); @endphp
-<x-panel aria-labelledby="judul-bpjs" data-panel-bpjs>
-    <div class="border-b border-line px-4 py-3"><h2 id="judul-bpjs" class="font-semibold text-arang">Status di BPJS</h2></div>
-    <div class="space-y-3 px-4 py-3 text-sm">
+<x-card lapang aria-labelledby="judul-bpjs" data-panel-bpjs>
+    <x-slot:header><h2 id="judul-bpjs" class="text-base font-semibold text-gray-800 dark:text-white/90">Status di BPJS</h2></x-slot:header>
+    <div class="space-y-3 text-sm">
         @if ($bpjs['tanpa_sep'])
             <p class="text-abu" data-tanpa-sep>SEP belum ada</p>
         @elseif (! $k = $bpjs['klaim'])
@@ -32,7 +32,7 @@
             <p class="text-xs text-abu">diperbarui {{ $k->synced_at?->format('d/m/Y H:i') ?? '—' }}</p>
         @endif
     </div>
-</x-panel>
+</x-card>
 
 @unless ($bpjs['tanpa_sep'])
     @include('bpjs.partials.histori-panel', ['url' => route('folders.histori', $folder), 'noKartu' => $bpjs['no_kartu'], 'histori' => $bpjs['histori']])

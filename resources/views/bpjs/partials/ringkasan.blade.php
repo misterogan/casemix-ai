@@ -119,6 +119,11 @@
         <div class="col-span-12 xl:col-span-7"><x-card><x-empty-state title="Belum ada data BPJS untuk periode ini." data-bpjs-kosong/></x-card></div>
     @endif
 
+    {{-- Rawat inap vs rawat jalan: disembunyikan bila filter jenis aktif --}}
+    @if ($jenisRingkasan === '')
+        <x-jenis-split class="col-span-12" :data="app(BpjsStats::class)->perJenis($periode)"/>
+    @endif
+
     {{-- Status sinkron + berkas FTP --}}
     <div class="col-span-12 flex flex-wrap items-stretch gap-4 md:gap-6">
         <div class="grid min-w-0 flex-1 gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm md:grid-cols-2 dark:border-gray-800 dark:bg-white/[.03]" data-sinkron>

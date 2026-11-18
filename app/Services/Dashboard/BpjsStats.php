@@ -29,6 +29,139 @@ class BpjsStats
         return Cache::remember("bpjs-stats:v4-kategori:$gen:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
     }
 
+    /**
+     * Rawat inap vs rawat jalan berdampingan. $periode: "Y-m" atau "Y-m-d..Y-m-d". Angka memakai aturan yang sama dengan get()
+     * (status_kategori, tgl_pulang untuk klaim, tgl_sep untuk SEP, belum = SEP tanpa baris klaim). Cache bersama (gen yang sama).
+     */
+    public function perJenis(string $periode): array
+    {
+        $gen = (int) Cache::get('bpjs-stats:gen', 0);
+
+        return Cache::remember("bpjs-stats:v4-kategori:$gen:perjenis:$periode", 600, fn () => $this->buildPerJenis($periode));
+    }
+
+    /** [dari, sampai, dari_lalu, sampai_lalu] sebagai Y-m-d. */
+    public static function rentangPeriode(string $periode): array
+    {
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/', $periode, $m)) {
+            $a = Carbon::parse($m[1])->startOfDay();
+            $b = Carbon::parse($m[2])->startOfDay();
+            $hari = (int) $a->diffInDays($b) + 1;
+
+            return [$a->toDateString(), $b->toDateString(), $a->copy()->subDays($hari)->toDateString(), $a->copy()->subDay()->toDateString()];
+        }
+        $a = Carbon::createFromFormat('!Y-m', $periode)->startOfMonth();
+        $l = $a->copy()->subMonth();
+
+        return [$a->toDateString(), $a->copy()->endOfMonth()->toDateString(), $l->toDateString(), $l->copy()->endOfMonth()->toDateString()];
+    }
+
+    /** Agregat klaim per kelompok jenis × status_kategori (satu query). */
+    private function klaimPerJenis(string $dari, string $sampai): array
+    {
+        $out = [];
+        foreach (['inap', 'jalan'] as $g) {
+            $out[$g] = ['n' => array_fill_keys(array_keys(self::STATUS), 0), 'rp' => array_fill_keys(array_keys(self::STATUS), 0.0), 'setuju' => 0.0];
+        }
+        $rows = DB::table('vclaim_klaim')->whereBetween('tgl_pulang', [$dari, $sampai])
+            ->selectRaw('jns_pelayanan, status_kategori, COUNT(*) n, COALESCE(SUM(by_pengajuan),0) rp, COALESCE(SUM(by_setujui),0) setuju')
+            ->groupBy('jns_pelayanan', 'status_kategori')->get();
+        foreach ($rows as $r) {
+            $g = self::kelompokJenis($r->jns_pelayanan);
+            $k = (string) $r->status_kategori;
+            if (! $g || ! isset(self::STATUS[$k])) {
+                continue;
+            }
+            $out[$g]['n'][$k] += (int) $r->n;
+            $out[$g]['rp'][$k] += (float) $r->rp;
+            if ($k === 'klaim') {
+                $out[$g]['setuju'] += (float) $r->setuju;
+            }
+        }
+
+        return $out;
+    }
+
+    private function buildPerJenis(string $periode): array
+    {
+        [$dari, $sampai, $dariL, $sampaiL] = self::rentangPeriode($periode);
+        $kini = $this->klaimPerJenis($dari, $sampai);
+        $lalu = $this->klaimPerJenis($dariL, $sampaiL);
+
+        // SEP terbit & tagihan belum tercatat (aturan sama dengan kartu "belum"): satu query group by jns_pelayanan
+        $sep = ['inap' => [0, 0], 'jalan' => [0, 0]];
+        $rows = DB::table('vclaim_kunjungan')->whereBetween('tgl_sep', [$dari, $sampai])
+            ->selectRaw('jns_pelayanan, COUNT(*) n, SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM vclaim_klaim WHERE vclaim_klaim.no_sep = vclaim_kunjungan.no_sep) THEN 1 ELSE 0 END) belum')
+            ->groupBy('jns_pelayanan')->get();
+        foreach ($rows as $r) {
+            if ($g = self::kelompokJenis($r->jns_pelayanan)) {
+                $sep[$g][0] += (int) $r->n;
+                $sep[$g][1] += (int) $r->belum;
+            }
+        }
+
+        $out = [];
+        foreach (['inap', 'jalan'] as $g) {
+            $n = $kini[$g]['n'];
+            $total = array_sum($n);
+            $disetujui = $kini[$g]['setuju'];
+            $out[$g] = [
+                'label' => self::JENIS_LABEL[$g], 'sep_terbit' => $sep[$g][0], 'klaim_total' => $total,
+                'kosong' => $total === 0 && $sep[$g][0] === 0, 'status' => [],
+                'nilai' => ['diajukan' => array_sum($kini[$g]['rp']), 'disetujui' => $disetujui, 'tertahan' => $kini[$g]['rp']['pending'],
+                    'selisih' => $kini[$g]['rp']['klaim'] - $disetujui],
+                'tagihan_belum_tercatat' => $sep[$g][1],
+            ];
+            foreach (['layak' => 'klaim', 'pending' => 'pending', 'tidak_layak' => 'tidak_layak', 'proses' => 'proses'] as $k => $kat) {
+                $out[$g]['status'][$k] = ['kategori' => $kat, 'n' => $n[$kat], 'pct' => self::pct($n[$kat], $total),
+                    'delta' => in_array($k, ['layak', 'pending'], true) ? $n[$kat] - $lalu[$g]['n'][$kat] : null];
+            }
+        }
+        $out['inap'] += $this->tambahanInap($dari, $sampai);
+        $out['jalan']['poli'] = $this->poliTeratas($dari, $sampai);
+
+        return ['periode' => $periode, 'dari' => $dari, 'sampai' => $sampai] + $out;
+    }
+
+    private function tambahanInap(string $dari, string $sampai): array
+    {
+        $los = self::selisihHari('c.tgl_pulang', 'c.tgl_sep');
+        $dist = [];
+        foreach (DB::table('vclaim_klaim as c')->whereBetween('c.tgl_pulang', [$dari, $sampai])->whereRaw(self::inapSql('c'))->whereNotNull('c.tgl_sep')
+            ->selectRaw("$los los, COUNT(*) n")->groupBy('los')->get() as $r) {
+            $l = max(0, (int) $r->los);
+            $dist[$l] = ($dist[$l] ?? 0) + (int) $r->n;
+        }
+
+        $plg = self::selisihHari('b.tgl_sep', 'a.tgl_plg_sep');
+        $u = DB::table('vclaim_kunjungan as b')->whereBetween('b.tgl_sep', [$dari, $sampai])->whereRaw(self::inapSql('b'))->whereNotNull('b.no_kartu')
+            ->selectRaw("COUNT(*) n, SUM(CASE WHEN EXISTS (SELECT 1 FROM vclaim_kunjungan a WHERE a.no_kartu = b.no_kartu
+                AND a.no_sep <> b.no_sep AND a.tgl_plg_sep IS NOT NULL AND a.tgl_sep <= b.tgl_sep AND " . self::inapSql('a') . "
+                AND $plg BETWEEN 0 AND 30) THEN 1 ELSE 0 END) r")->first();
+
+        $sev = self::sevSql('c');
+        $rows = DB::table('vclaim_klaim as c')->whereBetween('c.tgl_pulang', [$dari, $sampai])->whereRaw(self::inapSql('c'))
+            ->selectRaw("$sev sev, COUNT(*) n, " . self::PENDING_C . ' p')->groupBy('sev')->get()->keyBy('sev');
+        $severity = [];
+        foreach (['I', 'II', 'III'] as $s) {
+            $n = (int) ($rows[$s]->n ?? 0);
+            $severity[$s] = ['n' => $n, 'pct_pending' => self::pct((int) ($rows[$s]->p ?? 0), $n)];
+        }
+
+        return ['los' => ['median' => self::median($dist), 'rata' => self::rata($dist)],
+            'readmisi' => ['n' => (int) ($u->r ?? 0), 'dasar' => (int) ($u->n ?? 0), 'pct' => self::pct((int) ($u->r ?? 0), (int) ($u->n ?? 0))],
+            'severity' => $severity];
+    }
+
+    private function poliTeratas(string $dari, string $sampai): array
+    {
+        return DB::table('vclaim_klaim as c')->whereBetween('c.tgl_pulang', [$dari, $sampai])
+            ->where(fn ($w) => $w->where('c.jns_pelayanan', '2')->orWhere('c.jns_pelayanan', 'like', '%jalan%'))
+            ->whereNotNull('c.poli')->where('c.poli', '<>', '')
+            ->selectRaw('c.poli poli, COUNT(*) n, ' . self::PENDING_C . ' p')->groupBy('c.poli')->orderByDesc('n')->orderBy('c.poli')->limit(3)->get()
+            ->map(fn ($r) => ['poli' => $r->poli, 'n' => (int) $r->n, 'pct_pending' => self::pct((int) $r->p, (int) $r->n)])->all();
+    }
+
     /** Batalkan semua cache ringkasan (kunci bergantung periode/jenis). */
     public static function forget(): void
     {

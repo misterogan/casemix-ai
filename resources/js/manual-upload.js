@@ -220,3 +220,25 @@ function initUploader(root) {
 }
 
 document.querySelectorAll('[data-uploader]').forEach(initUploader);
+
+// Dropzone panel Dokumen tambahan: buka uploader yang sama, lalu teruskan file (klik/tarik).
+document.querySelectorAll('[data-manual-drop]').forEach((z) => {
+  const panel = z.closest('[data-dokumen-tambahan]');
+  const buka = () => {
+    const t = panel.querySelector('[data-tambah]');
+    t.hidden = false;
+    const b = panel.querySelector('[data-buka-tambah]');
+    if (b) b.hidden = true;
+    return t.querySelector('[data-input]');
+  };
+  z.addEventListener('click', () => buka()?.click());
+  z.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); buka()?.click(); } });
+  ['dragenter', 'dragover'].forEach((t) => z.addEventListener(t, (e) => { e.preventDefault(); z.dataset.drag = ''; }));
+  ['dragleave', 'drop'].forEach((t) => z.addEventListener(t, (e) => { e.preventDefault(); delete z.dataset.drag; }));
+  z.addEventListener('drop', (e) => {
+    const inp = buka();
+    if (!inp || !e.dataTransfer?.files?.length) return;
+    inp.files = e.dataTransfer.files;
+    inp.dispatchEvent(new Event('change'));
+  });
+});

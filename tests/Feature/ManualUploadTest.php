@@ -252,4 +252,16 @@ class ManualUploadTest extends TestCase
         $this->assertNotNull($m->fresh()->dimusnahkan_at);
         $this->assertSame(0, $folder->manualFiles()->count());
     }
+
+    public function test_panel_dokumen_tambahan_kosong_tampil_dropzone(): void
+    {
+        $folder = FtpFolder::create(['path' => '/ftp/data/kosong', 'name' => '000001_PASIEN_SEPX', 'files' => [], 'fingerprint' => 'f',
+            'files_modified_at' => now()->subDay(), 'last_seen_at' => now()]);
+        $html = $this->actingAs($this->koor)->get(route('folders.show', $folder))->assertOk()
+            ->assertSee('Belum ada dokumen tambahan')->assertSee('Pilih file')
+            ->assertSee('Tambahkan dokumen yang tidak ada di folder FTP, misalnya hasil lab atau resume yang tertinggal.')->getContent();
+        $this->assertStringContainsString('data-manual-drop data-manual-kosong', $html);
+        $this->assertStringContainsString('data-jumlah-manual', $html);
+        $this->assertStringContainsString('data-tambah hidden', $html);
+    }
 }

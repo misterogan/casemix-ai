@@ -403,4 +403,63 @@ class BpjsDashboardTest extends TestCase
         $this->assertMatchesRegularExpression('#overflow-x-auto[^"]*"[^>]*>\s*<table#', $html);
         $this->assertStringContainsString('data-terbaru="SEPA"', $html);
     }
+
+    public function test_per_jenis_sama_dengan_filter_jenis_lama(): void
+    {
+        $this->dataset();
+        $this->klaim(4, ['jns_pelayanan' => 'Rawat Jalan', 'status_kategori' => 'tidak_layak']);
+        $this->klaim(2, ['jns_pelayanan' => 'Rawat Jalan', 'poli' => 'PENYAKIT DALAM']);
+        BpjsStats::forget();
+        $s = app(BpjsStats::class);
+        $pj = $s->perJenis('2026-10');
+        $kat = ['layak' => 'klaim', 'pending' => 'pending', 'tidak_layak' => 'tidak_layak', 'proses' => 'proses'];
+        foreach (['inap', 'jalan'] as $g) {
+            $lama = $s->get('2026-10', $g);
+            $this->assertSame($lama['total_klaim'], $pj[$g]['klaim_total']);
+            $this->assertSame($lama['kartu']['sep']['n'], $pj[$g]['sep_terbit']);
+            $this->assertSame($lama['kartu']['belum']['n'], $pj[$g]['tagihan_belum_tercatat']);
+            $this->assertEquals($lama['kartu']['tertahan']['n'], $pj[$g]['nilai']['tertahan']);
+            foreach ($kat as $k => $kk) {
+                $this->assertSame($lama['kartu'][$kk === 'tidak_layak' ? 'tolak' : $kk]['n'] ?? null, $pj[$g]['status'][$k]['n'], "$g $k");
+            }
+            $this->assertSame($lama['kartu']['pending']['delta'], $pj[$g]['status']['pending']['delta']);
+        }
+        $semua = $s->get('2026-10', '');
+        $this->assertSame($semua['total_klaim'], $pj['inap']['klaim_total'] + $pj['jalan']['klaim_total']);
+        $this->assertSame($semua['kartu']['pending']['n'], $pj['inap']['status']['pending']['n'] + $pj['jalan']['status']['pending']['n']);
+        // tidak layak tidak masuk pending
+        $this->assertSame(1, $pj['jalan']['status']['tidak_layak']['n']);
+        $this->assertSame(1, $pj['jalan']['status']['pending']['n']);
+        $this->assertArrayHasKey('severity', $pj['inap']);
+        $this->assertArrayNotHasKey('severity', $pj['jalan']);
+        $this->assertArrayHasKey('poli', $pj['jalan']);
+        $this->assertArrayNotHasKey('poli', $pj['inap']);
+        $this->assertSame('PENYAKIT DALAM', $pj['jalan']['poli'][0]['poli']);
+    }
+
+    public function test_bagian_jenis_split_tautan_dan_sembunyi(): void
+    {
+        $this->dataset();
+        $this->klaim(2, ['jns_pelayanan' => 'Rawat Jalan', 'poli' => 'ANAK']);
+        $html = $this->ringkasan()->getContent();
+        $this->assertStringContainsString('data-jenis-split', $html);
+        preg_match('#data-jenis-kartu="inap"(.*?)data-jenis-kartu="jalan"(.*)$#s', $html, $m);
+        $this->assertNotEmpty($m);
+        [$inap, $jalan] = [$m[1], $m[2]];
+        $this->assertStringContainsString('data-jenis-severity', $inap);
+        $this->assertStringNotContainsString('data-jenis-poli', $inap);
+        $this->assertStringContainsString('data-jenis-poli', $jalan);
+        $this->assertStringNotContainsString('data-jenis-severity', $jalan);
+        $this->assertStringContainsString('ANAK', $jalan);
+        preg_match('#<a href="([^"]+)"[^>]*data-jenis-sel="pending"#', $inap, $u);
+        $q = [];
+        parse_str(parse_url(html_entity_decode($u[1]), PHP_URL_QUERY), $q);
+        $this->assertSame(['klaim', 'inap', 'pending'], [$q['tab'], $q['jenis'], $q['status']]);
+        preg_match('#<a href="([^"]+)"[^>]*data-jenis-sel="layak"#', $jalan, $u);
+        parse_str(parse_url(html_entity_decode($u[1]), PHP_URL_QUERY), $q);
+        $this->assertSame(['jalan', 'klaim'], [$q['jenis'], $q['status']]);
+
+        $this->assertStringNotContainsString('data-jenis-split', $this->ringkasan(['jenis' => 'inap'])->getContent());
+        $this->assertStringNotContainsString('data-jenis-split', $this->ringkasan(['jenis' => 'jalan'])->getContent());
+    }
 }
