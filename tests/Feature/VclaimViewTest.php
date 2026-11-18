@@ -47,10 +47,11 @@ class VclaimViewTest extends TestCase
     public function test_chip_status_per_kode(): void
     {
         foreach ([1 => 'Proses verifikasi', 2 => 'Pending verifikasi', 3 => 'Klaim'] as $kode => $teks) {
+            $kat = [1 => 'proses', 2 => 'pending', 3 => 'klaim'][$kode];
             $f = $this->folder("0301R00111260000$kode");
             $this->klaim($f->no_sep, $kode);
             $res = $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()
-                ->assertSee('data-bpjs-status="' . $kode . '"', false)->assertSee($teks)->assertSee('I-4-10-I')->assertSee('Rp 4.500.000');
+                ->assertSee('data-bpjs-status="' . $kat . '"', false)->assertSee($teks)->assertSee('I-4-10-I')->assertSee('Rp 4.500.000');
             $kode === 2 ? $res->assertSee('Alasan pending tidak tersedia di VClaim') : $res->assertDontSee('Alasan pending tidak tersedia');
         }
         $f = $this->folder('0301R001112600009');
@@ -117,6 +118,17 @@ class VclaimViewTest extends TestCase
         $f = $this->folder('0301R001112600500');
         $f->update(['rubric_kurang' => 1]);
         $this->klaim($f->no_sep, 2);
-        $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()->assertSee('data-bpjs-status="2"', false);
+        $this->actingAs($this->koor)->get(route('work-queue.index'))->assertOk()->assertSee('data-bpjs-status="pending"', false);
+    }
+
+    public function test_chip_tidak_layak_dan_dispute(): void
+    {
+        foreach (['Klaim Tidak Layak' => ['tidak_layak', 'Tidak layak'], 'Klaim Dispute' => ['dispute', 'Dispute']] as $teks => [$kat, $label]) {
+            $f = $this->folder('0301R00111260077' . strlen($teks));
+            $this->klaim($f->no_sep, 2, ['status_teks' => $teks]);
+            $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()
+                ->assertSee('data-bpjs-status="' . $kat . '"', false)->assertSee($label)
+                ->assertSee('Alasan tidak tersedia di VClaim')->assertDontSee('Alasan pending tidak tersedia');
+        }
     }
 }

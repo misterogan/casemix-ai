@@ -120,6 +120,7 @@ class VclaimSync
 
         $klaim = VclaimKlaim::firstOrNew(['no_sep' => $noSep]);
         $lama = $klaim->exists ? (int) $klaim->status_kode : null;
+        $katLama = $klaim->exists ? $klaim->status_kategori : null;
 
         $klaim->fill([
             'status_kode' => $status,
@@ -142,13 +143,16 @@ class VclaimSync
             'nama' => $peserta['nama'] ?? null,
             'synced_at' => $now,
         ]);
+        $kat = VclaimKlaim::kategori($klaim->status_teks, $status);
+        $klaim->status_kategori = $kat;
         if (! $klaim->exists) {
             $klaim->first_seen_at = $now;
             $klaim->status_changed_at = $now;
-        } elseif ($lama !== $status) {
+        } elseif ($lama !== $status || $katLama !== $kat) {
             $klaim->status_changed_at = $now;
             VclaimKlaimStatusHistory::create([
-                'no_sep' => $noSep, 'status_lama' => $lama, 'status_baru' => $status, 'terlihat_at' => $now,
+                'no_sep' => $noSep, 'status_lama' => $lama, 'status_baru' => $status,
+                'kategori_lama' => $katLama, 'kategori_baru' => $kat, 'terlihat_at' => $now,
             ]);
         }
         $klaim->save();

@@ -111,7 +111,7 @@ class BpjsListTest extends TestCase
         $this->klaim('SEPK2', 3);
 
         $this->actingAs($this->koor)->get(route('bpjs.index', ['tab' => 'sep']))->assertOk()
-            ->assertSee('SEPK1')->assertSee('Belum terlihat di data klaim')->assertSee('data-bpjs-status="3"', false);
+            ->assertSee('SEPK1')->assertSee('Belum terlihat di data klaim')->assertSee('data-bpjs-status="klaim"', false);
     }
 
     public function test_detail_menampilkan_riwayat_status(): void
@@ -123,6 +123,27 @@ class BpjsListTest extends TestCase
         $this->actingAs($this->koor)->get(route('bpjs.klaim.show', 'SEPD'))->assertOk()
             ->assertSee('Riwayat perubahan status')->assertSeeInOrder(['Pertama terlihat', 'Proses Verifikasi', 'Klaim'])
             ->assertSee('Ambil riwayat pelayanan');
+    }
+
+    public function test_filter_tidak_layak_dan_dispute(): void
+    {
+        $this->klaim('SEPPEND', 2, ['status_teks' => 'Klaim Pending']);
+        $this->klaim('SEPTL', 2, ['status_teks' => 'Klaim Tidak Layak']);
+        $this->klaim('SEPDSP', 2, ['status_teks' => 'Klaim Dispute']);
+        $q = ['tab' => 'klaim', 'dari' => '2026-11-01', 'sampai' => '2026-11-30'];
+
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', $q + ['status' => 'tidak_layak']))->assertOk()
+            ->assertSee('Tidak layak')->assertSee('data-bpjs-status="tidak_layak"', false);
+        $this->assertSame(['SEPTL'], $res->viewData('rows')->pluck('no_sep')->all());
+
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', $q + ['status' => 'pending']));
+        $this->assertSame(['SEPPEND'], $res->viewData('rows')->pluck('no_sep')->all());
+
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', $q + ['status' => 'dispute']));
+        $this->assertSame(['SEPDSP'], $res->viewData('rows')->pluck('no_sep')->all());
+
+        $res = $this->actingAs($this->koor)->get(route('bpjs.index', $q + ['status' => 'tolak']));
+        $this->assertEqualsCanonicalizing(['SEPTL', 'SEPDSP'], $res->viewData('rows')->pluck('no_sep')->all());
     }
 
     public function test_enabled_false_empty_state(): void

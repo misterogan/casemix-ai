@@ -37,7 +37,8 @@
                        class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[6px] px-2 py-1.5 text-sm hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-biru-aktif sm:grid-cols-[auto_1fr_150px_auto]">
                         <span class="tabular rounded-[6px] border border-line bg-white px-1.5 py-0.5 text-xs font-semibold text-ink">{{ $i['kode'] }}</span>
                         <span class="min-w-0 truncate text-ink" title="{{ $i['nama'] }}">{{ $i['nama'] ?: '—' }}
-                            @if (! empty($i['chip']))<span class="ml-1 rounded-[6px] bg-white/70 px-1.5 py-0.5 text-xs text-ink-muted" data-rank-row-chip>{{ $i['chip'] }}</span>@endif</span>
+                            @if (! empty($i['chip']))<span class="ml-1 rounded-[6px] bg-white/70 px-1.5 py-0.5 text-xs text-ink-muted" data-rank-row-chip>{{ $i['chip'] }}</span>@endif
+                            @if (! empty($i['chip_tl']))<span class="ml-1 rounded-[6px] bg-[#FBE4E4] px-1.5 py-0.5 text-xs text-[#7F1D1D]" data-rank-row-tl>{{ $i['chip_tl'] }}</span>@endif</span>
                         <span class="hidden h-1.5 rounded-full bg-black/5 sm:block" aria-hidden="true"><span class="block h-1.5 rounded-full {{ $tema[1] }}" style="width: {{ round((float) $i['nilai'] * 100 / $maks, 1) }}%"></span></span>
                         <span class="tabular text-right font-medium text-ink" @if (($data['format'] ?? '') === 'rupiah') title="{{ BpjsStats::rupiahPenuh((float) $i['nilai']) }}" @endif>{{ $fmt($i['nilai']) }}@if ($sat)<span class="ml-0.5 text-xs font-normal text-ink-muted">{{ $sat }}</span>@endif</span>
                     </a>

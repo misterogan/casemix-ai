@@ -107,7 +107,7 @@
                             @else — @endif
                         </td>
                         <td class="tabular px-4 py-3">{{ (int) $f->rubric_kurang }}</td>
-                        <td class="px-4 py-3">@if ($r['bpjs'])@include('folders.partials.bpjs-chip', ['kode' => $r['bpjs']])@endif</td>
+                        <td class="px-4 py-3">@if ($r['bpjs'])@include('folders.partials.bpjs-chip', ['kat' => $r['bpjs']])@endif</td>
                         @if ($tampilPenugasan)
                             <td class="px-4 py-3">
                                 <form method="POST" action="{{ route('folders.assign', $f) }}" class="relative z-10">

@@ -6,14 +6,16 @@
         @if ($bpjs['tanpa_sep'])
             <p class="text-abu" data-tanpa-sep>SEP belum ada</p>
         @elseif (! $k = $bpjs['klaim'])
-            @include('folders.partials.bpjs-chip', ['kode' => 0])
+            @include('folders.partials.bpjs-chip', ['kat' => null])
         @else
             <div class="flex flex-wrap items-center gap-2">
-                @include('folders.partials.bpjs-chip', ['kode' => $k->status_kode])
+                @include('folders.partials.bpjs-chip', ['kat' => $k->status_kategori])
                 @if ($k->no_fpk)<span class="text-xs text-abu">No FPK {{ $k->no_fpk }}</span>@endif
             </div>
-            @if ($k->status_kode === 2)
+            @if ($k->status_kategori === 'pending')
                 <p class="text-xs text-kritis">Alasan pending tidak tersedia di VClaim. Lihat umpan balik verifikator.</p>
+            @elseif (in_array($k->status_kategori, ['tidak_layak', 'dispute'], true))
+                <p class="text-xs text-kritis">Alasan tidak tersedia di VClaim. Lihat umpan balik verifikator.</p>
             @endif
             @if ($k->inacbg_kode)
                 <p class="text-arang"><span class="font-mono font-medium">{{ $k->inacbg_kode }}</span> {{ $k->inacbg_nama }}</p>

@@ -178,6 +178,51 @@ class VclaimTest extends TestCase
         $this->assertDatabaseHas('vclaim_histori', ['no_kartu' => '0000000000001', 'no_sep' => 'H1', 'diagnosa' => 'Demam']);
     }
 
+    public function test_kategori_status_dari_teks(): void
+    {
+        $sync = app(\App\Services\Vclaim\VclaimSync::class);
+        $sync->upsertKlaim(['noSEP' => 'SEPTL'] + $this->klaimRow('2#Klaim Tidak Layak'), 2, 1);
+        $sync->upsertKlaim(['noSEP' => 'SEPPD'] + $this->klaimRow('2#Klaim Pending'), 2, 1);
+        $sync->upsertKlaim(['noSEP' => 'SEPDS'] + $this->klaimRow('Klaim Dispute'), 2, 1);
+        $sync->upsertKlaim(['noSEP' => 'SEPKL'] + $this->klaimRow('Klaim'), 3, 1);
+
+        $kat = VclaimKlaim::pluck('status_kategori', 'no_sep');
+        $this->assertSame('tidak_layak', $kat['SEPTL']);
+        $this->assertSame('pending', $kat['SEPPD']);
+        $this->assertSame('dispute', $kat['SEPDS']);
+        $this->assertSame('klaim', $kat['SEPKL']);
+        $this->assertSame(1, VclaimKlaim::where('status_kategori', 'pending')->count());
+    }
+
+    public function test_teks_tak_dikenal_lainnya_dan_warning(): void
+    {
+        \Illuminate\Support\Facades\Log::spy();
+        app(\App\Services\Vclaim\VclaimSync::class)->upsertKlaim(['noSEP' => 'SEPX'] + $this->klaimRow('Status Baru Aneh'), 2, 1);
+
+        $this->assertSame('lainnya', VclaimKlaim::sole()->status_kategori);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(
+            fn ($msg, $ctx) => str_contains($msg, 'tidak dikenal') && $ctx['status_teks'] === 'Status Baru Aneh' && ! isset($ctx['nama'])
+        );
+    }
+
+    public function test_pending_ke_tidak_layak_tercatat_di_riwayat(): void
+    {
+        $sync = app(\App\Services\Vclaim\VclaimSync::class);
+        $this->travelTo(Carbon::parse('2026-11-12 08:00'));
+        $sync->upsertKlaim($this->klaimRow('2#Klaim Pending'), 2, 1);
+        $this->travelTo(Carbon::parse('2026-11-14 08:00'));
+        $sync->upsertKlaim($this->klaimRow('2#Klaim Tidak Layak'), 2, 1);
+
+        $k = VclaimKlaim::sole();
+        $this->assertSame('tidak_layak', $k->status_kategori);
+        $this->assertSame('2026-11-14', $k->status_changed_at->toDateString());
+        $h = VclaimKlaimStatusHistory::sole();
+        $this->assertSame([2, 2, 'pending', 'tidak_layak'], [$h->status_lama, $h->status_baru, $h->kategori_lama, $h->kategori_baru]);
+
+        $sync->upsertKlaim($this->klaimRow('2#Klaim Tidak Layak'), 2, 1);
+        $this->assertSame(1, VclaimKlaimStatusHistory::count());
+    }
+
     public function test_archive_prune_hapus_sync_runs_lebih_90_hari(): void
     {
         $lama = VclaimSyncRun::create(['jenis' => 'klaim', 'status' => 'ok']);

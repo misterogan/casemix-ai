@@ -86,7 +86,52 @@ class BpjsDashboardTest extends TestCase
         $this->assertSame(33.3, $k['pending']['pct']);
         $this->assertSame(4000000.0, $k['proses']['rp']);
         $this->assertSame(1, $k['pending']['delta']);
-        $res->assertSee('+1 vs bulan lalu')->assertSee('Perlu impor umpan balik BPJS')->assertSee('Sumber: VClaim Monitoring BPJS');
+        $res->assertSee('+1 vs bulan lalu')->assertDontSee('Perlu impor umpan balik BPJS')->assertSee('Sumber: VClaim Monitoring BPJS');
+    }
+
+    public function test_tidak_layak_terpisah_dari_pending(): void
+    {
+        $this->dataset();
+        $this->klaim(2, ['status_teks' => 'Klaim Tidak Layak', 'by_pengajuan' => 7000000]);
+        $this->klaim(2, ['status_teks' => 'Klaim Tidak Layak', 'by_pengajuan' => 3000000]);
+        $this->klaim(2, ['status_teks' => 'Klaim Dispute', 'by_pengajuan' => 500000]);
+        $res = $this->ringkasan();
+        $s = $res->viewData('stats');
+
+        $this->assertSame(2, $s['kartu']['pending']['n']);
+        $this->assertSame(3, $s['kartu']['tolak']['n']);
+        $this->assertSame(10500000.0, $s['kartu']['tolak']['rp']);
+        $this->assertSame(2, $s['aksi']['tidak_layak']);
+        $this->assertSame(10000000.0, $s['aksi']['tidak_layak_rp']);
+        $this->assertStringContainsString('2 tidak layak', BpjsStats::teksKalimat($s['kalimat']));
+        $this->assertSame(2, $s['tren']['tidak_layak'][11]);
+        $this->assertSame(2, $s['tren']['pending'][11]);
+        $res->assertSee('data-kartu="tolak"', false)->assertSee('status=tolak', false)
+            ->assertSee('Alasan tidak tersedia di VClaim. Lihat umpan balik verifikator.')
+            ->assertSee('data-aksi="tidak_layak"', false)->assertSee('BPJS menolak klaim ini.');
+    }
+
+    public function test_panel_tidak_layak_tersembunyi_saat_nol(): void
+    {
+        $this->dataset();
+        $res = $this->ringkasan();
+        $res->assertDontSee('data-aksi="tidak_layak"', false)->assertDontSee('tidak layak,');
+        $this->assertSame(0, $res->viewData('stats')['kartu']['tolak']['n']);
+    }
+
+    public function test_pct_pending_severity_tanpa_tidak_layak(): void
+    {
+        $this->klaim(2, ['inacbg_kode' => 'I-4-10-III', 'status_teks' => 'Klaim Pending', 'status_changed_at' => now()->subDays(3)]);
+        $this->klaim(2, ['inacbg_kode' => 'I-4-10-III', 'status_teks' => 'Klaim Tidak Layak', 'status_changed_at' => now()->subDays(3)]);
+        $this->klaim(3, ['inacbg_kode' => 'I-4-10-III']);
+        $this->klaim(3, ['inacbg_kode' => 'I-4-10-III']);
+        $a = $this->ringkasan()->viewData('stats')['analisis'];
+
+        $this->assertSame(25.0, $a['severity']['kartu']['III']['pct_pending']);
+        $row = $a['severity']['iii_pending']['items'][0];
+        $this->assertSame(1, $row['nilai']);
+        $this->assertSame('25,0% tidak layak', $row['chip_tl']);
+        $this->assertSame(1, $a['pending']['n']);
     }
 
     public function test_belum_masuk_dan_kurang_hanya_status_klaim(): void
@@ -110,7 +155,7 @@ class BpjsDashboardTest extends TestCase
         $this->assertSame(2, $d['tren']['pending'][11]);
         $this->assertSame(1, $d['tren']['pending'][10]);
         $this->assertSame(7, $d['tren']['go_live']);
-        $this->assertSame([2, 2, 2], $d['donut_status']['counts']);
+        $this->assertSame([2, 2, 0, 0, 2, 0], $d['donut_status']['counts']);
         $this->assertSame([5, 1], $d['donut_jenis']['counts']);
         $this->assertEquals([3000000, 2500000], [$d['tren']['diajukan'][11], $d['tren']['disetujui'][11]]);
         $this->assertCount(12, $d['tren']['links']);

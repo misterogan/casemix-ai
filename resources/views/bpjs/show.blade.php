@@ -12,7 +12,7 @@
             <p class="tabular text-sm text-ink-muted">SEP {{ $noSep }} @if ($klaim?->no_mr) · RM {{ $klaim->no_mr }} @endif</p>
         </div>
         <div class="flex items-center gap-2">
-            @include('folders.partials.bpjs-chip', ['kode' => $klaim?->status_kode ?? 0])
+            @include('folders.partials.bpjs-chip', ['kat' => $klaim?->status_kategori])
             @if ($folder)<a href="{{ route('folders.show', $folder->id) }}" class="btn-secondary" data-folder-link>Buka folder CERMAT</a>@endif
         </div>
     </header>
@@ -53,7 +53,7 @@
                     <ol class="divide-y divide-gray-100 text-sm">
                         @foreach ($klaim->statusHistory as $h)
                             <li class="flex justify-between gap-3 px-4 py-2" data-status-history>
-                                <span>{{ $h->status_lama === null ? 'Pertama terlihat' : $st($h->status_lama) }} &rarr; <span class="font-medium">{{ $st($h->status_baru) }}</span></span>
+                                <span>{{ $h->status_lama === null ? 'Pertama terlihat' : ($h->kategori_lama ? \App\Models\VclaimKlaim::KATEGORI[$h->kategori_lama] ?? $h->kategori_lama : $st($h->status_lama)) }} &rarr; <span class="font-medium">{{ $h->kategori_baru ? \App\Models\VclaimKlaim::KATEGORI[$h->kategori_baru] ?? $h->kategori_baru : $st($h->status_baru) }}</span></span>
                                 <span class="tabular text-ink-muted">{{ \Illuminate\Support\Carbon::parse($h->terlihat_at)->format('d/m/Y H:i') }}</span>
                             </li>
                         @endforeach

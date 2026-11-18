@@ -19,7 +19,9 @@ class BpjsController extends Controller
 {
     public const TABS = ['ringkasan' => 'Ringkasan', 'klaim' => 'Daftar klaim', 'sep' => 'SEP terbit'];
 
-    private const STATUS = ['proses' => 1, 'pending' => 2, 'klaim' => 3];
+    /** Filter status daftar klaim => kategori (status_kategori). */
+    private const STATUS = ['proses' => ['proses'], 'pending' => ['pending'], 'tidak_layak' => ['tidak_layak'], 'dispute' => ['dispute'],
+        'klaim' => ['klaim'], 'lainnya' => ['lainnya'], 'tolak' => ['tidak_layak', 'dispute']];
 
     private const MAKS_CSV = 10000;
 
@@ -44,7 +46,7 @@ class BpjsController extends Controller
                 $data['rentangData'] = VclaimKlaim::selectRaw('MIN(tgl_pulang) mn, MAX(tgl_pulang) mx')->first();
             }
             if ($tab === 'sep') {
-                $data['klaimStatus'] = VclaimKlaim::whereIn('no_sep', $seps)->pluck('status_kode', 'no_sep');
+                $data['klaimStatus'] = VclaimKlaim::whereIn('no_sep', $seps)->pluck('status_kategori', 'no_sep');
             }
         }
 
@@ -59,12 +61,12 @@ class BpjsController extends Controller
         $query = ($tab === 'klaim' ? $this->klaimQuery($filters) : $this->sepQuery($filters))->limit(self::MAKS_CSV);
         $rows = $query->get();
         $folders = FtpFolder::whereIn('no_sep', $rows->pluck('no_sep'))->pluck('id', 'no_sep');
-        $status = $tab === 'sep' ? VclaimKlaim::whereIn('no_sep', $rows->pluck('no_sep'))->pluck('status_kode', 'no_sep') : collect();
+        $status = $tab === 'sep' ? VclaimKlaim::whereIn('no_sep', $rows->pluck('no_sep'))->pluck('status_kategori', 'no_sep') : collect();
 
         Audit::log('bpjs.ekspor', null, 'Mengunduh CSV Klaim BPJS', ['tab' => $tab, 'filter' => array_filter($filters), 'jumlah' => $rows->count()]);
 
         $d = fn ($t) => $t?->format('d/m/Y');
-        $st = fn ($k) => VclaimKlaim::STATUS[$k] ?? 'Belum terlihat di data klaim';
+        $st = fn ($k) => VclaimKlaim::KATEGORI[$k] ?? 'Belum terlihat di data klaim';
 
         return response()->streamDownload(function () use ($tab, $rows, $folders, $status, $d, $st) {
             $out = fopen('php://output', 'w');
@@ -73,7 +75,7 @@ class BpjsController extends Controller
                 fputcsv($out, ['Tgl pulang', 'Nama', 'No RM', 'No SEP', 'Jenis', 'INA-CBG', 'Nama INA-CBG', 'Diajukan', 'Disetujui', 'Selisih', 'Status', 'Lama di status (hari)', 'Ada folder'], ';');
                 foreach ($rows as $r) {
                     fputcsv($out, [$d($r->tgl_pulang), $r->nama, $r->no_mr, $r->no_sep, $r->jns_pelayanan, $r->inacbg_kode, $r->inacbg_nama,
-                        $r->by_pengajuan, $r->by_setujui, self::selisih($r), $st($r->status_kode), self::lama($r), $folders->has($r->no_sep) ? 'ya' : 'tidak'], ';');
+                        $r->by_pengajuan, $r->by_setujui, self::selisih($r), $st($r->status_kategori), self::lama($r), $folders->has($r->no_sep) ? 'ya' : 'tidak'], ';');
                 }
             } else {
                 fputcsv($out, ['Tgl SEP', 'Tgl pulang', 'Nama', 'No SEP', 'Jenis', 'Diagnosa', 'Ada folder', 'Status klaim'], ';');
@@ -123,7 +125,7 @@ class BpjsController extends Controller
 
     public static function selisih(VclaimKlaim $k): ?float
     {
-        return $k->status_kode === 3 && $k->by_pengajuan !== null && $k->by_setujui !== null
+        return $k->status_kategori === 'klaim' && $k->by_pengajuan !== null && $k->by_setujui !== null
             ? (float) $k->by_setujui - (float) $k->by_pengajuan : null;
     }
 
@@ -147,8 +149,9 @@ class BpjsController extends Controller
         $links = [
             'kartu' => ['sep' => route('bpjs.index', ['tab' => 'sep'] + $p), 'belum' => route('bpjs.index', ['tab' => 'sep', 'belum' => 1] + $p),
                 'proses' => $klaim(['status' => 'proses']), 'pending' => $klaim(['status' => 'pending']), 'klaim' => $klaim(['status' => 'klaim']),
-                'kurang' => $klaim(['status' => 'klaim', 'kurang' => 1]), 'tertahan' => $klaim(['status' => 'pending'])],
-            'aksi' => ['pending14' => $klaim(['status' => 'pending', 'lama' => 14]),
+                'kurang' => $klaim(['status' => 'klaim', 'kurang' => 1]), 'tertahan' => $klaim(['status' => 'pending']),
+                'tolak' => $klaim(['status' => 'tolak'])],
+            'aksi' => ['pending14' => $klaim(['status' => 'pending', 'lama' => 14]), 'tidak_layak' => $klaim(['status' => 'tidak_layak']),
                 'belum7' => route('bpjs.index', ['tab' => 'sep', 'belum' => 1, 'lama' => 7] + $p)],
             'status' => array_map(fn ($s) => $klaim(['status' => $s]), $stats['donut_status']['keys']),
             'jenis' => array_map(fn ($x) => route('bpjs.index', ['tab' => 'klaim', 'jenis' => $x] + $rentang($periode)), $stats['donut_jenis']['keys']),
@@ -194,10 +197,10 @@ class BpjsController extends Controller
         $q = VclaimKlaim::query()->whereBetween('tgl_pulang', [$f['dari'], $f['sampai']]);
         $this->jenis($q, $f['jenis']);
         if ($f['status']) {
-            $q->where('status_kode', self::STATUS[$f['status']]);
+            $q->whereIn('status_kategori', self::STATUS[$f['status']]);
         }
         if ($f['kurang']) {
-            $q->where('status_kode', 3)->whereColumn('by_setujui', '<', 'by_pengajuan');
+            $q->where('status_kategori', 'klaim')->whereColumn('by_setujui', '<', 'by_pengajuan');
         }
         if ($f['lama']) {
             $q->whereNotNull('status_changed_at')->whereDate('status_changed_at', '<', now()->startOfDay()->subDays((int) $f['lama'])->toDateString());
@@ -218,7 +221,7 @@ class BpjsController extends Controller
             $q->where(fn ($w) => $w->where('no_sep', 'like', $like)->orWhere('nama', 'like', $like)->orWhere('no_mr', 'like', $like));
         }
 
-        return $q->orderByRaw('CASE WHEN status_kode = 2 THEN 0 ELSE 1 END')->orderByDesc('tgl_pulang')->orderBy('id');
+        return $q->orderByRaw("CASE WHEN status_kategori IN ('pending', 'tidak_layak', 'dispute') THEN 0 ELSE 1 END")->orderByDesc('tgl_pulang')->orderBy('id');
     }
 
     private function sepQuery(array $f): Builder

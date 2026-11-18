@@ -8,11 +8,12 @@
     $ds = $stats['donut_status'];
     $dj = $stats['donut_jenis'];
     $payload = ['donut_status' => $ds + ['links' => $links['status']], 'donut_jenis' => $dj + ['links' => $links['jenis']],
-        'tren' => $t + ['links' => $links['tren']], 'status_keys' => array_keys(BpjsStats::STATUS),
+        'tren' => $t + ['links' => $links['tren']], 'status_keys' => array_keys(BpjsStats::STATUS), 'status_label' => BpjsStats::STATUS_LABEL,
         'los' => $stats['analisis']['mutu']['los'] ?? null, 'readmisi' => $stats['analisis']['mutu']['readmisi']['tren'] ?? null];
     $panel = 'rounded-[10px] border border-line bg-white p-5';
     $ket = 'mt-1 text-xs text-ink-muted';
-    $warnaStatus = ['proses' => 'bg-triage-amber', 'pending' => 'bg-triage-red', 'klaim' => 'bg-triage-green'];
+    $warnaStatus = ['proses' => 'bg-triage-amber', 'pending' => 'bg-triage-red', 'tidak_layak' => 'bg-[#7F1D1D]', 'dispute' => 'bg-[#6B21A8]',
+        'klaim' => 'bg-triage-green', 'lainnya' => 'bg-[#9AA0A6]'];
 @endphp
 
 {{-- Hero --}}
@@ -52,7 +53,8 @@
                 </div>
                 <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
                     @foreach ($ds['keys'] as $i => $k)
-                        <li class="flex items-center gap-1.5"><span class="inline-block h-2 w-2 rounded-full {{ $warnaStatus[$k] }}"></span>
+                        @continue($k === 'lainnya' && ! $ds['counts'][$i])
+                        <li class="flex items-center gap-1.5" data-legenda="{{ $k }}"><span class="inline-block h-2 w-2 rounded-full {{ $warnaStatus[$k] }}"></span>
                             {{ $ds['labels'][$i] }} <span class="tabular font-medium text-ink">{{ $num($ds['counts'][$i]) }}</span></li>
                     @endforeach
                 </ul>
@@ -85,11 +87,11 @@
         $tema = ['sep' => ['text-brand', 'bg-brand-soft'], 'proses' => ['text-triage-amber', 'bg-triage-amber-soft'],
             'pending' => ['text-triage-red', 'bg-triage-red-soft'], 'klaim' => ['text-triage-green', 'bg-triage-green-soft'],
             'belum' => ['text-ink', 'bg-gray-100'], 'kurang' => ['text-triage-amber', 'bg-triage-amber-soft'],
-            'tertahan' => ['text-triage-red', 'bg-triage-red-soft']];
+            'tertahan' => ['text-triage-red', 'bg-triage-red-soft'], 'tolak' => ['text-[#7F1D1D]', 'bg-[#FBE4E4]']];
         $ikon = ['sep' => 'M4 5h16v14H4zM8 9h8M8 13h5', 'proses' => 'M12 6v6l4 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
             'pending' => 'M10 9v6M14 9v6M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'klaim' => 'M5 12l5 5L19 7',
             'belum' => 'M12 8v4M12 16h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'kurang' => 'M6 12h12',
-            'tertahan' => 'M6 10V8a6 6 0 1 1 12 0v2M5 10h14v10H5z'];
+            'tertahan' => 'M6 10V8a6 6 0 1 1 12 0v2M5 10h14v10H5z', 'tolak' => 'M6 6l12 12M18 6L6 18'];
     @endphp
     <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4" data-kartu-status>
         @foreach ($stats['kartu'] as $k => $c)
@@ -112,13 +114,10 @@
                 <span class="mt-1 block text-sm text-ink">{{ $c['label'] }}</span>
                 @if ($c['pct'] !== null)<span class="block text-xs text-ink-muted"><span class="tabular">{{ $pctf($c['pct']) }}</span> dari {{ $dasar }}</span>@endif
                 @if ($c['rp'] !== null)<span class="tabular block text-xs text-ink-muted" title="{{ BpjsStats::rupiahPenuh($c['rp']) }}">{{ BpjsStats::rupiahRingkas($c['rp']) }} diajukan</span>@endif
+                @if ($k === 'tolak')<span class="mt-1 block text-xs text-ink-muted" data-tolak-catatan>Alasan tidak tersedia di VClaim. Lihat umpan balik verifikator.</span>@endif
                 <span class="tabular mt-1 block text-xs {{ $warna }}" data-delta>{{ $d > 0 ? '+' . $fmtD($d) : ($d < 0 ? '−' . $fmtD($d) : 'sama') }} vs bulan lalu</span>
             </a>
         @endforeach
-        <div class="rounded-[10px] border border-line bg-gray-50 p-4 text-ink-muted" data-kartu="tidak-layak" aria-disabled="true">
-            <span class="block text-sm">Tidak layak / dispute</span>
-            <span class="mt-2 block text-xs">Perlu impor umpan balik BPJS</span>
-        </div>
     </div>
 
     {{-- Panel bertindak --}}
@@ -128,11 +127,14 @@
                 'periksa umpan balik verifikator, lengkapi berkas, ajukan ulang.', 'bg-triage-red-soft', 'text-triage-red'],
             'belum7' => ['Belum terlihat di data klaim (>7 hari sejak pulang)', 'bisa belum diajukan atau belum diproses BPJS.',
                 'cocokkan dengan daftar pengajuan E-Klaim.', 'bg-triage-amber-soft', 'text-triage-amber'],
+            'tidak_layak' => ['Klaim tidak layak', 'BPJS menolak klaim ini.',
+                'telusuri alasan dari verifikator, nilai apakah layak diajukan dispute.', 'bg-triage-red-soft', 'text-[#7F1D1D]'],
         ];
     @endphp
     <div class="grid gap-4 md:grid-cols-2" data-panel-aksi>
         @foreach ($aksi as $k => [$judul, $arti, $tindak, $bg, $fg])
             @php $n = $stats['aksi'][$k]; @endphp
+            @continue($k === 'tidak_layak' && $n === 0)
             @if ($n === 0)
                 <div class="rounded-[10px] bg-triage-green-soft p-5" data-aksi="{{ $k }}" data-aksi-aman>
                     <span class="tabular block text-3xl font-semibold text-triage-green">0</span>
@@ -145,6 +147,9 @@
                     <span class="mt-1 block font-medium text-ink">{{ $judul }}</span>
                     @if ($k === 'pending14' && $stats['aksi']['pending14_rp'] > 0)
                         <span class="tabular block text-xs text-ink-muted" title="{{ BpjsStats::rupiahPenuh($stats['aksi']['pending14_rp']) }}">{{ BpjsStats::rupiahRingkas($stats['aksi']['pending14_rp']) }} nilai tertahan</span>
+                    @endif
+                    @if ($k === 'tidak_layak')
+                        <span class="tabular block text-xs text-ink-muted" title="{{ BpjsStats::rupiahPenuh($stats['aksi']['tidak_layak_rp']) }}" data-aksi-rp>{{ BpjsStats::rupiahRingkas($stats['aksi']['tidak_layak_rp']) }} diajukan</span>
                     @endif
                     <p class="mt-3 text-sm text-ink"><span class="font-medium">Artinya:</span> {{ $arti }}</p>
                     <p class="mt-1 text-sm text-ink"><span class="font-medium">Tindakan:</span> {{ $tindak }}</p>
@@ -187,13 +192,13 @@
                 <div class="flex items-center justify-between"><h3 class="font-semibold text-ink">Tren status klaim 12 bulan</h3>
                     <button type="button" class="text-xs text-biru-aktif underline" data-lihat-tabel aria-expanded="false" aria-controls="tabel-tren">Lihat tabel</button></div>
                 <p class="{{ $ket }}">Batang bertumpuk menunjukkan jumlah per status; garis putus-putus adalah persen pending (sumbu kanan).</p>
-                <div class="relative mt-3 h-72"><canvas id="chart-tren" role="img" aria-label="Tren klaim {{ $t['label'][0] }} sampai {{ $t['label'][11] }}, batang bertumpuk per status dan garis persen pending. {{ $t['label'][11] }}: proses {{ $t['proses'][11] }}, pending {{ $t['pending'][11] }}, klaim {{ $t['klaim'][11] }}."></canvas></div>
+                <div class="relative mt-3 h-72"><canvas id="chart-tren" role="img" aria-label="Tren klaim {{ $t['label'][0] }} sampai {{ $t['label'][11] }}, batang bertumpuk per status dan garis persen pending. {{ $t['label'][11] }}: proses {{ $t['proses'][11] }}, pending {{ $t['pending'][11] }}, tidak layak {{ $t['tidak_layak'][11] }}, dispute {{ $t['dispute'][11] }}, klaim {{ $t['klaim'][11] }}."></canvas></div>
                 <div class="overflow-x-auto"><table id="tabel-tren" hidden class="mt-3 w-full text-sm">
-                    <thead class="text-left text-xs text-ink-muted"><tr><th class="py-1 font-medium">Bulan</th><th class="py-1 text-right font-medium">Proses</th><th class="py-1 text-right font-medium">Pending</th><th class="py-1 text-right font-medium">Klaim</th><th class="py-1 text-right font-medium">% pending</th></tr></thead>
+                    <thead class="text-left text-xs text-ink-muted"><tr><th class="py-1 font-medium">Bulan</th><th class="py-1 text-right font-medium">Proses</th><th class="py-1 text-right font-medium">Pending</th><th class="py-1 text-right font-medium">Tidak layak</th><th class="py-1 text-right font-medium">Dispute</th><th class="py-1 text-right font-medium">Klaim</th><th class="py-1 text-right font-medium">% pending</th></tr></thead>
                     <tbody>
                         @foreach ($t['label'] as $i => $l)
                             <tr><td class="py-1">{{ $l }}@if ($t['go_live'] === $i) <span class="text-xs text-ink-muted">(CERMAT mulai)</span>@endif</td>
-                                <td class="tabular py-1 text-right">{{ $t['proses'][$i] }}</td><td class="tabular py-1 text-right">{{ $t['pending'][$i] }}</td>
+                                <td class="tabular py-1 text-right">{{ $t['proses'][$i] }}</td><td class="tabular py-1 text-right">{{ $t['pending'][$i] }}</td><td class="tabular py-1 text-right">{{ $t['tidak_layak'][$i] }}</td><td class="tabular py-1 text-right">{{ $t['dispute'][$i] }}</td>
                                 <td class="tabular py-1 text-right">{{ $t['klaim'][$i] }}</td><td class="tabular py-1 text-right">{{ $pctf($t['pct_pending'][$i]) }}</td></tr>
                         @endforeach
                     </tbody>

@@ -8,10 +8,13 @@ if (el) {
     const warna = {
         proses: token('--color-triage-amber', '#D99A0B'),
         pending: token('--color-triage-red', '#C8352E'),
+        tidak_layak: '#7F1D1D',
+        dispute: '#6B21A8',
         klaim: token('--color-triage-green', '#1E8A5A'),
+        lainnya: '#9AA0A6',
         netral: token('--color-ink-muted', '#5B6880'),
     };
-    const label = { proses: 'Proses verifikasi', pending: 'Pending verifikasi', klaim: 'Klaim layak' };
+    const label = data.status_label || { proses: 'Proses verifikasi', pending: 'Pending verifikasi', klaim: 'Klaim layak' };
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         Chart.defaults.animation = false;

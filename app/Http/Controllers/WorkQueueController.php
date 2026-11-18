@@ -71,7 +71,7 @@ class WorkQueueController extends Controller
             ->orderByDesc('code_suggestions.folder_analysis_id')
             ->get(['code_suggestions.code', 'folder_analyses.ftp_folder_id'])
             ->unique('ftp_folder_id')->pluck('code', 'ftp_folder_id');
-        $bpjs = \App\Models\VclaimKlaim::whereIn('no_sep', $items->pluck('folder.no_sep')->filter())->pluck('status_kode', 'no_sep');
+        $bpjs = \App\Models\VclaimKlaim::whereIn('no_sep', $items->pluck('folder.no_sep')->filter())->pluck('status_kategori', 'no_sep');
         $items = $items->map(fn ($r) => $r + ['dx' => $dx[$r['folder']->id] ?? null, 'bpjs' => $bpjs[$r['folder']->no_sep] ?? null] + self::identity($r['folder']));
 
         return view('work-queue.index', [

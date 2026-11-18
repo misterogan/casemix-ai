@@ -51,7 +51,7 @@
                 @if ($tab === 'klaim')
                     <label class="flex flex-col gap-1"><span class="text-xs text-ink-muted">Status</span>
                         <select name="status" class="field">
-                            @foreach (['' => 'Semua', 'proses' => 'Proses', 'pending' => 'Pending', 'klaim' => 'Klaim'] as $v => $l)
+                            @foreach (['' => 'Semua', 'proses' => 'Proses', 'pending' => 'Pending', 'tidak_layak' => 'Tidak layak', 'dispute' => 'Dispute', 'tolak' => 'Tidak layak + dispute', 'klaim' => 'Klaim', 'lainnya' => 'Lainnya'] as $v => $l)
                                 <option value="{{ $v }}" @selected($filters['status'] === $v)>{{ $l }}</option>
                             @endforeach
                         </select></label>
@@ -87,7 +87,7 @@
                                     <td class="tabular px-3 py-2 text-right">{{ $rp($r->by_pengajuan) }}</td>
                                     <td class="tabular px-3 py-2 text-right">{{ $rp($r->by_setujui) }}</td>
                                     <td @class(['tabular px-3 py-2 text-right', 'font-semibold text-kritis' => $sel !== null && $sel < 0]) @if ($sel !== null && $sel < 0) data-selisih-minus @endif>{{ $rp($sel) }}</td>
-                                    <td class="px-3 py-2">@include('folders.partials.bpjs-chip', ['kode' => $r->status_kode])</td>
+                                    <td class="px-3 py-2">@include('folders.partials.bpjs-chip', ['kat' => $r->status_kategori])</td>
                                     <td class="tabular whitespace-nowrap px-3 py-2">{{ $lama === null ? '—' : "$lama hari" }}</td>
                                     <td class="px-3 py-2">@if ($f)<a href="{{ route('folders.show', $f->id) }}" class="text-biru-aktif underline" data-folder-link>Buka folder</a>@else — @endif</td>
                                 </tr>
@@ -112,7 +112,7 @@
                                     <td class="px-3 py-2">{{ $r->jns_pelayanan }}</td>
                                     <td class="px-3 py-2">{{ $r->diagnosa ?: '—' }}</td>
                                     <td class="px-3 py-2">@if (isset($folders[$r->no_sep]))<a href="{{ route('folders.show', $folders[$r->no_sep]->id) }}" class="text-biru-aktif underline" data-folder-link>ya</a>@else tidak @endif</td>
-                                    <td class="px-3 py-2">@if (isset($klaimStatus[$r->no_sep]))@include('folders.partials.bpjs-chip', ['kode' => $klaimStatus[$r->no_sep]])@else<span class="text-xs text-ink-muted">Belum terlihat di data klaim</span>@endif</td>
+                                    <td class="px-3 py-2">@if (isset($klaimStatus[$r->no_sep]))@include('folders.partials.bpjs-chip', ['kat' => $klaimStatus[$r->no_sep]])@else<span class="text-xs text-ink-muted">Belum terlihat di data klaim</span>@endif</td>
                                 </tr>
                             @endforeach
                         </tbody>
