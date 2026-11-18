@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\EkstrakPnpk;
 use App\Models\AiUsage;
-use App\Models\PnpkDokumen;
+use App\Models\RegulasiDokumen;
 use App\Services\Pnpk\PnpkProposer;
 use App\Services\Pnpk\PnpkTextExtractor;
 use App\Support\Audit;
@@ -18,9 +18,13 @@ use Throwable;
  */
 class PnpkImport extends Command
 {
-    protected $signature = 'casemix:pnpk-import {path : Folder berisi PDF PNPK} {--dry-run : Tampilkan rencana tanpa menyimpan} {--hanya= : Glob nama file, mis. pneumonia*} {--estimasi : Perkiraan token & biaya usulan AI tanpa menyimpan apa pun}';
+    protected $signature = 'casemix:pnpk-import {path : Folder berisi PDF acuan} {--dry-run : Tampilkan rencana tanpa menyimpan} {--hanya= : Glob nama file, mis. pneumonia*} {--estimasi : Perkiraan token & biaya usulan AI tanpa menyimpan apa pun} {--jenis=kmk_pnpk : Jenis dokumen (permenkes|kmk_pnpk|ba_kesepakatan|perpres|peraturan_bpjs|surat_edaran|juknis|lainnya)} {--cakupan= : Cakupan dipisah koma (bawaan sesuai jenis)}';
 
-    protected $description = 'Impor PDF PNPK dari folder ke Acuan regulasi (ekstrak & usulan AI lewat antrean)';
+    /** @var string[] */
+    protected $aliases = ['casemix:regulasi-import'];
+
+    protected $description = 'Impor PDF acuan regulasi dari folder (ekstrak & usulan AI lewat antrean)';
+
 
     private const SINGKATAN = ['dm' => 'DM', 'ppok' => 'PPOK', 'hiv' => 'HIV', 'tb' => 'TB', 'ckd' => 'CKD', 'ispa' => 'ISPA', 'dbd' => 'DBD'];
 
@@ -35,6 +39,15 @@ class PnpkImport extends Command
 
             return self::FAILURE;
         }
+        $jenis = (string) $this->option('jenis');
+        if (! isset(RegulasiDokumen::JENIS[$jenis])) {
+            $this->error("Jenis tidak dikenal: $jenis");
+
+            return self::FAILURE;
+        }
+        $cakupan = $this->option('cakupan')
+            ? array_values(array_intersect(array_map('trim', explode(',', (string) $this->option('cakupan'))), array_keys(RegulasiDokumen::CAKUPAN)))
+            : (RegulasiDokumen::CAKUPAN_BAWAAN[$jenis] ?? ['umum']);
         $dry = (bool) $this->option('dry-run');
         $hanya = $this->option('hanya');
         $files = array_filter(glob($dir . DIRECTORY_SEPARATOR . '*') ?: [], fn ($f) => is_file($f) && strtolower(pathinfo($f, PATHINFO_EXTENSION)) === 'pdf'
@@ -48,11 +61,11 @@ class PnpkImport extends Command
         $n = $m = $k = 0;
         foreach ($files as $f) {
             $nama = basename($f);
-            $meta = self::metaDariNama($nama);
+            $meta = $jenis === 'kmk_pnpk' ? self::metaDariNama($nama) : self::metaUmum($nama);
             $status = 'baru';
             if (! self::isPdf($f)) {
                 $status = 'bukan PDF';
-            } elseif (PnpkDokumen::where('sha256', $sha = hash_file('sha256', $f))->exists()) {
+            } elseif (RegulasiDokumen::where('sha256', $sha = hash_file('sha256', $f))->exists()) {
                 $status = 'lewati (sudah terdaftar)';
             }
             $rows[] = [$nama, $meta['judul'], $meta['tahun'], $meta['nomor_kmk'] ?? '—', $status];
@@ -67,17 +80,23 @@ class PnpkImport extends Command
             }
             $tanggal = null;
             try {
-                $tanggal = self::tanggalBerlaku($extractor->textPages($f));
+                $teks = $extractor->textPages($f);
+                $tanggal = $jenis === 'permenkes' ? self::tanggalPermenkes($teks) : self::tanggalBerlaku($teks);
+                if ($jenis === 'permenkes' && ! $meta['nomor_kmk'] && ($no = self::nomorPermenkes($teks))) {
+                    $meta['nomor_kmk'] = $no;
+                    $meta['tahun'] = (int) substr($no, -4);
+                }
             } catch (Throwable $e) {
                 $this->warn("$nama: teks tidak terbaca untuk tanggal berlaku ({$e->getMessage()})");
             }
             $path = "pnpk/$sha.pdf";
             Storage::disk('local')->put($path, file_get_contents($f));
             $perlu = ! $meta['nomor_kmk'] || ! $tanggal;
-            $d = PnpkDokumen::create(['judul' => $meta['judul'], 'nomor_kmk' => $meta['nomor_kmk'], 'tahun' => $meta['tahun'],
+            $d = RegulasiDokumen::create(['judul' => $meta['judul'], 'jenis' => $jenis, 'cakupan' => $cakupan,
+                'nomor' => $meta['nomor_kmk'], 'nomor_kmk' => $jenis === 'kmk_pnpk' ? $meta['nomor_kmk'] : null, 'tahun' => $meta['tahun'],
                 'tanggal_berlaku' => $tanggal, 'status' => 'berlaku', 'path' => $path, 'sha256' => $sha,
                 'status_proses' => 'antre', 'perlu_dilengkapi' => $perlu]);
-            Audit::log('pnpk.impor', $d, "Mengimpor PNPK {$d->judul} dari folder", ['user' => 'console', 'file' => $nama, 'sha256' => $sha,
+            Audit::log('pnpk.impor', $d, "Mengimpor {$d->jenisLabel()} {$d->judul} dari folder", ['user' => 'console', 'file' => $nama, 'sha256' => $sha, 'jenis' => $jenis,
                 'perlu_dilengkapi' => $perlu]);
             // EkstrakPnpk mengantrekan UsulkanButirPnpk setelah teks tersimpan (antrean biasa, tidak sinkron).
             EkstrakPnpk::dispatch($d->id);
@@ -85,7 +104,7 @@ class PnpkImport extends Command
             $k += $perlu ? 1 : 0;
         }
 
-        $this->table(['File', 'Judul', 'Tahun', 'Nomor KMK', 'Status'], $rows);
+        $this->table(['File', 'Judul', 'Tahun', 'Nomor', 'Status'], $rows);
         $this->info("$n diimpor, $m dilewati, $k perlu dilengkapi" . ($dry ? ' (dry-run, tidak disimpan)' : ''));
 
         return self::SUCCESS;
@@ -139,6 +158,37 @@ class PnpkImport extends Command
         return ['judul' => 'PNPK Tata Laksana ' . self::rapikan($slug !== '' ? $slug : $base), 'tahun' => $tahun, 'nomor_kmk' => null];
     }
 
+    /** Selain KMK PNPK: nama file bebas, judul dari nama file, nomor dilengkapi kemudian. @return array{judul:string,tahun:int,nomor_kmk:?string} */
+    public static function metaUmum(string $nama): array
+    {
+        $base = preg_replace('/\.pdf$/i', '', $nama);
+        $tahun = preg_match('/(?<!\d)(19|20)\d{2}(?!\d)/', $base, $y) ? (int) $y[0] : (int) now()->year;
+
+        $judul = trim(preg_replace('/[_\s]+/u', ' ', $base));
+
+        return ['judul' => mb_strtoupper(mb_substr($judul, 0, 1)) . mb_substr($judul, 1), 'tahun' => $tahun, 'nomor_kmk' => null];
+    }
+
+    /** "PERATURAN MENTERI KESEHATAN ... NOMOR 26 TAHUN 2021" di halaman pertama → "Permenkes 26/2021". */
+    public static function nomorPermenkes(array $pages): ?string
+    {
+        $awal = (string) (array_values($pages)[0] ?? '');
+
+        return preg_match('/PERATURAN\s+MENTERI\s+KESEHATAN.{0,200}?NOMOR\s+(\d+)\s+TAHUN\s+(\d{4})/isu', $awal, $x) ? "Permenkes {$x[1]}/{$x[2]}" : null;
+    }
+
+    /** Permenkes: bila "mulai berlaku pada tanggal diundangkan", pakai tanggal "Diundangkan di Jakarta pada tanggal …"; selain itu tanggal ditetapkan. */
+    public static function tanggalPermenkes(array $pages): ?string
+    {
+        $semua = implode(' ', array_map('strval', $pages));
+        if (preg_match('/mulai\s+berlaku\s+pada\s+tanggal\s+diundangkan/iu', $semua)
+            && ($t = self::cariTanggal($pages, 'Diundangkan'))) {
+            return $t;
+        }
+
+        return self::tanggalBerlaku($pages);
+    }
+
     private static function rapikan(string $slug): string
     {
         $kata = preg_split('/[-_\s]+/', strtolower($slug), -1, PREG_SPLIT_NO_EMPTY);
@@ -163,9 +213,14 @@ class PnpkImport extends Command
     /** Cari "Ditetapkan di Jakarta pada tanggal {d} {bulan} {yyyy}" di 5 halaman pertama & 5 terakhir. */
     public static function tanggalBerlaku(array $pages): ?string
     {
+        return self::cariTanggal($pages, 'Ditetapkan');
+    }
+
+    private static function cariTanggal(array $pages, string $kata): ?string
+    {
         $pages = array_values($pages);
         $pilih = count($pages) <= 10 ? $pages : array_merge(array_slice($pages, 0, 5), array_slice($pages, -5));
-        $pola = '/Ditetapkan\s+di\s+Jakarta\s*,?\s*pada\s+tanggal\s*:?\s*(\d{1,2})\s+(' . implode('|', array_keys(self::BULAN)) . ')\s+(\d{4})/iu';
+        $pola = '/' . $kata . '\s+di\s+Jakarta\s*,?\s*pada\s+tanggal\s*:?\s*(\d{1,2})\s+(' . implode('|', array_keys(self::BULAN)) . ')\s+(\d{4})/iu';
         foreach ($pilih as $teks) {
             if (preg_match($pola, (string) $teks, $x) && checkdate(self::BULAN[strtolower($x[2])], (int) $x[1], (int) $x[3])) {
                 return sprintf('%04d-%02d-%02d', $x[3], self::BULAN[strtolower($x[2])], $x[1]);

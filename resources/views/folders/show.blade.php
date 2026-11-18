@@ -22,16 +22,22 @@
         $tampilAnalisa = $bisaAnalisa && ! ($siap === true && ! $changed && ! $berjalan);
         // Penampil: semua file folder; bawaan resume medis bila ada
         $berkas = collect($folder->files ?? [])->values()->map(fn ($f, $i) => ['nama' => $f['name'] ?? ('File ' . ($i + 1)), 'url' => route('folders.file', [$folder, $i])]);
+        // Dokumen acuan yang dirujuk panel Dasar koding / Dasar sanggahan ikut dibuka di penampil
+        $dasarKoding = $dasarKoding ?? collect();
+        $sanggahan = $sanggahan ?? null;
+        $berkas = $berkas->concat($dasarKoding->flatMap(fn ($x) => $x['butir'])->concat($sanggahan['semua'] ?? [])
+            ->map(fn ($b) => $b->dokumen)->unique('id')->map(fn ($d) => ['nama' => $d->namaPenampil(), 'url' => route('acuan.pnpk.pdf', $d)]))->values();
         $resume = $documents->first(fn ($d) => $d->doc_type === 'resume_medis')?->name;
         $awal = $berkas->search(fn ($b) => $resume ? $b['nama'] === $resume : stripos($b['nama'], 'resume') !== false);
         $awal = $awal === false ? 0 : $awal;
         $bagian = array_filter([
             'ringkasan' => 'Ringkasan',
-            'kode' => $kodeOn ? 'Diagnosis & kode' : null,
+            'kode' => $kodeOn || $koordinator ? 'Diagnosis & kode' : null,
             'kelengkapan' => 'Kelengkapan',
             'temuan' => 'Temuan (' . $temuan->count() . ')',
             'pnpk' => $koordinator ? 'Acuan PNPK' : null,
             'bpjs' => $bpjs ? 'Status BPJS' : null,
+            'sanggahan' => $sanggahan ? 'Dasar sanggahan' : null,
             'riwayat' => $bpjs && ! $bpjs['tanpa_sep'] ? 'Riwayat pelayanan' : null,
             'tambahan' => $koordinator ? 'Dokumen tambahan' : null,
             'file' => 'File (' . $total . ')',
@@ -134,8 +140,11 @@
                 </div>
             </section>
 
-            @if ($kodeOn)
-                <section id="bagian-kode" data-bagian="kode">@include('folders.partials.codes')</section>
+            @if ($kodeOn || $koordinator)
+                <section id="bagian-kode" data-bagian="kode" class="space-y-4">
+                    @if ($kodeOn)@include('folders.partials.codes')@endif
+                    @if ($koordinator)@include('folders.partials.dasar-koding')@endif
+                </section>
             @endif
 
             {{-- Kelengkapan: Daftar periksa 14 butir + saran DPJP --}}
@@ -217,6 +226,12 @@
 
             @if ($bpjs)
                 @include('folders.partials.bpjs')
+            @endif
+
+            @if ($sanggahan)
+                <section id="bagian-sanggahan" data-bagian="sanggahan">
+                    @include('folders.partials.dasar-sanggahan', ['drafUrl' => route('folders.draf', $folder), 'unduhUrl' => route('folders.draf.unduh', $folder)])
+                </section>
             @endif
 
             @if ($koordinator)

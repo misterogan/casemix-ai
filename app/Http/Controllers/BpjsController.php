@@ -7,6 +7,8 @@ use App\Models\VclaimKlaim;
 use App\Models\VclaimKunjungan;
 use App\Models\VclaimSyncRun;
 use App\Services\Dashboard\BpjsStats;
+use App\Services\Regulasi\DasarSanggahan;
+use App\Services\Regulasi\DrafSanggahan;
 use App\Services\Vclaim\VclaimHistoriService;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Builder;
@@ -100,7 +102,37 @@ class BpjsController extends Controller
             'noSep' => $noSep, 'klaim' => $klaim, 'kunjungan' => $kunjungan, 'noKartu' => $noKartu, 'enabled' => $enabled,
             'histori' => $noKartu ? app(VclaimHistoriService::class)->simpanan($noSep) : null,
             'folder' => FtpFolder::where('no_sep', $noSep)->orderByDesc('id')->first(['id', 'no_sep']),
+            'sanggahan' => DasarSanggahan::bolehKlaim($klaim) ? $this->panelSanggahan($noSep, $klaim, $kunjungan) : null,
         ]);
+    }
+
+    private function panelSanggahan(string $noSep, ?VclaimKlaim $klaim, ?VclaimKunjungan $kunjungan): array
+    {
+        return app(DasarSanggahan::class)->untukKlaim($klaim, $kunjungan, FtpFolder::where('no_sep', $noSep)->orderByDesc('id')->first());
+    }
+
+    /** "Susun draf sanggahan" untuk klaim pending/tidak layak/dispute: hanya butir terkonfirmasi yang ditampilkan & dikirim. */
+    public function drafSanggahan(Request $request, string $noSep, DrafSanggahan $draf)
+    {
+        $klaim = VclaimKlaim::where('no_sep', $noSep)->first();
+        abort_unless(DasarSanggahan::bolehKlaim($klaim), 404);
+        $v = $request->validate(['butir' => ['nullable', 'array'], 'butir.*' => ['integer']]);
+        $panel = $this->panelSanggahan($noSep, $klaim, VclaimKunjungan::where('no_sep', $noSep)->first());
+        $hasil = $draf->susun($panel['semua'], $v['butir'] ?? [], ['status_klaim' => $klaim->status_kategori, 'status_teks' => $klaim->status_teks,
+            'jns_pelayanan' => $klaim->jns_pelayanan, 'inacbg' => $klaim->inacbg_kode, 'kode' => $panel['kode']], $klaim->id);
+        Audit::log('regulasi.draf_susun', $klaim, 'Menyusun draf sanggahan klaim', ['no_sep' => $noSep, 'butir' => $hasil['butir']]);
+
+        return response()->json($hasil);
+    }
+
+    public function unduhDraf(Request $request, string $noSep, DrafSanggahan $draf)
+    {
+        $klaim = VclaimKlaim::where('no_sep', $noSep)->first();
+        abort_unless(DasarSanggahan::bolehKlaim($klaim), 404);
+        $v = $request->validate(['draf' => ['required', 'string', 'max:20000'], 'format' => ['required', 'in:docx,txt']]);
+        Audit::log('regulasi.draf_unduh', $klaim, 'Mengunduh draf sanggahan klaim (' . $v['format'] . ')', ['no_sep' => $noSep, 'format' => $v['format']]);
+
+        return $draf->unduh($v['draf'], $v['format'], 'draf-sanggahan-' . preg_replace('/[^A-Za-z0-9]/', '', $noSep));
     }
 
     /** Tombol "Ambil riwayat pelayanan": JSON, tanpa muat ulang dan tanpa antrean. */

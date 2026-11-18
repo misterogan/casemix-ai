@@ -66,5 +66,13 @@
     </div>
 
     @include('bpjs.partials.histori-panel', ['url' => route('bpjs.klaim.histori', $noSep), 'noKartu' => $noKartu, 'histori' => $histori])
+
+    {{-- Dasar sanggahan: hanya klaim pending / tidak layak / dispute. Sumber dibuka di tab baru (tanpa penampil). --}}
+    @if ($sanggahan ?? null)
+        <div class="mt-4" id="dasar-sanggahan">
+            @include('folders.partials.dasar-sanggahan', ['drafUrl' => route('bpjs.klaim.draf', $noSep), 'unduhUrl' => route('bpjs.klaim.draf.unduh', $noSep)])
+        </div>
+        @vite('resources/js/folder-page.js')
+    @endif
 </div>
 </x-app-layout>

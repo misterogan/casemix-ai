@@ -49,6 +49,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/bpjs/unduh', [\App\Http\Controllers\BpjsController::class, 'csv'])->name('bpjs.csv');
         Route::get('/bpjs/klaim/{noSep}', [\App\Http\Controllers\BpjsController::class, 'show'])->name('bpjs.klaim.show');
         Route::post('/bpjs/klaim/{noSep}/histori-pelayanan', [\App\Http\Controllers\BpjsController::class, 'histori'])->middleware('throttle:30,1')->name('bpjs.klaim.histori');
+        Route::post('/bpjs/klaim/{noSep}/draf-sanggahan', [\App\Http\Controllers\BpjsController::class, 'drafSanggahan'])->middleware('throttle:10,1')->name('bpjs.klaim.draf');
+        Route::post('/bpjs/klaim/{noSep}/draf-sanggahan/unduh', [\App\Http\Controllers\BpjsController::class, 'unduhDraf'])->name('bpjs.klaim.draf.unduh');
         Route::post('/folders/{folder}/histori-pelayanan', [FolderController::class, 'histori'])->middleware('throttle:30,1')->name('folders.histori');
         // Unggah dokumen manual (dianalisa dengan pipeline folder yang sama)
         Route::get('/unggah', [\App\Http\Controllers\ManualUploadController::class, 'create'])->name('manual.create');
@@ -91,6 +93,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'store'])->middleware('role:koordinator')->name('folders.temuan_cek.store');
         Route::delete('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'destroy'])->middleware('role:koordinator')->name('folders.temuan_cek.destroy');
         Route::put('/verifikasi/{folder}/penugasan', [FolderController::class, 'assign'])->middleware('role:koordinator')->name('folders.assign');
+        Route::post('/verifikasi/{folder}/dasar-koding/salin', [FolderController::class, 'salinDasarKoding'])->middleware('role:koordinator')->name('folders.dasar_koding.salin');
+        Route::post('/verifikasi/{folder}/draf-sanggahan', [FolderController::class, 'drafSanggahan'])->middleware(['role:koordinator', 'throttle:10,1'])->name('folders.draf');
+        Route::post('/verifikasi/{folder}/draf-sanggahan/unduh', [FolderController::class, 'unduhDraf'])->middleware('role:koordinator')->name('folders.draf.unduh');
     });
 
     // Modul lama: berkas klaim, impor, unggah. Mati kecuali CASEMIX_LEGACY_CLAIMS=true.
@@ -133,7 +138,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         });
     });
 
-    // Acuan regulasi → PNPK. Kelola dokumen: Admin & Koordinator (bukan data pasien). Tinjau butir/ICD: Koordinator.
+    // Acuan regulasi (PNPK, Permenkes, BA, dst.). Kelola dokumen: Admin & Koordinator (bukan data pasien). Tinjau butir/ICD: Koordinator.
+    Route::redirect('/acuan/regulasi', '/acuan/pnpk')->middleware('role:admin|koordinator');
     Route::prefix('acuan/pnpk')->name('acuan.pnpk.')->middleware('role:admin|koordinator')->group(function () {
         $c = \App\Http\Controllers\PnpkController::class;
         Route::get('/', [$c, 'index'])->name('index');

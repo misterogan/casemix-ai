@@ -169,13 +169,20 @@ class PnpkTest extends TestCase
 
     public function test_migrasi_menandai_yang_sudah_disetujui_diperiksa_manusia(): void
     {
+        $rename = require database_path('migrations/2026_11_18_000300_rename_pnpk_to_regulasi.php');
         $m = require database_path('migrations/2026_11_18_000110_add_pnpk_diperiksa_manusia.php');
-        $m->down();
         $d = $this->dokumen();
-        $b = $this->setujui($d);
-        $u = PnpkButir::create(['dokumen_id' => $d->id, 'jenis' => 'tata_laksana', 'ringkasan' => 'U', 'kutipan' => 'x', 'halaman' => 1,
+        $rename->down();
+        $m->down();
+        $db = \Illuminate\Support\Facades\DB::table(...);
+        $db('pnpk_icd')->insert(['dokumen_id' => $d->id, 'kode' => 'J18', 'sumber' => 'manual', 'status' => 'disetujui']);
+        $bid = $db('pnpk_butir')->insertGetId(['dokumen_id' => $d->id, 'jenis' => 'indikasi_rawat_inap', 'ringkasan' => 'R', 'kutipan' => 'x',
+            'halaman' => 1, 'cocok_kutipan' => true, 'status' => 'disetujui']);
+        $uid = $db('pnpk_butir')->insertGetId(['dokumen_id' => $d->id, 'jenis' => 'tata_laksana', 'ringkasan' => 'U', 'kutipan' => 'x', 'halaman' => 1,
             'cocok_kutipan' => true, 'status' => 'usulan']);
         $m->up();
+        $rename->up();
+        [$b, $u] = [PnpkButir::find($bid), PnpkButir::find($uid)];
 
         $this->assertTrue($b->fresh()->diperiksa_manusia);
         $this->assertFalse($u->fresh()->diperiksa_manusia);

@@ -1,5 +1,5 @@
 <x-app-layout :title="$dokumen->judul">
-    <x-page-header :title="$dokumen->judul" :subtitle="$dokumen->nomor_kmk . ' · ' . $dokumen->tahun . ' · berlaku ' . $dokumen->tanggal_berlaku?->translatedFormat('d M Y') . ' · ' . (\App\Models\PnpkDokumen::PROSES[$dokumen->status_proses] ?? $dokumen->status_proses)" :back="route('acuan.pnpk.index')">
+    <x-page-header :title="$dokumen->judul" :subtitle="$dokumen->jenisLabel() . ' · ' . ($dokumen->nomorTampil() ?? 'Nomor belum ada') . ' · ' . $dokumen->tahun . ' · berlaku ' . $dokumen->tanggal_berlaku?->translatedFormat('d M Y') . ' · ' . (\App\Models\PnpkDokumen::PROSES[$dokumen->status_proses] ?? $dokumen->status_proses)" :back="route('acuan.pnpk.index')">
         <x-slot:actions>
             <x-badge :variant="\App\Models\PnpkDokumen::STATUS_TONE[$dokumen->status] ?? 'gray'">{{ \App\Models\PnpkDokumen::STATUS[$dokumen->status] ?? $dokumen->status }}</x-badge>
             <a href="{{ route('acuan.pnpk.edit', $dokumen) }}" class="btn-secondary">Ubah metadata</a>
@@ -10,9 +10,17 @@
     </x-page-header>
     @include('acuan._tabs')
 
-    @if ($dokumen->penggantiDokumen)
-        <p class="mb-3 text-sm text-tinta-3">Digantikan oleh <a class="text-url" href="{{ route('acuan.pnpk.show', $dokumen->penggantiDokumen) }}">{{ $dokumen->penggantiDokumen->judul }}</a>.</p>
-    @endif
+    <dl class="mb-3 grid gap-x-6 gap-y-1 text-sm text-tinta-3 sm:grid-cols-[auto_1fr]" data-relasi>
+        @if ($dokumen->cakupan)<dt>Cakupan</dt><dd>{{ collect($dokumen->cakupan)->map(fn ($c) => \App\Models\RegulasiDokumen::CAKUPAN[$c] ?? $c)->implode(', ') }}</dd>@endif
+        @if ($dokumen->mencabut_teks || $dokumen->mencabutDokumen)
+            <dt>Mencabut</dt>
+            <dd>@if ($dokumen->mencabutDokumen)<a class="text-url" href="{{ route('acuan.pnpk.show', $dokumen->mencabutDokumen) }}">{{ $dokumen->mencabutDokumen->judul }}</a>@endif
+                @if ($dokumen->mencabut_teks){{ $dokumen->mencabutDokumen ? ' · ' : '' }}{{ $dokumen->mencabut_teks }}@endif</dd>
+        @endif
+        @foreach ($dokumen->pencabut as $p)<dt>Dicabut oleh</dt><dd><a class="text-url" href="{{ route('acuan.pnpk.show', $p) }}">{{ $p->judul }}</a></dd>@endforeach
+        @if ($dokumen->penggantiDokumen)<dt>Diganti oleh</dt><dd>Digantikan oleh <a class="text-url" href="{{ route('acuan.pnpk.show', $dokumen->penggantiDokumen) }}">{{ $dokumen->penggantiDokumen->judul }}</a>.</dd>@endif
+        @foreach ($dokumen->digantikan as $p)<dt>Menggantikan</dt><dd><a class="text-url" href="{{ route('acuan.pnpk.show', $p) }}">{{ $p->judul }}</a></dd>@endforeach
+    </dl>
     @if ($dokumen->status_proses === 'gagal' && $dokumen->error)
         <p class="mb-3 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600">{{ $dokumen->error }}</p>
     @endif
@@ -80,7 +88,11 @@
                                     @endif
                                     <x-badge :variant="$b->cocok_kutipan ? 'success' : 'error'">{{ $b->cocok_kutipan ? 'Kutipan cocok' : 'Kutipan tidak cocok' }}</x-badge>
                                     <button type="button" class="text-xs text-url" data-goto="{{ $b->halamanBuka() }}" @if ($b->halaman_pdf && $b->halaman_pdf !== $b->halaman) title="Label AI: hal. {{ $b->halaman }}" @endif>hal. {{ $b->halamanBuka() }}</button>
+                                    @if ($b->pasal)<span class="text-xs text-tinta-3" data-pasal>{{ $b->pasal }}</span>@endif
                                     @if ($b->level_bukti)<span class="text-xs text-tinta-3">Level bukti {{ $b->level_bukti }}</span>@endif
+                                    @foreach (['cakupan_icd' => 'ICD-10', 'cakupan_icd9' => 'ICD-9-CM', 'cakupan_inacbg' => 'INA-CBG'] as $kol => $lbl)
+                                        @if ($b->{$kol})<span class="num text-xs text-tinta-3">{{ $lbl }}: {{ implode(', ', $b->{$kol}) }}</span>@endif
+                                    @endforeach
                                 </div>
                                 <p class="text-arang">{{ $b->ringkasan }}</p>
                                 <blockquote class="border-l-4 border-garis pl-3 text-xs italic text-tinta-3">“{{ $b->kutipan }}”</blockquote>

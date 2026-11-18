@@ -2,9 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\PnpkButir;
-use App\Models\PnpkDokumen;
-use App\Models\PnpkIcd;
+use App\Models\RegulasiButir;
+use App\Models\RegulasiDokumen;
+use App\Models\RegulasiIcd;
 use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
 use App\Services\Pnpk\PnpkProposer;
@@ -33,7 +33,7 @@ class UsulkanButirPnpk implements ShouldQueue
 
     public function handle(AiManager $ai, PnpkProposer $proposer, PnpkVerifier $verifier, AiBudget $budget): void
     {
-        $d = PnpkDokumen::find($this->dokumenId);
+        $d = RegulasiDokumen::find($this->dokumenId);
         if (! $d) {
             return;
         }
@@ -41,18 +41,18 @@ class UsulkanButirPnpk implements ShouldQueue
             $d->update(['status_proses' => 'usulan', 'error' => null]);
             $pages = $d->halaman()->pluck('teks', 'halaman')->all();
             $config = $ai->defaultConfig();
-            $ada = PnpkIcd::where('dokumen_id', $d->id)->pluck('kode')->all();
+            $ada = RegulasiIcd::where('dokumen_id', $d->id)->pluck('kode')->all();
 
             foreach (array_chunk($pages, PnpkProposer::CHUNK, true) as $chunk) {
                 if ($blocked = $budget->runBlocker()) {
                     throw new RuntimeException($blocked);
                 }
-                $req = $proposer->request($ai->model('usulan_regulasi', $config), (int) $config->max_tokens ?: 4096, $d->judul, $chunk);
+                $req = $proposer->request($ai->model('usulan_regulasi', $config), (int) $config->max_tokens ?: 4096, $d->judul, $chunk, $d->jenis ?? 'kmk_pnpk');
                 $req->jenis = 'usulan_regulasi';
                 $req->refId = $d->id;
                 $res = $ai->for($config)->generate($req);
                 $budget->charge($d, $res, $config->id); // biaya usulan, dijumlah dengan OCR
-                $parsed = $proposer->parse((array) $res->json(), array_map('intval', array_keys($chunk)));
+                $parsed = $proposer->parse((array) $res->json(), array_map('intval', array_keys($chunk)), $chunk, $d->jenis ?? 'kmk_pnpk');
 
                 foreach ($parsed['icd'] as $kode) {
                     if (in_array($kode, $ada, true)) {
@@ -60,13 +60,13 @@ class UsulkanButirPnpk implements ShouldQueue
                     }
                     $ada[] = $kode;
                     $valid = $verifier->icdValid($kode);
-                    PnpkIcd::create(['dokumen_id' => $d->id, 'kode' => $kode, 'sumber' => 'ai', 'status' => $valid ? 'usulan' : 'ditolak',
+                    RegulasiIcd::create(['dokumen_id' => $d->id, 'kode' => $kode, 'sumber' => 'ai', 'status' => $valid ? 'usulan' : 'ditolak',
                         'alasan_tolak' => $valid ? null : PnpkVerifier::TOLAK_ICD]);
                 }
                 foreach ($parsed['butir'] as $b) {
                     $halPdf = $verifier->cariHalaman($b['kutipan'], $b['halaman'], $pages);
                     $cocok = $halPdf !== null;
-                    PnpkButir::create($b + ['dokumen_id' => $d->id, 'halaman_pdf' => $halPdf, 'cocok_kutipan' => $cocok, 'status' => $cocok ? 'usulan' : 'ditolak',
+                    RegulasiButir::create($b + ['dokumen_id' => $d->id, 'halaman_pdf' => $halPdf, 'cocok_kutipan' => $cocok, 'status' => $cocok ? 'usulan' : 'ditolak',
                         'alasan_tolak' => $cocok ? null : PnpkVerifier::TOLAK_KUTIPAN]);
                 }
             }

@@ -2,20 +2,23 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PnpkDokumen;
+use App\Models\RegulasiDokumen;
 use App\Services\Pnpk\PnpkVerifikasiUlang as Layanan;
 use Illuminate\Console\Command;
 
 /** Verifikasi ulang kutipan & ICD PNPK dengan aturan terbaru, tanpa memanggil AI. */
 class PnpkVerifikasiUlang extends Command
 {
-    protected $signature = 'casemix:pnpk-verifikasi-ulang {--dokumen= : ID dokumen PNPK (bawaan: semua)}';
+    protected $signature = 'casemix:pnpk-verifikasi-ulang {--dokumen= : ID dokumen acuan (bawaan: semua)}';
 
-    protected $description = 'Verifikasi ulang kutipan butir & ICD PNPK tanpa AI';
+    /** @var string[] */
+    protected $aliases = ['casemix:regulasi-verifikasi-ulang'];
+
+    protected $description = 'Verifikasi ulang kutipan butir & ICD semua jenis acuan regulasi tanpa AI';
 
     public function handle(Layanan $layanan): int
     {
-        $q = PnpkDokumen::query()->orderBy('id');
+        $q = RegulasiDokumen::query()->orderBy('id');
         if ($id = $this->option('dokumen')) {
             $q->whereKey((int) $id);
         }

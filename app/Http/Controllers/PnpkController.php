@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\EkstrakPnpk;
-use App\Models\PnpkButir;
-use App\Models\PnpkDokumen;
-use App\Models\PnpkIcd;
+use App\Models\RegulasiButir;
+use App\Models\RegulasiDokumen;
+use App\Models\RegulasiIcd;
 use App\Services\Pnpk\PnpkVerifier;
 use App\Support\Audit;
 use Illuminate\Http\Request;
@@ -23,31 +23,35 @@ class PnpkController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
-        $list = PnpkDokumen::query()
+        $tab = isset(RegulasiDokumen::TAB[$request->query('tab')]) ? $request->query('tab') : 'semua';
+        $list = RegulasiDokumen::query()->tab($tab)->with('penggantiDokumen:id,judul')
             ->withCount(['icd as icd_disetujui' => fn ($w) => $w->where('status', 'disetujui'),
                 'butir as butir_disetujui' => fn ($w) => $w->where('status', 'disetujui'),
                 'butir as butir_belum_diperiksa' => fn ($w) => $w->where('status', 'disetujui')->where('diperiksa_manusia', false)])
-            ->when(isset(PnpkDokumen::STATUS[$status]), fn ($w) => $w->where('status', $status))
-            ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('judul', 'like', "%$q%")->orWhere('nomor_kmk', 'like', "%$q%")
-                ->orWhereHas('icd', fn ($i) => $i->where('status', 'disetujui')->where('kode', 'like', PnpkIcd::normalize($q) . '%'))))
+            ->when(isset(RegulasiDokumen::STATUS[$status]), fn ($w) => $w->where('status', $status))
+            ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('judul', 'like', "%$q%")->orWhere('nomor', 'like', "%$q%")->orWhere('nomor_kmk', 'like', "%$q%")
+                ->when(DB::getDriverName() === 'mysql', fn ($m) => $m->orWhereRaw('MATCH(judul, nomor) AGAINST (? IN NATURAL LANGUAGE MODE)', [$q]))
+                ->orWhereHas('icd', fn ($i) => $i->where('status', 'disetujui')->where('kode', 'like', RegulasiIcd::normalize($q) . '%'))))
             ->orderByDesc('tahun')->orderBy('judul')->paginate(25)->withQueryString();
 
         $isi = trim((string) $request->query('isi', ''));
 
-        return view('acuan.pnpk.index', ['list' => $list, 'q' => $q, 'status' => $status, 'isi' => $isi,
+        return view('acuan.pnpk.index', ['list' => $list, 'q' => $q, 'status' => $status, 'isi' => $isi, 'tab' => $tab,
             'hasil' => $isi !== '' ? $this->cariIsi($isi) : collect()]);
     }
 
     public function create()
     {
-        return view('acuan.pnpk.form', ['dokumen' => new PnpkDokumen(['status' => 'berlaku']), 'pilihan' => $this->pilihanGanti()]);
+        $jenis = isset(RegulasiDokumen::JENIS[request('jenis')]) ? request('jenis') : 'kmk_pnpk';
+
+        return view('acuan.pnpk.form', ['dokumen' => new RegulasiDokumen(['status' => 'berlaku', 'jenis' => $jenis]), 'pilihan' => $this->pilihanGanti()]);
     }
 
     public function store(Request $request)
     {
         $v = $request->validate($this->rules() + [
             'pdf' => ['required', 'file', 'max:51200'],
-            'menggantikan_id' => ['nullable', 'integer', 'exists:pnpk_dokumen,id'],
+            'menggantikan_id' => ['nullable', 'integer', 'exists:regulasi_dokumen,id'],
         ]);
         $file = $request->file('pdf');
         $fh = fopen($file->getRealPath(), 'rb');
@@ -57,50 +61,53 @@ class PnpkController extends Controller
             throw ValidationException::withMessages(['pdf' => 'File bukan PDF.']);
         }
         $sha = hash_file('sha256', $file->getRealPath());
-        if (PnpkDokumen::where('sha256', $sha)->exists()) {
+        if (RegulasiDokumen::where('sha256', $sha)->exists()) {
             throw ValidationException::withMessages(['pdf' => 'PDF yang sama sudah pernah diunggah.']);
         }
         $path = "pnpk/$sha.pdf";
         Storage::disk('local')->putFileAs('pnpk', $file, "$sha.pdf");
 
         $d = DB::transaction(function () use ($v, $path, $sha, $request) {
-            $d = PnpkDokumen::create($this->meta($v) + ['status' => 'berlaku', 'path' => $path, 'sha256' => $sha,
+            $d = RegulasiDokumen::create($this->meta($v) + ['status' => 'berlaku', 'path' => $path, 'sha256' => $sha,
                 'status_proses' => 'antre', 'diunggah_oleh' => $request->user()->id]);
-            if ($lama = isset($v['menggantikan_id']) ? PnpkDokumen::find($v['menggantikan_id']) : null) {
+            if ($lama = isset($v['menggantikan_id']) ? RegulasiDokumen::find($v['menggantikan_id']) : null) {
                 $lama->update(['status' => 'diganti', 'diganti_oleh_id' => $d->id]);
                 Audit::log('pnpk.ganti_versi', $lama, "PNPK {$lama->judul} digantikan oleh {$d->judul}", ['lama' => $lama->id, 'baru' => $d->id]);
             }
+            $this->cabut($d);
 
             return $d;
         });
-        Audit::log('pnpk.unggah', $d, "Mengunggah PNPK {$d->judul}", ['data' => $this->meta($v), 'sha256' => $sha]);
+        Audit::log('pnpk.unggah', $d, "Mengunggah {$d->jenisLabel()} {$d->judul}", ['data' => $this->meta($v), 'sha256' => $sha]);
         EkstrakPnpk::dispatch($d->id);
 
-        return redirect()->route('acuan.pnpk.show', $d)->with('ok', 'PNPK diunggah. Teks sedang diekstrak, lalu AI menyusun usulan untuk ditinjau.');
+        return redirect()->route('acuan.pnpk.show', $d)->with('ok', 'Dokumen diunggah. Teks sedang diekstrak, lalu AI menyusun usulan untuk ditinjau.');
     }
 
-    public function edit(PnpkDokumen $pnpk)
+    public function edit(RegulasiDokumen $pnpk)
     {
         return view('acuan.pnpk.form', ['dokumen' => $pnpk, 'pilihan' => collect(),
-            'penggantiPilihan' => PnpkDokumen::whereKeyNot($pnpk->id)->orderBy('judul')->get(['id', 'judul', 'nomor_kmk', 'tahun'])]);
+            'penggantiPilihan' => RegulasiDokumen::whereKeyNot($pnpk->id)->orderBy('judul')->get(['id', 'judul', 'nomor', 'nomor_kmk', 'tahun'])]);
     }
 
-    public function update(Request $request, PnpkDokumen $pnpk)
+    public function update(Request $request, RegulasiDokumen $pnpk)
     {
         $v = $request->validate($this->rules() + ['status' => ['required', 'in:berlaku,dicabut,diganti'],
-            'diganti_oleh_id' => ['nullable', 'integer', 'exists:pnpk_dokumen,id', 'not_in:' . $pnpk->id]]);
+            'diganti_oleh_id' => ['nullable', 'integer', 'exists:regulasi_dokumen,id', 'not_in:' . $pnpk->id],
+            'mencabut_id' => ['nullable', 'integer', 'exists:regulasi_dokumen,id', 'not_in:' . $pnpk->id]]);
         $ganti = $v['diganti_oleh_id'] ?? null;
         $status = $ganti ? 'diganti' : ($v['status'] === 'diganti' && ! $pnpk->diganti_oleh_id ? $pnpk->status : $v['status']);
         $data = $this->meta($v) + ['status' => $status, 'diganti_oleh_id' => $ganti ?? ($status === 'diganti' ? $pnpk->diganti_oleh_id : null),
             'perlu_dilengkapi' => false];
         $lama = $pnpk->only(array_keys($data));
         $pnpk->update($data);
-        Audit::log('pnpk.ubah', $pnpk, "Mengubah metadata PNPK {$pnpk->judul}", ['lama' => $lama, 'baru' => $data]);
+        Audit::log('pnpk.ubah', $pnpk, "Mengubah metadata {$pnpk->jenisLabel()} {$pnpk->judul}", ['lama' => $lama, 'baru' => $data]);
+        $this->cabut($pnpk);
 
-        return redirect()->route('acuan.pnpk.show', $pnpk)->with('ok', 'Metadata PNPK disimpan.');
+        return redirect()->route('acuan.pnpk.show', $pnpk)->with('ok', 'Metadata disimpan.');
     }
 
-    public function destroy(PnpkDokumen $pnpk)
+    public function destroy(RegulasiDokumen $pnpk)
     {
         $lama = $pnpk->only(['judul', 'nomor_kmk', 'tahun', 'sha256']);
         Storage::disk('local')->delete($pnpk->path);
@@ -110,16 +117,16 @@ class PnpkController extends Controller
         return redirect()->route('acuan.pnpk.index')->with('ok', 'PNPK dihapus.');
     }
 
-    public function show(Request $request, PnpkDokumen $pnpk)
+    public function show(Request $request, RegulasiDokumen $pnpk)
     {
-        $pnpk->load(['icd.dokumen', 'butir', 'penggantiDokumen']);
+        $pnpk->load(['icd.dokumen', 'butir', 'penggantiDokumen', 'digantikan', 'mencabutDokumen', 'pencabut']);
 
         return view('acuan.pnpk.show', ['dokumen' => $pnpk, 'bolehTinjau' => $request->user()->hasRole('koordinator'),
             'alasanBelumSelesai' => self::alasanBelumSelesai($pnpk),
             'perJenis' => $pnpk->butir->groupBy('jenis')]);
     }
 
-    public function pdf(PnpkDokumen $pnpk)
+    public function pdf(RegulasiDokumen $pnpk)
     {
         abort_unless(Storage::disk('local')->exists($pnpk->path), 404);
 
@@ -129,7 +136,7 @@ class PnpkController extends Controller
 
     // ------------------------------------------------------------ tinjau (Koordinator)
 
-    public function butir(Request $request, PnpkDokumen $pnpk, PnpkButir $butir)
+    public function butir(Request $request, RegulasiDokumen $pnpk, RegulasiButir $butir)
     {
         abort_unless($butir->dokumen_id === $pnpk->id, 404);
         $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak,ringkasan,konfirmasi'], 'alasan' => ['required_if:aksi,tolak', 'nullable', 'string', 'max:255'],
@@ -153,25 +160,25 @@ class PnpkController extends Controller
         return $this->balik($request, ['status' => $butir->status, 'ringkasan' => $butir->ringkasan, 'diperiksa_manusia' => true]);
     }
 
-    public function butirMassal(Request $request, PnpkDokumen $pnpk)
+    public function butirMassal(Request $request, RegulasiDokumen $pnpk)
     {
-        $v = $request->validate(['jenis' => ['required', 'in:' . implode(',', array_keys(PnpkButir::JENIS))], 'aksi' => ['nullable', 'in:setujui,konfirmasi']]);
+        $v = $request->validate(['jenis' => ['required', 'in:' . implode(',', array_keys(RegulasiButir::JENIS))], 'aksi' => ['nullable', 'in:setujui,konfirmasi']]);
         $tinjau = ['ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now(), 'diperiksa_manusia' => true];
         if (($v['aksi'] ?? 'setujui') === 'konfirmasi') {
             $ids = $pnpk->butir()->where('jenis', $v['jenis'])->where('status', 'disetujui')->where('diperiksa_manusia', false)->pluck('id')->all();
-            PnpkButir::whereIn('id', $ids)->update($tinjau);
+            RegulasiButir::whereIn('id', $ids)->update($tinjau);
             Audit::log('pnpk.butir_konfirmasi_massal', $pnpk, "Mengonfirmasi " . count($ids) . " butir {$v['jenis']} PNPK {$pnpk->judul}", ['butir' => $ids]);
 
             return back()->with('ok', count($ids) . ' butir dikonfirmasi.');
         }
         $ids = $pnpk->butir()->where('jenis', $v['jenis'])->where('status', 'usulan')->where('cocok_kutipan', true)->pluck('id')->all();
-        PnpkButir::whereIn('id', $ids)->update(['status' => 'disetujui'] + $tinjau);
+        RegulasiButir::whereIn('id', $ids)->update(['status' => 'disetujui'] + $tinjau);
         Audit::log('pnpk.butir_setujui_massal', $pnpk, "Menyetujui " . count($ids) . " butir {$v['jenis']} PNPK {$pnpk->judul}", ['butir' => $ids]);
 
         return back()->with('ok', count($ids) . ' butir disetujui.');
     }
 
-    public function icd(Request $request, PnpkDokumen $pnpk, PnpkIcd $icd)
+    public function icd(Request $request, RegulasiDokumen $pnpk, RegulasiIcd $icd)
     {
         abort_unless($icd->dokumen_id === $pnpk->id, 404);
         $v = $request->validate(['aksi' => ['required', 'in:setujui,tolak,konfirmasi'], 'alasan' => ['nullable', 'string', 'max:255']]);
@@ -184,7 +191,7 @@ class PnpkController extends Controller
 
             return $this->balik($request, ['status' => $icd->status, 'diperiksa_manusia' => true]);
         }
-        if ($v['aksi'] === 'setujui' && ! PnpkIcd::adaDiMaster($icd->kode)) {
+        if ($v['aksi'] === 'setujui' && ! RegulasiIcd::adaDiMaster($icd->kode)) {
             throw ValidationException::withMessages(['aksi' => PnpkVerifier::TOLAK_ICD]);
         }
         $lama = $icd->status;
@@ -195,21 +202,21 @@ class PnpkController extends Controller
         return $this->balik($request, ['status' => $icd->status]);
     }
 
-    public function icdTambah(Request $request, PnpkDokumen $pnpk)
+    public function icdTambah(Request $request, RegulasiDokumen $pnpk)
     {
         $v = $request->validate(['kode' => ['required', 'string', 'max:12']]);
-        $kode = PnpkIcd::normalize($v['kode']);
-        if (! PnpkIcd::adaDiMaster($kode)) {
+        $kode = RegulasiIcd::normalize($v['kode']);
+        if (! RegulasiIcd::adaDiMaster($kode)) {
             throw ValidationException::withMessages(['kode' => PnpkVerifier::TOLAK_ICD]);
         }
-        $icd = PnpkIcd::updateOrCreate(['dokumen_id' => $pnpk->id, 'kode' => $kode],
+        $icd = RegulasiIcd::updateOrCreate(['dokumen_id' => $pnpk->id, 'kode' => $kode],
             ['sumber' => 'manual', 'status' => 'disetujui', 'diperiksa_manusia' => true, 'alasan_tolak' => null, 'ditinjau_oleh' => $request->user()->id, 'ditinjau_at' => now()]);
         Audit::log('pnpk.icd_setujui', $icd, "Menambah ICD {$kode} pada PNPK {$pnpk->judul}", ['sumber' => 'manual']);
 
         return back()->with('ok', "ICD $kode ditambahkan.");
     }
 
-    public function selesai(Request $request, PnpkDokumen $pnpk)
+    public function selesai(Request $request, RegulasiDokumen $pnpk)
     {
         if ($alasan = self::alasanBelumSelesai($pnpk)) {
             throw ValidationException::withMessages(['aksi' => $alasan]);
@@ -223,10 +230,10 @@ class PnpkController extends Controller
     // ------------------------------------------------------------ bantu
 
     /** Alasan tombol "Selesai ditinjau" nonaktif, atau null bila boleh. */
-    public static function alasanBelumSelesai(PnpkDokumen $d): ?string
+    public static function alasanBelumSelesai(RegulasiDokumen $d): ?string
     {
         if ($d->perlu_dilengkapi) {
-            return 'Lengkapi metadata (nomor KMK / tanggal berlaku) terlebih dahulu.';
+            return 'Lengkapi metadata (nomor / tanggal berlaku) terlebih dahulu.';
         }
 
         return $d->butir()->where('status', 'disetujui')->exists() ? null : 'Belum ada butir yang disetujui.';
@@ -236,7 +243,13 @@ class PnpkController extends Controller
     {
         return [
             'judul' => ['required', 'string', 'max:255'],
-            'nomor_kmk' => ['required', 'string', 'max:120'],
+            'jenis' => ['nullable', 'in:' . implode(',', array_keys(RegulasiDokumen::JENIS))],
+            'nomor' => ['nullable', 'required_without:nomor_kmk', 'string', 'max:150'],
+            'nomor_kmk' => ['nullable', 'string', 'max:120'],
+            'cakupan' => ['nullable', 'array'],
+            'cakupan.*' => ['in:' . implode(',', array_keys(RegulasiDokumen::CAKUPAN))],
+            'mencabut_teks' => ['nullable', 'string', 'max:255'],
+            'mencabut_id' => ['nullable', 'integer', 'exists:regulasi_dokumen,id'],
             'tahun' => ['required', 'integer', 'between:1990,2100'],
             'tanggal_berlaku' => ['required', 'date'],
             'sumber_url' => ['nullable', 'url:http,https', 'max:500'],
@@ -245,13 +258,28 @@ class PnpkController extends Controller
 
     private function meta(array $v): array
     {
-        return ['judul' => $v['judul'], 'nomor_kmk' => $v['nomor_kmk'], 'tahun' => (int) $v['tahun'],
-            'tanggal_berlaku' => $v['tanggal_berlaku'], 'sumber_url' => $v['sumber_url'] ?? null];
+        $jenis = $v['jenis'] ?? 'kmk_pnpk';
+        $nomor = trim((string) ($v['nomor'] ?? $v['nomor_kmk'] ?? ''));
+
+        return ['judul' => $v['judul'], 'jenis' => $jenis, 'nomor' => $nomor, 'nomor_kmk' => $jenis === 'kmk_pnpk' ? $nomor : null,
+            'cakupan' => array_values($v['cakupan'] ?? []) ?: (RegulasiDokumen::CAKUPAN_BAWAAN[$jenis] ?? ['umum']),
+            'mencabut_teks' => $v['mencabut_teks'] ?? null, 'mencabut_id' => $v['mencabut_id'] ?? null,
+            'tahun' => (int) $v['tahun'], 'tanggal_berlaku' => $v['tanggal_berlaku'], 'sumber_url' => $v['sumber_url'] ?? null];
+    }
+
+    /** Dokumen yang dicabut oleh $d berstatus Dicabut (tetap dipakai untuk tanggal pulang sebelum $d berlaku). */
+    private function cabut(RegulasiDokumen $d): void
+    {
+        $lama = $d->mencabut_id ? RegulasiDokumen::find($d->mencabut_id) : null;
+        if ($lama && $lama->status !== 'dicabut') {
+            $lama->update(['status' => 'dicabut']);
+            Audit::log('pnpk.cabut', $lama, "{$lama->judul} dicabut oleh {$d->judul}", ['lama' => $lama->id, 'pencabut' => $d->id]);
+        }
     }
 
     private function pilihanGanti()
     {
-        return PnpkDokumen::where('status', 'berlaku')->orderBy('judul')->get(['id', 'judul', 'nomor_kmk', 'tahun']);
+        return RegulasiDokumen::where('status', 'berlaku')->orderBy('judul')->get(['id', 'judul', 'nomor', 'nomor_kmk', 'tahun']);
     }
 
     private function balik(Request $request, array $json)
@@ -262,12 +290,12 @@ class PnpkController extends Controller
     /** Cari di isi PNPK (FULLTEXT di MySQL, LIKE di driver lain) dengan potongan ±200 karakter. */
     private function cariIsi(string $isi)
     {
-        $q = DB::table('pnpk_halaman')->join('pnpk_dokumen', 'pnpk_dokumen.id', '=', 'pnpk_halaman.dokumen_id')
-            ->select('pnpk_halaman.dokumen_id', 'pnpk_halaman.halaman', 'pnpk_halaman.teks', 'pnpk_dokumen.judul', 'pnpk_dokumen.status');
+        $q = DB::table('regulasi_halaman')->join('regulasi_dokumen', 'regulasi_dokumen.id', '=', 'regulasi_halaman.dokumen_id')
+            ->select('regulasi_halaman.dokumen_id', 'regulasi_halaman.halaman', 'regulasi_halaman.teks', 'regulasi_dokumen.judul', 'regulasi_dokumen.status');
         if (DB::getDriverName() === 'mysql') {
-            $q->whereRaw('MATCH(pnpk_halaman.teks) AGAINST (? IN NATURAL LANGUAGE MODE)', [$isi]);
+            $q->whereRaw('MATCH(regulasi_halaman.teks) AGAINST (? IN NATURAL LANGUAGE MODE)', [$isi]);
         } else {
-            $q->where('pnpk_halaman.teks', 'like', '%' . $isi . '%');
+            $q->where('regulasi_halaman.teks', 'like', '%' . $isi . '%');
         }
         $kata = array_values(array_filter(preg_split('/\s+/u', $isi), fn ($k) => mb_strlen($k) >= 3)) ?: [$isi];
 

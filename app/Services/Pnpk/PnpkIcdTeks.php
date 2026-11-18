@@ -2,8 +2,8 @@
 
 namespace App\Services\Pnpk;
 
-use App\Models\PnpkDokumen;
-use App\Models\PnpkIcd;
+use App\Models\RegulasiDokumen;
+use App\Models\RegulasiIcd;
 
 /** Sumber ICD tanpa AI: kode ICD-10 yang tertulis di teks dokumen (bukan daftar pustaka) dan ada di master. */
 class PnpkIcdTeks
@@ -36,23 +36,23 @@ class PnpkIcdTeks
             }
             preg_match_all(self::POLA, $teks, $mm);
             foreach ($mm[1] as $k) {
-                $kode[PnpkIcd::normalize($k)] = true;
+                $kode[RegulasiIcd::normalize($k)] = true;
             }
         }
 
-        return array_values(array_filter(array_keys($kode), fn ($k) => PnpkIcd::adaDiMaster($k)));
+        return array_values(array_filter(array_keys($kode), fn ($k) => RegulasiIcd::adaDiMaster($k)));
     }
 
     /** Simpan kode dari teks sebagai usulan (sumber=teks); kode yang sudah ada tidak diubah. @return int jumlah baru */
-    public function simpan(PnpkDokumen $d): int
+    public function simpan(RegulasiDokumen $d): int
     {
-        $ada = PnpkIcd::where('dokumen_id', $d->id)->pluck('kode')->map(fn ($k) => str_replace('.', '', PnpkIcd::normalize($k)))->all();
+        $ada = RegulasiIcd::where('dokumen_id', $d->id)->pluck('kode')->map(fn ($k) => str_replace('.', '', RegulasiIcd::normalize($k)))->all();
         $baru = 0;
         foreach ($this->ekstrak($d->halaman()->pluck('teks', 'halaman')->all()) as $k) {
             if (in_array(str_replace('.', '', $k), $ada, true)) {
                 continue;
             }
-            PnpkIcd::create(['dokumen_id' => $d->id, 'kode' => $k, 'sumber' => 'teks', 'status' => 'usulan']);
+            RegulasiIcd::create(['dokumen_id' => $d->id, 'kode' => $k, 'sumber' => 'teks', 'status' => 'usulan']);
             $ada[] = str_replace('.', '', $k);
             $baru++;
         }

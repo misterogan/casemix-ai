@@ -1,6 +1,7 @@
 // Halaman verifikasi berkas: penampil dokumen (pdf.js), navigasi bagian, kepala ringkas, centang temuan, pintasan keyboard.
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import './dasar-koding.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 

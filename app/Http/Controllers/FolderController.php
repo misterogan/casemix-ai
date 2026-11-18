@@ -16,6 +16,9 @@ use App\Models\FolderDocument;
 use App\Models\FtpFolder;
 use App\Models\RubricItem;
 use App\Services\Ai\AiBudget;
+use App\Services\Regulasi\DasarKoding;
+use App\Services\Regulasi\DasarSanggahan;
+use App\Services\Regulasi\DrafSanggahan;
 use App\Services\Vclaim\VclaimHistoriService;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
@@ -443,7 +446,41 @@ class FolderController extends Controller
             'codes' => $kodeOn ? $this->latestCodes($folder) : collect(),
             'bpjs' => auth()->user()?->hasRole('koordinator') ? $this->bpjs($folder) : null,
             'manualFiles' => auth()->user()?->hasRole('koordinator') ? $folder->manualFiles()->with('uploader:id,name')->get() : collect(),
+            // Acuan regulasi (Koordinator): dasar koding per kode; dasar sanggahan bila folder perlu tindak lanjut BPJS
+            'dasarKoding' => auth()->user()?->hasRole('koordinator') ? app(DasarKoding::class)->untukFolder($folder) : collect(),
+            'sanggahan' => auth()->user()?->hasRole('koordinator') && $folder->bpjs_tindak_lanjut ? app(DasarSanggahan::class)->untukFolder($folder) : null,
         ];
+    }
+
+    /** "Salin dasar koding" (Koordinator): teks disalin di peramban; di sini hanya dicatat. */
+    public function salinDasarKoding(FtpFolder $folder, DasarKoding $dk)
+    {
+        $items = $dk->untukFolder($folder);
+        Audit::log('regulasi.salin_dasar_koding', $folder, 'Menyalin dasar koding', ['kode' => $items->pluck('kode')->all(),
+            'butir' => $items->flatMap(fn ($x) => $x['butir']->pluck('id'))->unique()->values()->all()]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** "Susun draf sanggahan" (Koordinator): hanya butir terkonfirmasi yang ditampilkan di panel dan dikirim dengan id. */
+    public function drafSanggahan(Request $request, FtpFolder $folder, DasarSanggahan $ds, DrafSanggahan $draf)
+    {
+        abort_unless($folder->bpjs_tindak_lanjut, 404);
+        $v = $request->validate(['butir' => ['nullable', 'array'], 'butir.*' => ['integer']]);
+        $panel = $ds->untukFolder($folder);
+        $hasil = $draf->susun($panel['semua'], $v['butir'] ?? [], ['status_klaim' => $folder->vclaimKlaim?->status_kategori,
+            'jenis_rawat' => $folder->jenis_rawat, 'kode' => $panel['kode']], $folder->id);
+        Audit::log('regulasi.draf_susun', $folder, 'Menyusun draf sanggahan', ['butir' => $hasil['butir']]);
+
+        return response()->json($hasil);
+    }
+
+    public function unduhDraf(Request $request, FtpFolder $folder, DrafSanggahan $draf)
+    {
+        $v = $request->validate(['draf' => ['required', 'string', 'max:20000'], 'format' => ['required', 'in:docx,txt']]);
+        Audit::log('regulasi.draf_unduh', $folder, 'Mengunduh draf sanggahan (' . $v['format'] . ')', ['format' => $v['format']]);
+
+        return $draf->unduh($v['draf'], $v['format'], 'draf-sanggahan-' . Str::slug($folder->no_sep ?: (string) $folder->id));
     }
 
     private static function noKartu(FtpFolder $folder): ?string

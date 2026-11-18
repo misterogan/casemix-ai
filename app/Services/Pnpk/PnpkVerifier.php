@@ -2,7 +2,7 @@
 
 namespace App\Services\Pnpk;
 
-use App\Models\PnpkIcd;
+use App\Models\RegulasiIcd;
 
 /**
  * Verifikasi tanpa AI: kutipan harus ada di teks dokumen (seluruh halaman, toleran tanda air & baris terpotong);
@@ -98,7 +98,7 @@ class PnpkVerifier
 
     public function icdValid(string $kode): bool
     {
-        return PnpkIcd::adaDiMaster($kode);
+        return RegulasiIcd::adaDiMaster($kode);
     }
 
     /** @return array<string, true> token sisa tanda air dokumen */
