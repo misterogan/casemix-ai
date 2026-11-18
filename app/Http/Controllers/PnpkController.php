@@ -114,6 +114,7 @@ class PnpkController extends Controller
         $pnpk->load(['icd.dokumen', 'butir', 'penggantiDokumen']);
 
         return view('acuan.pnpk.show', ['dokumen' => $pnpk, 'bolehTinjau' => $request->user()->hasRole('koordinator'),
+            'alasanBelumSelesai' => self::alasanBelumSelesai($pnpk),
             'perJenis' => $pnpk->butir->groupBy('jenis')]);
     }
 
@@ -121,8 +122,8 @@ class PnpkController extends Controller
     {
         abort_unless(Storage::disk('local')->exists($pnpk->path), 404);
 
-        return response()->file($pnpk->pdfPath(), ['Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="pnpk-' . $pnpk->id . '.pdf"']);
+        return response()->file(Storage::disk('local')->path($pnpk->path), ['Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="pnpk-' . $pnpk->id . '.pdf"', 'X-Content-Type-Options' => 'nosniff']);
     }
 
     // ------------------------------------------------------------ tinjau (Koordinator)
@@ -188,6 +189,9 @@ class PnpkController extends Controller
 
     public function selesai(Request $request, PnpkDokumen $pnpk)
     {
+        if ($alasan = self::alasanBelumSelesai($pnpk)) {
+            throw ValidationException::withMessages(['aksi' => $alasan]);
+        }
         $pnpk->update(['status_proses' => 'selesai']);
         Audit::log('pnpk.selesai_tinjau', $pnpk, "Selesai meninjau PNPK {$pnpk->judul}");
 
@@ -195,6 +199,16 @@ class PnpkController extends Controller
     }
 
     // ------------------------------------------------------------ bantu
+
+    /** Alasan tombol "Selesai ditinjau" nonaktif, atau null bila boleh. */
+    public static function alasanBelumSelesai(PnpkDokumen $d): ?string
+    {
+        if ($d->perlu_dilengkapi) {
+            return 'Lengkapi metadata (nomor KMK / tanggal berlaku) terlebih dahulu.';
+        }
+
+        return $d->butir()->where('status', 'disetujui')->exists() ? null : 'Belum ada butir yang disetujui.';
+    }
 
     private function rules(): array
     {

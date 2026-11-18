@@ -64,11 +64,13 @@ class UsulkanButirPnpk implements ShouldQueue
                         'alasan_tolak' => $valid ? null : PnpkVerifier::TOLAK_ICD]);
                 }
                 foreach ($parsed['butir'] as $b) {
-                    $cocok = $verifier->kutipanCocok($b['kutipan'], $b['halaman'], $pages);
-                    PnpkButir::create($b + ['dokumen_id' => $d->id, 'cocok_kutipan' => $cocok, 'status' => $cocok ? 'usulan' : 'ditolak',
+                    $halPdf = $verifier->cariHalaman($b['kutipan'], $b['halaman'], $pages);
+                    $cocok = $halPdf !== null;
+                    PnpkButir::create($b + ['dokumen_id' => $d->id, 'halaman_pdf' => $halPdf, 'cocok_kutipan' => $cocok, 'status' => $cocok ? 'usulan' : 'ditolak',
                         'alasan_tolak' => $cocok ? null : PnpkVerifier::TOLAK_KUTIPAN]);
                 }
             }
+            app(\App\Services\Pnpk\PnpkIcdTeks::class)->simpan($d); // ICD tertulis di teks, tanpa AI
             $d->update(['status_proses' => 'siap_tinjau']);
         } catch (Throwable $e) {
             $d->update(['status_proses' => 'gagal', 'error' => mb_substr($e->getMessage(), 0, 2000)]);

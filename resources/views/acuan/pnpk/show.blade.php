@@ -4,7 +4,7 @@
             <x-badge :variant="\App\Models\PnpkDokumen::STATUS_TONE[$dokumen->status] ?? 'gray'">{{ \App\Models\PnpkDokumen::STATUS[$dokumen->status] ?? $dokumen->status }}</x-badge>
             <a href="{{ route('acuan.pnpk.edit', $dokumen) }}" class="btn-secondary">Ubah metadata</a>
             @if ($bolehTinjau && $dokumen->status_proses !== 'selesai')
-                <form method="POST" action="{{ route('acuan.pnpk.selesai', $dokumen) }}">@csrf<button class="btn-primary">Selesai ditinjau</button></form>
+                <form method="POST" action="{{ route('acuan.pnpk.selesai', $dokumen) }}" @if ($alasanBelumSelesai) title="{{ $alasanBelumSelesai }}" @endif>@csrf<button class="btn-primary disabled:cursor-not-allowed disabled:opacity-50" data-selesai @disabled($alasanBelumSelesai) @if ($alasanBelumSelesai) title="{{ $alasanBelumSelesai }}" @endif>Selesai ditinjau</button></form>
             @endif
         </x-slot:actions>
     </x-page-header>
@@ -30,7 +30,7 @@
                             <li class="flex items-center gap-1 rounded-lg border border-garis px-2 py-1" data-icd="{{ $i->kode }}">
                                 <span class="num font-medium">{{ $i->kode }}</span>
                                 <x-badge :variant="['disetujui' => 'success', 'ditolak' => 'error'][$i->status] ?? 'info'">{{ ucfirst($i->status) }}</x-badge>
-                                <span class="text-xs text-tinta-3">{{ $i->sumber === 'ai' ? 'AI' : 'manual' }}@if ($i->alasan_tolak) · {{ $i->alasan_tolak }}@endif</span>
+                                <span class="text-xs text-tinta-3">{{ ['ai' => 'AI', 'teks' => 'teks dokumen'][$i->sumber] ?? 'manual' }}@if ($i->alasan_tolak) · {{ $i->alasan_tolak }}@endif</span>
                                 @if ($bolehTinjau && $i->status === 'usulan')
                                     <form method="POST" action="{{ route('acuan.pnpk.icd', [$dokumen, $i]) }}">@csrf<input type="hidden" name="aksi" value="setujui"><button class="btn-ghost text-xs">Setujui</button></form>
                                     <form method="POST" action="{{ route('acuan.pnpk.icd', [$dokumen, $i]) }}">@csrf<input type="hidden" name="aksi" value="tolak"><button class="btn-ghost text-xs">Tolak</button></form>
@@ -69,7 +69,7 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <x-badge :variant="['disetujui' => 'success', 'ditolak' => 'error'][$b->status] ?? 'info'">{{ ucfirst($b->status) }}</x-badge>
                                     <x-badge :variant="$b->cocok_kutipan ? 'success' : 'error'">{{ $b->cocok_kutipan ? 'Kutipan cocok' : 'Kutipan tidak cocok' }}</x-badge>
-                                    <button type="button" class="text-xs text-url" data-goto="{{ $b->halaman }}">hal. {{ $b->halaman }}</button>
+                                    <button type="button" class="text-xs text-url" data-goto="{{ $b->halamanBuka() }}" @if ($b->halaman_pdf && $b->halaman_pdf !== $b->halaman) title="Label AI: hal. {{ $b->halaman }}" @endif>hal. {{ $b->halamanBuka() }}</button>
                                     @if ($b->level_bukti)<span class="text-xs text-tinta-3">Level bukti {{ $b->level_bukti }}</span>@endif
                                 </div>
                                 <p class="text-arang">{{ $b->ringkasan }}</p>

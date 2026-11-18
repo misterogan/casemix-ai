@@ -70,6 +70,6 @@ class PnpkDokumen extends Model
 
     public function pdfPath(): string
     {
-        return storage_path('app/private/' . $this->path);
+        return \Illuminate\Support\Facades\Storage::disk('local')->path($this->path);
     }
 }

@@ -22,10 +22,15 @@ class PnpkIcd extends Model
         return $this->belongsTo(PnpkDokumen::class, 'dokumen_id');
     }
 
-    /** Huruf besar, tanpa spasi; titik dipertahankan. */
+    /** Huruf besar, tanpa spasi; format bertitik (A010 → A01.0, A01.0 tetap). */
     public static function normalize(string $kode): string
     {
-        return strtoupper(preg_replace('/\s+/', '', $kode));
+        $k = strtoupper(preg_replace('/\s+/', '', $kode));
+        if (preg_match('/^([A-Z][0-9]{2})\.?([0-9A-Z]{1,2})$/', $k, $m)) {
+            return $m[1] . '.' . $m[2];
+        }
+
+        return $k;
     }
 
     /** Prefix ada di master ICD-10 (kode persis atau kode turunan). */
@@ -36,7 +41,11 @@ class PnpkIcd extends Model
             return false;
         }
 
-        return IcdCode::where('system', 'icd10')->where(fn ($q) => $q->where('code', $k)->orWhere('code', 'like', $k . '%'))->exists();
+        // Master bisa bertitik (A01.0) atau tidak (A010); kode 3 digit cukup punya satu turunan di master.
+        $tanpaTitik = str_replace('.', '', $k);
+
+        return IcdCode::where('system', 'icd10')->where(fn ($q) => $q->whereIn('code', [$k, $tanpaTitik])
+            ->orWhere('code', 'like', $k . '%')->orWhere('code', 'like', $tanpaTitik . '%'))->exists();
     }
 
     /** Kode diagnosis cocok dengan prefix ini (titik diabaikan). */

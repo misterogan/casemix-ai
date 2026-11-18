@@ -28,9 +28,20 @@ if (root) {
     info.textContent = `hal. ${hal} / ${doc.numPages}`;
   };
 
-  pdfjs.getDocument({ url: root.dataset.pdfUrl, withCredentials: true }).promise
+  // Ambil PDF utuh lewat fetch (cookie sesi ikut, tanpa range request) lalu serahkan datanya ke pdf.js.
+  fetch(root.dataset.pdfUrl, { credentials: 'same-origin', redirect: 'error', headers: { Accept: 'application/pdf' } })
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} saat memuat PDF`);
+      const tipe = r.headers.get('content-type') || '';
+      if (!tipe.includes('application/pdf')) throw new Error(`Content-Type tidak terduga: ${tipe}`);
+      return r.arrayBuffer();
+    })
+    .then((buf) => pdfjs.getDocument({ data: new Uint8Array(buf) }).promise)
     .then((d) => { doc = d; render(hal); })
-    .catch(() => { info.textContent = 'PDF tidak dapat dimuat'; });
+    .catch((e) => {
+      console.error('[pnpk-review] PDF tidak dapat dimuat:', e);
+      info.textContent = 'PDF tidak dapat dimuat — pakai "Buka PDF"';
+    });
 
   root.querySelector('[data-prev]').addEventListener('click', () => render(hal - 1));
   root.querySelector('[data-next]').addEventListener('click', () => render(hal + 1));
