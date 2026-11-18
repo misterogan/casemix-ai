@@ -36,7 +36,11 @@
         {{-- 2. Status sinkron --}}
         <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-abu">
             <span>Sinkron FTP terakhir {{ $s['sinkron'] ? \Illuminate\Support\Carbon::parse($s['sinkron'])->format('H:i') : '—' }}</span>
-            <span class="text-gray-400">Status klaim BPJS (VClaim): belum tersambung</span>
+            @if ($s['vclaim'])
+                <span data-vclaim-terakhir>VClaim terakhir {{ $s['vclaim']['terakhir'] ? \Illuminate\Support\Carbon::parse($s['vclaim']['terakhir'])->format('d/m H:i') : '—' }}</span>
+            @else
+                <span class="text-gray-400">Status klaim BPJS (VClaim): belum tersambung</span>
+            @endif
         </p>
     </section>
 
@@ -52,7 +56,13 @@
             <section class="panel px-5 py-4"><p class="text-sm text-abu">{{ $l }}</p><p class="mt-1 text-3xl font-bold {{ $c }}" data-kartu="{{ $k }}">{{ $n }}</p></section>
         @endforeach
         <section class="panel px-5 py-4"><p class="text-sm text-abu">Biaya AI bulan ini</p><p class="mt-1 text-3xl font-bold text-arang" data-kartu="biaya">US$ {{ number_format($s['biaya_ai'], 2) }}</p></section>
-        <section class="panel border-dashed bg-abu-muda px-5 py-4 text-gray-500"><p class="text-sm">Nilai klaim &amp; status BPJS — tersedia setelah VClaim tersambung</p></section>
+        @if ($vc = $s['vclaim'])
+            <section class="panel px-5 py-4" data-vclaim-kartu="pending"><p class="text-sm text-abu">Pending verifikasi BPJS</p><p class="mt-1 text-3xl font-bold text-kritis">{{ $vc['pending'] }}</p></section>
+            <section class="panel px-5 py-4" data-vclaim-kartu="layak"><p class="text-sm text-abu">Klaim layak bulan ini</p><p class="mt-1 text-3xl font-bold text-sesuai">{{ $vc['layak'] }}</p><p class="text-xs tabular-nums text-abu">Rp {{ number_format($vc['layak_total'], 0, ',', '.') }} disetujui</p></section>
+            <section class="panel px-5 py-4" data-vclaim-kartu="selisih"><p class="text-sm text-abu">Selisih diajukan vs disetujui bulan ini</p><p class="mt-1 text-2xl font-bold tabular-nums text-arang">Rp {{ number_format($vc['selisih'], 0, ',', '.') }}</p></section>
+        @else
+            <section class="panel border-dashed bg-abu-muda px-5 py-4 text-gray-500"><p class="text-sm">Nilai klaim &amp; status BPJS — tersedia setelah VClaim tersambung</p></section>
+        @endif
     </div>
 
     <section class="mt-4" aria-labelledby="judul-pindah">

@@ -7,6 +7,9 @@ use App\Models\CodeSuggestion;
 use App\Models\ConditionSuggestion;
 use App\Models\FtpFolder;
 use App\Models\RubricItem;
+use App\Models\VclaimKlaim;
+use App\Models\VclaimSyncRun;
+use App\Services\Vclaim\VclaimClient;
 use App\Services\Ai\AiBudget;
 use App\Support\VerificationRubric;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,7 +35,24 @@ class DashboardStats
     {
         $period = self::period($period);
 
-        return Cache::remember("dashboard.stats.$period", 300, fn () => $this->compute($period));
+        return Cache::remember("dashboard.stats.$period", 300, fn () => $this->compute($period)) + ['vclaim' => $this->vclaim()];
+    }
+
+    /** Ringkasan VClaim (bulan berjalan menurut tanggal pulang); null bila VClaim tidak aktif. */
+    private function vclaim(): ?array
+    {
+        if (! VclaimClient::enabled()) {
+            return null;
+        }
+        $bulan = VclaimKlaim::where('status_kode', 3)->whereBetween('tgl_pulang', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
+
+        return [
+            'terakhir' => VclaimSyncRun::where('status', 'ok')->max('created_at') ?? VclaimSyncRun::max('created_at'),
+            'pending' => VclaimKlaim::where('status_kode', 2)->count(),
+            'layak' => (clone $bulan)->count(),
+            'layak_total' => (float) (clone $bulan)->sum('by_setujui'),
+            'selisih' => (float) (clone $bulan)->sum('by_pengajuan') - (float) (clone $bulan)->sum('by_setujui'),
+        ];
     }
 
     private function since(string $period): ?Carbon

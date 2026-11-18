@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ReviewStatus;
+use App\Jobs\FetchVclaimHistori;
 use App\Jobs\ReadFolderDocument;
 use App\Jobs\RunFolderAnalysis;
 use App\Jobs\SynthesizeFolderAnalysis;
@@ -15,6 +16,7 @@ use App\Models\FolderAnalysis;
 use App\Models\FolderDocument;
 use App\Models\FtpFolder;
 use App\Models\RubricItem;
+use App\Models\VclaimHistori;
 use App\Services\Ai\AiBudget;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
@@ -92,6 +94,17 @@ class FolderController extends Controller
     /** Dibuka pertama kali: analisa AI dimulai otomatis. Berikutnya: hasil tersimpan, tanpa memanggil AI. */
     public function show(Request $request, FtpFolder $folder, AiBudget $budget)
     {
+        // Tombol "Ambil riwayat" (Koordinator): antrekan GET histori VClaim lalu kembali ke halaman
+        if ($request->boolean('ambil_riwayat')) {
+            abort_unless($request->user()->hasRole('koordinator'), 403);
+            $noKartu = $folder->no_sep ? self::noKartu($folder) : null;
+            abort_unless($noKartu, 422, 'Nomor kartu peserta belum diketahui.');
+            FetchVclaimHistori::dispatch($noKartu);
+            Audit::log('vclaim.riwayat.ambil', $folder, 'Meminta riwayat pelayanan peserta dari VClaim', ['folder_id' => $folder->id]);
+
+            return redirect()->route('folders.show', $folder)->with('status', 'Riwayat pelayanan sedang diambil. Muat ulang halaman sebentar lagi.');
+        }
+
         $latest = $folder->analyses()->first();
         $blocker = $this->startBlocker($budget);
 
@@ -101,6 +114,9 @@ class FolderController extends Controller
         }
 
         $data = $this->viewData($folder, $latest, $blocker);
+        if ($data['bpjs'] && $folder->no_sep && ! $request->ajax()) {
+            Audit::log('vclaim.riwayat.buka', $folder, 'Membuka panel riwayat pelayanan peserta', ['folder_id' => $folder->id]);
+        }
 
         // Dipanggil polling saat analisa selesai: hanya isi halaman, ditukar tanpa memuat ulang
         if ($request->ajax()) {
@@ -407,7 +423,39 @@ class FolderController extends Controller
             'suggestions' => $saranOn ? $folder->conditionSuggestions()->get() : collect(),
             'kodeOn' => $kodeOn = SettingController::codeSuggestionsOn(),
             'codes' => $kodeOn ? $this->latestCodes($folder) : collect(),
+            'bpjs' => auth()->user()?->hasRole('koordinator') ? $this->bpjs($folder) : null,
         ];
+    }
+
+    private static function noKartu(FtpFolder $folder): ?string
+    {
+        return $folder->vclaimKlaim?->no_kartu ?: $folder->vclaimKunjungan?->no_kartu ?: null;
+    }
+
+    /** Data VClaim untuk panel folder: status klaim + riwayat 90 hari dengan tanda kemungkinan readmisi. */
+    private function bpjs(FtpFolder $folder): array
+    {
+        if (! $folder->no_sep) {
+            return ['tanpa_sep' => true];
+        }
+        $klaim = $folder->vclaimKlaim;
+        $noKartu = self::noKartu($folder);
+        $tglSep = $klaim?->tgl_sep ?? ($folder->vclaimKunjungan?->tgl_sep ? Carbon::parse($folder->vclaimKunjungan->tgl_sep) : null);
+        $ppk = substr($folder->no_sep, 0, 8);
+        $riwayat = $noKartu ? VclaimHistori::where('no_kartu', $noKartu)->where('tgl_sep', '>=', now()->subDays(90)->toDateString())
+            ->orderByDesc('tgl_sep')->get() : collect();
+        foreach ($riwayat as $r) {
+            $r->readmisi = $tglSep && $r->no_sep !== $folder->no_sep && $r->tgl_plg_sep
+                && str_starts_with($r->no_sep, $ppk) && self::inap($r->jns_pelayanan)
+                && $r->tgl_plg_sep->lte($tglSep) && $r->tgl_plg_sep->gte($tglSep->copy()->subDays(30));
+        }
+
+        return ['tanpa_sep' => false, 'klaim' => $klaim, 'no_kartu' => $noKartu, 'riwayat' => $riwayat];
+    }
+
+    private static function inap(?string $jns): bool
+    {
+        return $jns === '1' || str_contains(strtolower((string) $jns), 'inap');
     }
 
     /** Saran kode dari analisa terakhir yang menghasilkan saran kode. */

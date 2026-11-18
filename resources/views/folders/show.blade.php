@@ -66,6 +66,9 @@
         {{-- lg+: dua panel setinggi layar, masing-masing scroll sendiri --}}
         <div class="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-2">
         <div class="min-h-0 space-y-6 lg:overflow-y-auto lg:overscroll-contain">
+        @if ($bpjs)
+            @include('folders.partials.bpjs')
+        @endif
         {{-- Daftar periksa: 14 butir tetap per kelompok --}}
         <section class="panel" aria-labelledby="judul-periksa" data-daftar-periksa>
             <div class="panel-head border-b border-gray-200 px-4 py-3">
