@@ -12,6 +12,7 @@ use App\Models\RubricItem;
 use App\Services\Ai\AiBudget;
 use App\Services\Ai\AiManager;
 use App\Services\Ai\AiRequest;
+use App\Services\Pnpk\PnpkAcuan;
 use App\Services\Verification\FolderAnalyzer;
 use App\Support\Audit;
 use App\Support\VerificationRubric;
@@ -79,7 +80,9 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 if ($blocked = $budget->runBlocker()) {
                     throw new RuntimeException($blocked);
                 }
-                $this->buildRequest($req, $a, $folder, $need, $needSaran, $needKode);
+                // Acuan PNPK: hanya butir disetujui, dirujuk AI lewat id; id yang tidak dikirim dibuang
+                $pnpk = app(PnpkAcuan::class)->butirForFolder($folder);
+                $this->buildRequest($req, $a, $folder, $need, $needSaran, $needKode, $pnpk);
                 $req->maxTokens = min((int) $config->max_tokens, ReadFolderDocument::MAX_TOKENS);
                 $res = $ai->for($config)->generate($req);
                 $budget->charge($a, $res, $config->id);
@@ -92,6 +95,9 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 ?? 'Tidak ada dokumen yang berubah; daftar periksa tetap.';
             // Aturan E-Klaim + data gabungan dihitung tanpa AI; "kondisi" ikut dibersihkan (kode ICD dibuang)
             $r = $analyzer->synthesize($a, ['ringkasan' => $summary, 'temuan' => [], 'kondisi' => $needSaran ? array_slice((array) ($json['kondisi'] ?? []), 0, self::MAX_SUGGESTIONS) : []]);
+            if (isset($pnpk) && $pnpk->isNotEmpty()) {
+                $r['findings'] = array_merge($r['findings'] ?? [], $this->pnpkFindings($pnpk, $json['pnpk'] ?? []));
+            }
 
             $this->saveAiItems($folder, $items, $need, (array) ($json['rubrik'] ?? []));
             $this->saveRuleItems($folder, $items, collect($r['findings'] ?? []));
@@ -131,7 +137,17 @@ class SynthesizeFolderAnalysis implements ShouldQueue
     }
 
     /** Ganti instruksi tahap 2: hanya butir yang perlu dinilai (+ kondisi bila saran menyala). */
-    private function buildRequest(AiRequest $req, FolderAnalysis $a, FtpFolder $folder, array $need, bool $needSaran, bool $needKode = false): void
+    /** Rujukan AI ke butir PNPK yang dikirim saja; id asing dibuang. */
+    private function pnpkFindings(Collection $pnpk, mixed $items): array
+    {
+        $byId = $pnpk->keyBy('id');
+
+        return array_map(fn ($r) => ['tingkat' => 'perhatian', 'kategori' => 'PNPK', 'judul' => 'Acuan PNPK: ' . $byId[$r['id']]->jenisLabel(),
+            'uraian' => $r['catatan'] ?: $byId[$r['id']]->ringkasan, 'dokumen' => null, 'halaman' => null, 'sumber' => 'pnpk', 'pnpk_butir_id' => $r['id']],
+            app(PnpkAcuan::class)->filterRujukan($items, $byId->keys()->all()));
+    }
+
+    private function buildRequest(AiRequest $req, FolderAnalysis $a, FtpFolder $folder, array $need, bool $needSaran, bool $needKode = false, ?Collection $pnpk = null): void
     {
         $butir = collect($need)->map(fn ($k) => "- $k: " . VerificationRubric::label($k))->implode("\n");
         $schema = '{"ringkasan":"maks 2 kalimat","rubrik":[{"kode":"...","status":"lengkap|kurang|tidak_berlaku","catatan":"maks 20 kata","dokumen":"nama file","halaman":1}]'
@@ -170,6 +186,11 @@ class SynthesizeFolderAnalysis implements ShouldQueue
                 . '(komplikasi/komorbid yang didukung lab, obat, atau CPPT; icd10, peran sekunder), dan tindakan (icd9cm, peran tindakan). '
                 . 'WAJIB kutipan bukti, nama file, dan halaman; tanpa bukti jangan dimasukkan. Jangan mempertimbangkan tarif atau nilai klaim. '
                 . "Format kode: ICD-10 mis. J18.9, ICD-9-CM mis. 99.04. Bila tidak ada, isi [].\n";
+        }
+        if ($pnpk && $pnpk->isNotEmpty()) {
+            $schema = substr($schema, 0, -1) . ',"pnpk":[{"id":1,"catatan":"maks 25 kata: apakah dokumentasi sesuai butir ini"}]}';
+            $text .= app(PnpkAcuan::class)->promptBlock($pnpk)
+                . "\nPNPK: rujuk butir hanya lewat \"id\" yang dikirim, maks 5, bila dokumentasi tampak tidak sesuai atau perlu dicek. Bila tidak ada, isi [].\n";
         }
         $text .= "\nFormat JSON: $schema";
 

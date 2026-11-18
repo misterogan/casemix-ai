@@ -2,6 +2,7 @@
     <x-page-header title="Acuan regulasi" subtitle="Rujukan untuk butir Daftar periksa yang kurang; tampil sebagai tautan Acuan di verifikasi folder." :back="route('admin.settings.index')">
         <x-slot:actions><a href="{{ route('admin.regulations.create') }}" class="btn-primary">Tambah acuan</a></x-slot:actions>
     </x-page-header>
+    @include('acuan._tabs')
 
     <section class="panel">
         @if ($regulations->isEmpty())

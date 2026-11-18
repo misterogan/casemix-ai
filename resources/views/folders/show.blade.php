@@ -145,6 +145,7 @@
         @endif
 
         @if (auth()->user()->hasRole('koordinator'))
+            @include('folders.partials.pnpk')
             @include('folders.partials.manual')
         @endif
 

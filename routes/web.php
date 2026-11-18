@@ -131,6 +131,26 @@ Route::middleware(['auth', 'active'])->group(function () {
         });
     });
 
+    // Acuan regulasi → PNPK. Kelola dokumen: Admin & Koordinator (bukan data pasien). Tinjau butir/ICD: Koordinator.
+    Route::prefix('acuan/pnpk')->name('acuan.pnpk.')->middleware('role:admin|koordinator')->group(function () {
+        $c = \App\Http\Controllers\PnpkController::class;
+        Route::get('/', [$c, 'index'])->name('index');
+        Route::get('/baru', [$c, 'create'])->name('create');
+        Route::post('/', [$c, 'store'])->middleware('throttle:20,1')->name('store');
+        Route::get('/{pnpk}', [$c, 'show'])->whereNumber('pnpk')->name('show');
+        Route::get('/{pnpk}/pdf', [$c, 'pdf'])->whereNumber('pnpk')->name('pdf');
+        Route::get('/{pnpk}/ubah', [$c, 'edit'])->whereNumber('pnpk')->name('edit');
+        Route::put('/{pnpk}', [$c, 'update'])->whereNumber('pnpk')->name('update');
+        Route::delete('/{pnpk}', [$c, 'destroy'])->whereNumber('pnpk')->name('destroy');
+        Route::middleware('role:koordinator')->whereNumber('pnpk')->group(function () use ($c) {
+            Route::post('/{pnpk}/butir/{butir}', [$c, 'butir'])->whereNumber('butir')->name('butir');
+            Route::post('/{pnpk}/butir-massal', [$c, 'butirMassal'])->name('butir.massal');
+            Route::post('/{pnpk}/icd/{icd}', [$c, 'icd'])->whereNumber('icd')->name('icd');
+            Route::post('/{pnpk}/icd', [$c, 'icdTambah'])->name('icd.tambah');
+            Route::post('/{pnpk}/selesai', [$c, 'selesai'])->name('selesai');
+        });
+    });
+
     Route::get('/riwayat-aktivitas', [AuditLogController::class, 'index'])->name('audit.index')->middleware('permission:audit.view');
 
     // Admin
