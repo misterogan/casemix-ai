@@ -42,7 +42,9 @@
             ['route' => 'manual.create', 'match' => 'manual.*', 'label' => 'Unggah manual', 'icon' => 'upload', 'show' => $koor, 'baru' => true],
         ],
         'Referensi' => [
-            ['route' => 'admin.regulations.index', 'match' => 'admin.regulations.*', 'label' => 'Acuan regulasi', 'icon' => 'book', 'show' => $u->can('admin.manage')],
+            ['route' => 'admin.regulations.index', 'match' => ['admin.regulations.*', 'acuan.*'], 'label' => 'Acuan regulasi', 'icon' => 'book', 'show' => $u->can('admin.manage')],
+            // Koordinator (bukan Admin): langsung ke tab PNPK untuk meninjau butir tanpa lewat area Admin
+            ['route' => 'acuan.pnpk.index', 'match' => 'acuan.*', 'label' => 'Acuan regulasi', 'icon' => 'book', 'show' => $koor && ! $u->can('admin.manage')],
         ],
         'Sistem' => [
             ['route' => 'audit.index', 'match' => 'audit.*', 'label' => 'Riwayat aktivitas', 'icon' => 'history', 'show' => $u->can('audit.view')],

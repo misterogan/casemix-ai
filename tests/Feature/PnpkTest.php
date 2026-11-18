@@ -97,14 +97,14 @@ class PnpkTest extends TestCase
     public function test_ekstrak_per_halaman_dengan_ocr_untuk_halaman_pendek(): void
     {
         $d = $this->dokumen([], []);
-        $this->app->instance(PnpkTextExtractor::class, new class(app(\App\Services\Ai\AiManager::class)) extends PnpkTextExtractor {
+        $this->app->instance(PnpkTextExtractor::class, new class(app(\App\Services\Ai\AiManager::class), app(\App\Services\Ai\AiBudget::class)) extends PnpkTextExtractor {
             public function textPages(string $path): array { return [PnpkTest::teks(1), '  ', PnpkTest::teks(3)]; }
 
             public function ocr(string $path, int $page): string { return "Hasil OCR halaman $page yang cukup panjang untuk disimpan sebagai teks."; }
         });
         Queue::fake();
 
-        (new EkstrakPnpk($d->id))->handle(app(PnpkTextExtractor::class));
+        (new EkstrakPnpk($d->id))->handle(app(PnpkTextExtractor::class), app(\App\Services\Ai\AiBudget::class));
 
         $this->assertSame([1, 2, 3], PnpkHalaman::where('dokumen_id', $d->id)->orderBy('halaman')->pluck('halaman')->all());
         $this->assertStringStartsWith('Hasil OCR halaman 2', PnpkHalaman::where('halaman', 2)->value('teks'));
@@ -143,6 +143,11 @@ class PnpkTest extends TestCase
         $this->assertSame('usulan', PnpkIcd::where('kode', 'J18')->value('status'));
         $this->assertSame('ditolak', PnpkIcd::where('kode', 'Z99.9')->value('status'));
         $this->assertSame(2, PnpkIcd::count());
+        // Biaya usulan dicatat AiBudget pada baris dokumen PNPK
+        $d->refresh();
+        $this->assertSame([10, 10, 'claude-sonnet-5-5'], [$d->tokens_in, $d->tokens_out, $d->model]);
+        $this->assertNotNull($d->finished_at);
+        $this->assertArrayHasKey('PNPK (OCR & usulan butir)', app(\App\Services\Ai\AiBudget::class)->report()['per_fitur']);
     }
 
     public function test_hanya_butir_disetujui_tampil_di_panel_folder(): void
@@ -255,5 +260,12 @@ class PnpkTest extends TestCase
         // Petugas tidak punya akses
         $petugas = User::factory()->create(['is_active' => true])->assignRole('petugas');
         $this->actingAs($petugas)->get(route('acuan.pnpk.index'))->assertForbidden();
+    }
+
+    public function test_koordinator_melihat_tautan_acuan_regulasi_di_sidebar(): void
+    {
+        $this->actingAs($this->koor)->get(route('control.index'))->assertOk()
+            ->assertSee('href="' . route('acuan.pnpk.index') . '"', false)->assertSee('Acuan regulasi');
+        $this->actingAs($this->koor)->get('/acuan/pnpk')->assertOk()->assertSee('PNPK');
     }
 }
