@@ -20,7 +20,7 @@
     @if (! $enabled)
         <x-panel><x-empty-state title="Bridging VClaim belum diaktifkan." data-vclaim-off/></x-panel>
     @else
-        <p class="text-xs text-ink-muted" data-last-sync>Data BPJS terakhir ditarik {{ $lastSync ? \Illuminate\Support\Carbon::parse($lastSync)->format('d/m/Y H:i') : 'belum pernah' }}</p>
+        @if ($tab !== 'ringkasan')<p class="text-xs text-ink-muted" data-last-sync>Data BPJS terakhir ditarik {{ $lastSync ? \Illuminate\Support\Carbon::parse($lastSync)->format('d/m/Y H:i') : 'belum pernah' }}</p>@endif
 
         @if ($tab === 'ringkasan')
             @include('bpjs.partials.ringkasan')
@@ -30,8 +30,8 @@
             @endif
             <form method="GET" action="{{ route('bpjs.index') }}" class="flex flex-wrap items-end gap-2 text-sm">
                 <input type="hidden" name="tab" value="{{ $tab }}">
-                @foreach (['belum', 'kurang'] as $h)
-                    @if ($filters[$h])<input type="hidden" name="{{ $h }}" value="1">@endif
+                @foreach (['belum', 'kurang', 'lama'] as $h)
+                    @if ($filters[$h])<input type="hidden" name="{{ $h }}" value="{{ $filters[$h] }}">@endif
                 @endforeach
                 <label class="flex flex-col gap-1"><span class="text-xs text-ink-muted">{{ $tab === 'klaim' ? 'Tgl pulang dari' : 'Tgl SEP dari' }}</span>
                     <input type="date" name="dari" value="{{ $filters['dari'] }}" class="field num"></label>

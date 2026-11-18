@@ -147,14 +147,16 @@ class BpjsController extends Controller
         $links = [
             'kartu' => ['sep' => route('bpjs.index', ['tab' => 'sep'] + $p), 'belum' => route('bpjs.index', ['tab' => 'sep', 'belum' => 1] + $p),
                 'proses' => $klaim(['status' => 'proses']), 'pending' => $klaim(['status' => 'pending']), 'klaim' => $klaim(['status' => 'klaim']),
-                'kurang' => $klaim(['status' => 'klaim', 'kurang' => 1])],
+                'kurang' => $klaim(['status' => 'klaim', 'kurang' => 1]), 'tertahan' => $klaim(['status' => 'pending'])],
+            'aksi' => ['pending14' => $klaim(['status' => 'pending', 'lama' => 14]),
+                'belum7' => route('bpjs.index', ['tab' => 'sep', 'belum' => 1, 'lama' => 7] + $p)],
             'status' => array_map(fn ($s) => $klaim(['status' => $s]), $stats['donut_status']['keys']),
             'jenis' => array_map(fn ($x) => route('bpjs.index', ['tab' => 'klaim', 'jenis' => $x] + $rentang($periode)), $stats['donut_jenis']['keys']),
             'tren' => array_map(fn ($b) => array_map(fn ($s) => route('bpjs.index', ['tab' => 'klaim', 'status' => $s] + $rentang($b) + $j),
                 array_keys(BpjsStats::STATUS)), $stats['tren']['bulan']),
         ];
 
-        return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links];
+        return ['periode' => $periode, 'jenisRingkasan' => $jenis, 'stats' => $stats, 'links' => $links, 'sinkron' => BpjsStats::sinkron()];
     }
 
     private function filters(Request $request): array
@@ -174,6 +176,7 @@ class BpjsController extends Controller
             'q' => mb_substr(trim((string) $request->query('q')), 0, 100),
             'belum' => $request->query('belum') === '1' ? '1' : '',
             'kurang' => $request->query('kurang') === '1' ? '1' : '',
+            'lama' => in_array($request->query('lama'), ['7', '14'], true) ? $request->query('lama') : '',
         ];
     }
 
@@ -192,6 +195,9 @@ class BpjsController extends Controller
         if ($f['kurang']) {
             $q->where('status_kode', 3)->whereColumn('by_setujui', '<', 'by_pengajuan');
         }
+        if ($f['lama']) {
+            $q->whereNotNull('status_changed_at')->whereDate('status_changed_at', '<', now()->startOfDay()->subDays((int) $f['lama'])->toDateString());
+        }
         if ($f['q'] !== '') {
             $like = '%' . addcslashes($f['q'], '%_\\') . '%';
             $q->where(fn ($w) => $w->where('no_sep', 'like', $like)->orWhere('nama', 'like', $like)->orWhere('no_mr', 'like', $like));
@@ -206,6 +212,9 @@ class BpjsController extends Controller
         $this->jenis($q, $f['jenis']);
         if ($f['belum']) {
             $q->whereNotExists(fn ($s) => $s->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'));
+        }
+        if ($f['lama']) {
+            $q->whereRaw('COALESCE(tgl_plg_sep, tgl_sep) < ?', [now()->startOfDay()->subDays((int) $f['lama'])->toDateString()]);
         }
         if ($f['q'] !== '') {
             $like = '%' . addcslashes($f['q'], '%_\\') . '%';

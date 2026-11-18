@@ -3,7 +3,9 @@
 namespace App\Services\Dashboard;
 
 use App\Models\VclaimKlaim;
+use App\Models\VclaimKlaimStatusHistory;
 use App\Models\VclaimKunjungan;
+use App\Models\VclaimSyncRun;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -19,7 +21,7 @@ class BpjsStats
 
     public function get(string $periode, string $jenis): array
     {
-        return Cache::remember("bpjs-stats:v1:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
+        return Cache::remember("bpjs-stats:v2:$periode:$jenis", 600, fn () => $this->build($periode, $jenis));
     }
 
     public static function jenis(Builder $q, string $jenis): void
@@ -54,7 +56,14 @@ class BpjsStats
             'klaim' => ['Klaim layak (diterima)', $total, true],
             'belum' => ['Belum masuk data klaim', $kini['sep'], false],
             'kurang' => ['Disetujui kurang dari diajukan', $kini['klaim'], false],
+            'tertahan' => ['Nilai tertahan di pending', null, false],
         ] as $k => [$label, $dasar, $naikBaik]) {
+            if ($k === 'tertahan') {
+                $kartu[$k] = ['label' => $label, 'n' => $kini['rp']['pending'], 'pct' => null, 'rp' => null,
+                    'delta' => $kini['rp']['pending'] - $lalu['rp']['pending'], 'naik_baik' => false, 'rupiah' => true];
+
+                continue;
+            }
             $kartu[$k] = ['label' => $label, 'n' => $kini[$k], 'pct' => $dasar === null ? null : $pct($kini[$k], $dasar),
                 'rp' => $kini['rp'][$k] ?? null, 'delta' => $kini[$k] - $lalu[$k], 'naik_baik' => $naikBaik];
         }
@@ -62,6 +71,8 @@ class BpjsStats
         return [
             'periode' => $periode, 'jenis' => $jenis, 'kosong' => $kini['sep'] === 0 && $total === 0,
             'kartu' => $kartu, 'total_klaim' => $total,
+            'kalimat' => $this->kalimat($awal, $kini, $total),
+            'aksi' => $this->aksi($awal, $jenis),
             'donut_status' => ['keys' => array_keys(self::STATUS_LABEL), 'labels' => array_values(self::STATUS_LABEL),
                 'counts' => [$kini['proses'], $kini['pending'], $kini['klaim']],
                 'rp' => [$kini['rp']['proses'], $kini['rp']['pending'], $kini['rp']['klaim']]],
@@ -94,7 +105,7 @@ class BpjsStats
     private function bulan(Carbon $awal, string $jenis): array
     {
         $rows = $this->klaimBulan($awal, $jenis)->toBase()
-            ->selectRaw('status_kode, COUNT(*) n, COALESCE(SUM(by_pengajuan),0) rp,
+            ->selectRaw('status_kode, COUNT(*) n, COALESCE(SUM(by_pengajuan),0) rp, COALESCE(SUM(by_setujui),0) setuju,
                 SUM(CASE WHEN status_kode = 3 AND by_setujui < by_pengajuan THEN 1 ELSE 0 END) kurang,
                 COALESCE(SUM(CASE WHEN status_kode = 3 AND by_setujui < by_pengajuan THEN by_pengajuan ELSE 0 END),0) rp_kurang')
             ->groupBy('status_kode')->get()->keyBy('status_kode');
@@ -103,11 +114,90 @@ class BpjsStats
             $out[$k] = (int) ($rows[$kode]->n ?? 0);
             $out['rp'][$k] = (float) ($rows[$kode]->rp ?? 0);
         }
+        $out['setuju'] = (float) ($rows[3]->setuju ?? 0);
         $out['kurang'] = (int) ($rows[3]->kurang ?? 0);
         $out['rp']['kurang'] = (float) ($rows[3]->rp_kurang ?? 0);
         $out['sep'] = $this->sepBulan($awal, $jenis)->count();
         $out['belum'] = $this->sepBulan($awal, $jenis)
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'))->count();
+
+        return $out;
+    }
+
+    public const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+    /** Rupiah ringkas: Rp950 rb, Rp1,2 jt, Rp4,2 M. */
+    public static function rupiahRingkas(float $v): string
+    {
+        $a = abs($v);
+        [$bagi, $suf, $des] = $a >= 1e9 ? [1e9, ' M', 1] : ($a >= 1e6 ? [1e6, ' jt', 1] : ($a >= 1e3 ? [1e3, ' rb', 0] : [1, '', 0]));
+        $s = number_format($v / $bagi, $des, ',', '.');
+
+        return 'Rp' . (str_ends_with($s, ',0') ? substr($s, 0, -2) : $s) . $suf;
+    }
+
+    public static function rupiahPenuh(float $v): string
+    {
+        return 'Rp' . number_format($v, 0, ',', '.');
+    }
+
+    /** Kalimat ringkasan (tanpa AI): daftar potongan teks; potongan 'b' ditebalkan, 'title' berisi nilai penuh. */
+    private function kalimat(Carbon $awal, array $k, int $total): array
+    {
+        $n = fn (int $x) => ['b' => number_format($x, 0, ',', '.')];
+        $r = fn (float $x) => ['b' => self::rupiahRingkas($x), 'title' => self::rupiahPenuh($x)];
+
+        return [
+            ['t' => self::BULAN[$awal->month - 1] . ' ' . $awal->year . ': '], $n($total),
+            ['t' => ' klaim diajukan senilai '], $r($k['rp']['proses'] + $k['rp']['pending'] + $k['rp']['klaim']), ['t' => '. '],
+            $n($k['klaim']), ['t' => ' layak ('], $r($k['setuju']), ['t' => ' disetujui), '],
+            $n($k['pending']), ['t' => ' pending dengan '], $r($k['rp']['pending']), ['t' => ' tertahan, '],
+            $n($k['proses']), ['t' => ' masih diverifikasi.'],
+        ];
+    }
+
+    public static function teksKalimat(array $kalimat): string
+    {
+        return implode('', array_map(fn ($p) => $p['t'] ?? $p['b'], $kalimat));
+    }
+
+    /** Pending > 14 hari di status, dan SEP belum terlihat di data klaim > 7 hari sejak pulang. */
+    private function aksi(Carbon $awal, string $jenis): array
+    {
+        $batas14 = now()->startOfDay()->subDays(14)->toDateString();
+        $batas7 = now()->startOfDay()->subDays(7)->toDateString();
+        $pending = $this->klaimBulan($awal, $jenis)->where('status_kode', 2)->whereNotNull('status_changed_at')
+            ->whereDate('status_changed_at', '<', $batas14);
+
+        return [
+            'pending14' => (clone $pending)->count(),
+            'pending14_rp' => (float) $pending->sum('by_pengajuan'),
+            'belum7' => $this->sepBulan($awal, $jenis)->whereRaw('COALESCE(tgl_plg_sep, tgl_sep) < ?', [$batas7])
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('vclaim_klaim')->whereColumn('vclaim_klaim.no_sep', 'vclaim_kunjungan.no_sep'))->count(),
+        ];
+    }
+
+    /** Status sinkron per jenis tarikan: run terakhir, jumlah hari itu. Tidak di-cache. */
+    public static function sinkron(): array
+    {
+        $out = [];
+        foreach (['klaim', 'kunjungan'] as $j) {
+            $last = VclaimSyncRun::where('jenis', $j)->latest('id')->first();
+            if (! $last) {
+                $out[$j] = null;
+
+                continue;
+            }
+            $hari = $last->created_at->copy();
+            $d = ['waktu' => $hari, 'ok' => $last->status === 'ok', 'error' => $last->error ? mb_substr($last->error, 0, 120) : null];
+            if ($j === 'klaim') {
+                $d['dicek'] = (int) VclaimSyncRun::where('jenis', 'klaim')->where('status', 'ok')->whereDate('created_at', $hari->toDateString())->sum('jumlah');
+                $d['berubah'] = VclaimKlaimStatusHistory::whereNotNull('status_lama')->whereDate('terlihat_at', $hari->toDateString())->count();
+            } else {
+                $d['baru'] = VclaimKunjungan::whereDate('created_at', $hari->toDateString())->count();
+            }
+            $out[$j] = $d;
+        }
 
         return $out;
     }

@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Models\VclaimKlaim;
+use App\Models\VclaimKlaimStatusHistory;
 use App\Models\VclaimKunjungan;
+use App\Models\VclaimSyncRun;
+use App\Services\Dashboard\BpjsStats;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -82,7 +85,7 @@ class BpjsDashboardTest extends TestCase
         $this->assertSame(33.3, $k['pending']['pct']);
         $this->assertSame(4000000.0, $k['proses']['rp']);
         $this->assertSame(1, $k['pending']['delta']);
-        $res->assertSee('naik 1 vs bulan lalu')->assertSee('Perlu impor umpan balik BPJS')->assertSee('Sumber: VClaim Monitoring BPJS');
+        $res->assertSee('+1 vs bulan lalu')->assertSee('Perlu impor umpan balik BPJS')->assertSee('Sumber: VClaim Monitoring BPJS');
     }
 
     public function test_belum_masuk_dan_kurang_hanya_status_klaim(): void
@@ -146,5 +149,76 @@ class BpjsDashboardTest extends TestCase
     public function test_tanpa_data_empty_state(): void
     {
         $this->ringkasan()->assertSee('Belum ada data BPJS untuk periode ini.')->assertDontSee('id="bpjs-data"', false);
+    }
+
+    public function test_kalimat_ringkasan_jumlah_dan_nilai(): void
+    {
+        $this->dataset();
+        $res = $this->ringkasan();
+        $teks = BpjsStats::teksKalimat($res->viewData('stats')['kalimat']);
+
+        $this->assertSame('Oktober 2026: 6 klaim diajukan senilai Rp9 jt. 2 layak (Rp2,5 jt disetujui), 2 pending dengan Rp2 jt tertahan, 2 masih diverifikasi.', $teks);
+        $res->assertSee('title="Rp9.000.000"', false)->assertSee('Pusat kendali klaim BPJS')->assertSee('Nilai resmi VClaim');
+        $this->assertSame('Rp4,2 M', BpjsStats::rupiahRingkas(4200000000));
+        $this->assertSame('Rp950 rb', BpjsStats::rupiahRingkas(950000));
+    }
+
+    public function test_kartu_nilai_tertahan_sama_dengan_sum_pending(): void
+    {
+        $this->dataset();
+        $this->klaim(2, ['by_pengajuan' => 2500000]);
+        $k = $this->ringkasan()->viewData('stats')['kartu'];
+
+        $this->assertSame(4500000.0, $k['tertahan']['n']);
+        $this->assertSame($k['pending']['rp'], $k['tertahan']['n']);
+    }
+
+    public function test_panel_bertindak_hitung_dan_hijau_saat_nol(): void
+    {
+        $this->dataset();
+        $res = $this->ringkasan();
+        $this->assertSame(['pending14' => 0, 'belum7' => 2], array_intersect_key($res->viewData('stats')['aksi'], ['pending14' => 1, 'belum7' => 1]));
+        $res->assertSee('data-aksi="pending14" data-aksi-aman', false)->assertSee('Tidak ada yang perlu dikejar');
+
+        cache()->flush();
+        $this->klaim(2, ['status_changed_at' => '2026-11-03 08:00:00']); // 15 hari
+        $this->klaim(2, ['status_changed_at' => '2026-11-04 08:00:00']); // 14 hari: belum lewat
+        $this->sep('SEPLAMA', ['tgl_plg_sep' => '2026-11-10']); // 8 hari
+        $this->sep('SEPBARU', ['tgl_plg_sep' => '2026-11-11']); // 7 hari: belum lewat
+        $this->sep('SEPLAMA2', ['tgl_sep' => '2026-10-20']); // tanpa tgl pulang, pakai tgl SEP
+        $res = $this->ringkasan();
+        $a = $res->viewData('stats')['aksi'];
+
+        $this->assertSame(1, $a['pending14']);
+        $this->assertSame(4, $a['belum7']); // SEPBELUM1, SEPBELUM2 (tgl SEP 3 Okt), SEPLAMA, SEPLAMA2; SEPBARU belum lewat 7 hari
+        $res->assertDontSee('Tidak ada yang perlu dikejar')->assertSee('Pending lebih dari 14 hari')->assertSee('Lihat daftar');
+
+        $daftar = $this->actingAs($this->koor)->get($res->viewData('links')['aksi']['pending14']);
+        $this->assertSame(1, $daftar->viewData('rows')->total());
+    }
+
+    public function test_status_sinkron_jumlah_berubah_hari_itu(): void
+    {
+        $this->dataset();
+        VclaimSyncRun::create(['jenis' => 'klaim', 'status' => 'ok', 'jumlah' => 40]);
+        VclaimSyncRun::create(['jenis' => 'klaim', 'status' => 'ok', 'jumlah' => 2]);
+        VclaimSyncRun::create(['jenis' => 'kunjungan', 'status' => 'gagal', 'error' => 'Timeout VClaim']);
+        VclaimKlaimStatusHistory::create(['no_sep' => 'SEPA', 'status_lama' => 1, 'status_baru' => 2, 'terlihat_at' => now()]);
+        VclaimKlaimStatusHistory::create(['no_sep' => 'SEPB', 'status_lama' => 2, 'status_baru' => 3, 'terlihat_at' => now()]);
+        VclaimKlaimStatusHistory::create(['no_sep' => 'SEPC', 'status_lama' => null, 'status_baru' => 1, 'terlihat_at' => now()]);
+        VclaimKlaimStatusHistory::create(['no_sep' => 'SEPD', 'status_lama' => 1, 'status_baru' => 3, 'terlihat_at' => now()->subDay()]);
+
+        $this->ringkasan()->assertSee('42 SEP dicek, 2 status berubah')->assertSee('SEP baru')
+            ->assertSee('Tarikan terakhir gagal: Timeout VClaim')->assertSee('bg-triage-red', false);
+    }
+
+    public function test_larangan_kata_tidak_muncul(): void
+    {
+        $this->dataset();
+        $this->klaim(2, ['status_changed_at' => '2026-10-01 08:00:00']);
+        $html = mb_strtolower(strip_tags($this->ringkasan()->getContent()));
+        foreach (['penghasilan', 'naik', 'fraud', 'upcoding', 'uplift'] as $kata) {
+            $this->assertStringNotContainsString($kata, $html, "Kata terlarang: $kata");
+        }
     }
 }
