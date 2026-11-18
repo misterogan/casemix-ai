@@ -83,6 +83,31 @@ class ManualUploadTest extends TestCase
         $this->actingAs($this->koor)->get('/unggah')->assertOk()->assertSee('Unggah dan analisa');
     }
 
+    public function test_halaman_unggah_memakai_komponen_form(): void
+    {
+        $html = $this->actingAs($this->koor)->get('/unggah')->assertOk()->getContent();
+
+        // x-input: kelas .field (border + focus ring) dan label terhubung lewat for/id + aria-describedby
+        $this->assertMatchesRegularExpression('/<input[^>]*class="[^"]*\bfield\b[^"]*"[^>]*name="no_sep"|<input[^>]*name="no_sep"[^>]*class="[^"]*\bfield\b/', $html);
+        $this->assertStringContainsString('for="no_sep"', $html);
+        $this->assertStringContainsString('aria-describedby="no_sep-hint"', $html);
+        $this->assertStringContainsString('id="no_sep-hint"', $html);
+        $css = file_get_contents(resource_path('css/app.css'));
+        $this->assertMatchesRegularExpression('/\.field \{[^}]*border[^}]*focus:ring-\[3px\]/', $css);
+
+        // Tombol aksi: disabled tanpa file, tanpa bentuk pil
+        $this->assertMatchesRegularExpression('/<button[^>]*class="btn-primary"[^>]*data-submit disabled>Unggah dan analisa/', $html);
+        preg_match_all('/<button[^>]*class="([^"]*)"/', $html, $m);
+        foreach ($m[1] as $cls) {
+            if (str_contains($cls, 'btn-')) {
+                $this->assertStringNotContainsString('rounded-full', $cls);
+            }
+        }
+        $this->assertDoesNotMatchRegularExpression('/\.btn-primary \{[^}]*rounded-full/', $css);
+        $this->assertStringContainsString('Lihat riwayat unggahan', $html);
+        $this->assertStringContainsString('0/19', $html);
+    }
+
     public function test_pdf_dan_jpg_diterima(): void
     {
         $r = $this->upload($this->pdf())->assertCreated();

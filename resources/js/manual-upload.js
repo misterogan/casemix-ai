@@ -3,7 +3,8 @@
 const MAX = 25 * 1024 * 1024;
 const MAX_FILES = 20;
 const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
-const ukuran = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const ukuran = (b) => (b >= 1048576 ? `${(b / 1048576).toLocaleString('id-ID', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const tglId = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 function initForm(form, up) {
   const f = (n) => form.querySelector(`[data-field="${n}"]`);
@@ -15,12 +16,24 @@ function initForm(form, up) {
     return m;
   };
   up.validate = () => (!f('no_sep').value.trim() && !f('no_rm').value.trim() ? 'No. RM wajib diisi bila No. SEP kosong.' : null);
+  const kunci = (n, on) => {
+    const l = form.querySelector(`[data-lock="${n}"]`);
+    if (l) { l.classList.toggle('hidden', !on); l.classList.toggle('inline-flex', on); }
+  };
+  form.querySelectorAll('[data-unlock]').forEach((b) => b.addEventListener('click', () => {
+    const n = b.dataset.unlock;
+    f(n).readOnly = false; f(n).disabled = false; kunci(n, false); f(n).focus();
+  }));
+  f('no_rm').addEventListener('input', () => up.onChange?.());
   let terakhir = '';
   f('no_sep').addEventListener('input', async () => {
     const sep = f('no_sep').value.trim();
     existing.hidden = true;
     info.hidden = true;
-    ['no_rm', 'jenis_rawat', 'tgl_pulang'].forEach((n) => { f(n).readOnly = false; f(n).disabled = false; });
+    const count = form.querySelector('[data-sep-count]');
+    if (count) count.textContent = `${sep.length}/19`;
+    ['no_rm', 'jenis_rawat', 'tgl_pulang'].forEach((n) => { f(n).readOnly = false; f(n).disabled = false; kunci(n, false); });
+    up.onChange?.();
     if (sep.length !== 19 || sep === terakhir) return;
     terakhir = sep;
     try {
@@ -39,11 +52,12 @@ function initForm(form, up) {
         };
       }
       if (j.vclaim) {
-        if (j.vclaim.no_rm) { f('no_rm').value = j.vclaim.no_rm; f('no_rm').readOnly = true; }
-        if (j.vclaim.jenis_rawat) { f('jenis_rawat').value = j.vclaim.jenis_rawat; f('jenis_rawat').disabled = true; }
-        if (j.vclaim.tgl_pulang) { f('tgl_pulang').value = j.vclaim.tgl_pulang; f('tgl_pulang').readOnly = true; }
+        if (j.vclaim.no_rm) { f('no_rm').value = j.vclaim.no_rm; f('no_rm').readOnly = true; kunci('no_rm', true); }
+        if (j.vclaim.jenis_rawat) { f('jenis_rawat').value = j.vclaim.jenis_rawat; f('jenis_rawat').disabled = true; kunci('jenis_rawat', true); }
+        if (j.vclaim.tgl_pulang) { f('tgl_pulang').value = j.vclaim.tgl_pulang; f('tgl_pulang').readOnly = true; kunci('tgl_pulang', true); }
         info.hidden = false;
-        info.textContent = `Data VClaim: RM ${j.vclaim.no_rm ?? '—'} · ${j.vclaim.jenis_rawat === 'inap' ? 'Rawat inap' : 'Rawat jalan'} · pulang ${j.vclaim.tgl_pulang ?? '—'} (terkunci)`;
+        info.textContent = `Ditemukan di data BPJS · ${j.vclaim.jenis_rawat === 'jalan' ? 'Rawat jalan' : 'Rawat inap'} · pulang ${tglId(j.vclaim.tgl_pulang)}`;
+        up.onChange?.();
       }
     } catch { /* abaikan: isian manual tetap bisa */ }
   });
@@ -57,12 +71,35 @@ function initUploader(root) {
   const up = { folderId: root.dataset.folderId || '', meta: () => ({}), validate: () => null, items: [] };
   const form = document.querySelector('[data-manual-form]');
   if (form && !up.folderId) initForm(form, up);
+  queueMicrotask(() => up.onChange?.());
 
   const tampilPesan = (t) => { pesan.hidden = !t; pesan.textContent = t ?? ''; };
+  const bar = root.querySelector('[data-status-bar]');
+  const ringkas = root.querySelector('[data-ringkasan]');
+  const label = (it, t, cls = 'text-abu') => { const el = it.el.querySelector('[data-status]'); if (el) { el.textContent = t; el.className = cls; } };
   const perbarui = () => {
     const ada = up.items.length > 0;
     submit.disabled = !ada || up.items.some((i) => i.state !== 'ok');
+    if (ringkas) {
+      ringkas.hidden = !ada;
+      ringkas.textContent = `${up.items.length} file · ${ukuran(up.items.reduce((n, i) => n + i.file.size, 0))}`;
+    }
+    if (!bar) return;
+    const sedang = up.items.filter((i) => i.state === 'uploading' || i.state === 'antre');
+    const selesai = up.items.filter((i) => i.state === 'ok').length;
+    const sepEl = form?.querySelector('[data-field="no_sep"]');
+    const rmEl = form?.querySelector('[data-field="no_rm"]');
+    let t;
+    if (!up.folderId && sepEl && !sepEl.value.trim() && !rmEl.value.trim()) t = 'Isi No. SEP atau No. RM';
+    else if (!ada) t = 'Tambahkan minimal 1 file';
+    else if (sedang.length) t = `Mengunggah ${Math.min(selesai + 1, up.items.length)} dari ${up.items.length}…`;
+    else if (up.items.some((i) => i.state === 'gagal')) t = 'Ada file gagal: coba lagi atau hapus dari daftar';
+    else t = 'Siap dianalisa';
+    bar.replaceChildren();
+    if (sedang.length) { const sp = document.createElement('span'); sp.className = 'spinner text-brand'; sp.setAttribute('aria-hidden', 'true'); bar.append(sp); }
+    bar.append(t);
   };
+  up.onChange = perbarui;
 
   // Unggah berurutan: file pertama membuat folder, berikutnya memakai folder_id yang sama.
   let antre = Promise.resolve();
@@ -73,6 +110,7 @@ function initUploader(root) {
     const err = up.folderId ? null : up.validate();
     if (err) { tandaGagal(it, err); return resolve(); }
     it.state = 'uploading';
+    label(it, 'Mengunggah 0%');
     it.el.querySelector('[data-retry]').hidden = true;
     it.el.querySelector('[data-error]').hidden = true;
     const fd = new FormData();
@@ -89,7 +127,7 @@ function initUploader(root) {
     xhr.open('POST', root.dataset.storeUrl);
     xhr.setRequestHeader('X-CSRF-TOKEN', csrf());
     xhr.setRequestHeader('Accept', 'application/json');
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) it.el.querySelector('[data-bar]').style.width = `${Math.round((e.loaded / e.total) * 100)}%`; };
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) { const pct = Math.round((e.loaded / e.total) * 100); it.el.querySelector('[data-bar]').style.width = `${pct}%`; label(it, `Mengunggah ${pct}%`); } };
     xhr.onload = () => {
       let j = {};
       try { j = JSON.parse(xhr.responseText); } catch { /* bukan JSON */ }
@@ -98,6 +136,8 @@ function initUploader(root) {
         it.state = 'ok';
         it.el.querySelector('[data-bar]').style.width = '100%';
         it.el.querySelector('[data-jenis]').disabled = true;
+        it.el.querySelector('[data-bar]').classList.replace('bg-brand', 'bg-giok');
+        label(it, '✓ Selesai', 'font-medium text-giok');
       } else {
         const first = j.errors ? Object.values(j.errors)[0]?.[0] : null;
         tandaGagal(it, first || j.message || `Gagal (${xhr.status}).`);
@@ -112,6 +152,7 @@ function initUploader(root) {
 
   const tandaGagal = (it, t) => {
     it.state = 'gagal';
+    label(it, 'Gagal', 'font-medium text-kritis');
     const e = it.el.querySelector('[data-error]');
     e.hidden = false;
     e.textContent = t;
@@ -134,6 +175,8 @@ function initUploader(root) {
         el.querySelector('[data-thumb]').replaceChildren(img);
       }
       const it = { file, el, state: 'antre' };
+      el.querySelector('[data-jenis]').setAttribute('aria-label', `Jenis dokumen untuk ${file.name}`);
+      el.querySelector('[data-remove]').setAttribute('aria-label', `Hapus ${file.name} dari antrean`);
       up.items.push(it);
       list.append(el);
       el.querySelector('[data-remove]').onclick = () => {
@@ -150,10 +193,14 @@ function initUploader(root) {
     perbarui();
   };
 
-  root.querySelector('[data-input]').addEventListener('change', (e) => { tambah([...e.target.files]); e.target.value = ''; });
+  root.querySelectorAll('[data-input]').forEach((inp) => inp.addEventListener('change', (e) => { tambah([...e.target.files]); e.target.value = ''; }));
   const drop = root.querySelector('[data-drop]');
-  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('border-biru-aktif'); }));
-  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('border-biru-aktif'); }));
+  const pilih = root.querySelector('[data-input]');
+  // Seluruh dropzone bisa diklik dan dibuka dengan Enter/Spasi
+  drop.addEventListener('click', (e) => { if (!e.target.closest('[data-pilih]')) pilih.click(); });
+  drop.addEventListener('keydown', (e) => { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pilih.click(); } });
+  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('is-drag'); }));
+  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('is-drag'); }));
   drop.addEventListener('drop', (e) => tambah([...(e.dataTransfer?.files ?? [])]));
 
   submit.addEventListener('click', async () => {

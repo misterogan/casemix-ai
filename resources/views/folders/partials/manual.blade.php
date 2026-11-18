@@ -16,7 +16,8 @@
                         <summary class="cursor-pointer text-red-700 underline">Hapus</summary>
                         <form method="POST" action="{{ route('manual.destroy', [$folder, $m]) }}" class="mt-2 flex gap-2">
                             @csrf @method('DELETE')
-                            <input name="alasan" required minlength="5" maxlength="500" placeholder="Alasan hapus (wajib)" class="rounded-md border-gray-300 text-sm">
+                            <label for="alasan-{{ $m->id }}" class="sr-only">Alasan hapus</label>
+                            <x-input id="alasan-{{ $m->id }}" name="alasan" required minlength="5" maxlength="500" placeholder="Alasan hapus (wajib)" />
                             <button class="btn-secondary">Hapus</button>
                         </form>
                     </details>

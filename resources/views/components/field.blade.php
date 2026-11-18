@@ -1,7 +1,11 @@
-@props(['name', 'label', 'hint' => null, 'required' => false])
+@props(['name', 'label', 'hint' => null, 'required' => false, 'for' => null, 'aside' => null])
+@php($id = $for ?? $name)
 <div {{ $attributes->only('class') }}>
-    <label for="{{ $name }}" class="label">{{ $label }}@if($required)<span class="text-kritis"> *</span>@endif</label>
+    <div class="mb-1 flex items-baseline justify-between gap-2">
+        <label for="{{ $id }}" class="text-sm font-medium text-tinta">{{ $label }}@if($required)<span class="text-kritis" aria-hidden="true"> *</span>@endif</label>
+        {{ $aside }}
+    </div>
+    @if ($hint)<p id="{{ $id }}-hint" class="-mt-0.5 mb-1.5 text-xs text-abu">{{ $hint }}</p>@endif
     {{ $slot }}
-    @if ($hint)<p class="hint">{{ $hint }}</p>@endif
-    @error($name)<p class="field-error">{{ $message }}</p>@enderror
+    @error($name)<p id="{{ $id }}-error" class="field-error" role="alert">{{ $message }}</p>@enderror
 </div>
