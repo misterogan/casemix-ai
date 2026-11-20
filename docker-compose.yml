@@ -1,5 +1,7 @@
-# CERMAT di Docker — berdampingan dengan produksi (port 8310). Data di ${CERMAT_DIR:-/srv/cermat}.
-# Jalankan: CERMAT_UID=$(id -u oem) CERMAT_GID=$(id -g oem) docker compose up -d --build
+# CERMAT di Docker. Port publik dari CERMAT_PORT (bawaan 8310), data di ${CERMAT_DIR:-/srv/cermat}.
+# Jalankan lewat scripts/cermat-compose.sh (mengisi CERMAT_UID/GID/PORT dari oem & /srv/cermat/.env), mis.:
+#   scripts/cermat-compose.sh up -d --build
+name: cermat
 
 x-logging: &logging
   driver: json-file
@@ -50,7 +52,7 @@ services:
     environment:
       TZ: Asia/Jakarta
     ports:
-      - "8310:80"
+      - "${CERMAT_PORT:-8310}:80"
     depends_on:
       - app
 

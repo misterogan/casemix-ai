@@ -4,8 +4,39 @@ on:
     branches: [main]
   workflow_dispatch:
 concurrency: deploy-casemix
+# Variabel repo CERMAT_DEPLOY memilih jalur (Settings → Secrets and variables → Actions → Variables):
+#   (kosong/"host") → skrip host lama; "docker" → build & up kontainer. Hanya satu job yang berjalan.
 jobs:
-  deploy:
+  deploy-host:
+    if: github.ref == 'refs/heads/main' && vars.CERMAT_DEPLOY != 'docker'
     runs-on: [self-hosted, casemix]
     steps:
       - run: /usr/local/bin/deploy-casemix.sh
+
+  deploy-docker:
+    if: github.ref == 'refs/heads/main' && vars.CERMAT_DEPLOY == 'docker'
+    runs-on: [self-hosted, casemix]
+    defaults:
+      run:
+        working-directory: /var/www/casemix-ai
+    steps:
+      - name: Guard (host lama sudah dimatikan)
+        run: |
+          if systemctl is-active --quiet casemix-queue.service; then
+            echo "casemix-queue.service masih aktif: cutover belum selesai, deploy Docker dibatalkan." >&2
+            exit 1
+          fi
+      - name: Kode terbaru
+        run: |
+          git fetch --prune origin main
+          git reset --hard origin/main
+      - name: Build
+        run: scripts/cermat-compose.sh build
+      - name: Up
+        run: scripts/cermat-compose.sh up -d --remove-orphans
+      - name: Migrasi
+        run: scripts/cermat-compose.sh exec -T app php artisan migrate --force
+      - name: Status
+        run: |
+          scripts/cermat-compose.sh ps
+          docker image prune -f
