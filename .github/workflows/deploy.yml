@@ -30,12 +30,21 @@ jobs:
         run: |
           git fetch --prune origin main
           git reset --hard origin/main
+      - name: Mulai ukur jeda
+        run: scripts/ukur-jeda.sh mulai "$RUNNER_TEMP/jeda.log"
+      # Build dulu: kontainer lama tetap melayani selama build.
       - name: Build
         run: scripts/cermat-compose.sh build
-      - name: Up
-        run: scripts/cermat-compose.sh up -d --remove-orphans
+      # Hanya service yang image/konfigurasinya berubah yang dibuat ulang; --no-deps → MySQL tidak disentuh.
+      - name: Up app
+        run: scripts/cermat-compose.sh up -d --no-build --no-deps --wait --wait-timeout 120 app
+      - name: Up queue, scheduler, nginx
+        run: scripts/cermat-compose.sh up -d --no-build --no-deps --remove-orphans queue scheduler nginx
       - name: Migrasi
         run: scripts/cermat-compose.sh exec -T app php artisan migrate --force
+      - name: Hasil ukur jeda
+        if: always()
+        run: scripts/ukur-jeda.sh selesai "$RUNNER_TEMP/jeda.log"
       - name: Status
         run: |
           scripts/cermat-compose.sh ps

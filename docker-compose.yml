@@ -1,6 +1,6 @@
 # CERMAT di Docker. Port publik dari CERMAT_PORT (bawaan 8310), data di ${CERMAT_DIR:-/srv/cermat}.
 # Jalankan lewat scripts/cermat-compose.sh (mengisi CERMAT_UID/GID/PORT dari oem & /srv/cermat/.env), mis.:
-#   scripts/cermat-compose.sh up -d --build
+#   scripts/cermat-compose.sh build && scripts/cermat-compose.sh up -d --no-build
 name: cermat
 
 x-logging: &logging
@@ -31,6 +31,14 @@ x-app: &app
 services:
   app:
     <<: *app
+    # php-fpm menutup soket lalu menuntaskan request berjalan (STOPSIGNAL SIGQUIT di image php-fpm).
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/fpm-ping SCRIPT_FILENAME=/fpm-ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
 
   queue:
     <<: *app
@@ -54,7 +62,8 @@ services:
     ports:
       - "${CERMAT_PORT:-8310}:80"
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   mysql:
     image: mysql:8.0

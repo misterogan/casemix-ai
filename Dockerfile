@@ -25,7 +25,7 @@ ENV TZ=Asia/Jakarta
 
 COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
 RUN apt-get update \
- && apt-get install -y --no-install-recommends poppler-utils tzdata unzip \
+ && apt-get install -y --no-install-recommends poppler-utils tzdata unzip libfcgi-bin \
  && install-php-extensions pdo_mysql zip intl bcmath pcntl opcache gd exif ftp \
  && rm -rf /var/lib/apt/lists/* \
  # ftp_ssl_connect (FtpClient) wajib tersedia — gagalkan build bila tidak.
@@ -36,6 +36,13 @@ RUN apt-get update \
 RUN groupmod -o -g "${GID}" www-data && usermod -o -u "${UID}" -g "${GID}" www-data
 
 COPY docker/php.ini /usr/local/etc/php/conf.d/zz-cermat.ini
+# ping.path untuk healthcheck (cgi-fcgi); hanya dalam jaringan kontainer, nginx tidak meneruskannya.
+RUN printf '[www]
+ping.path = /fpm-ping
+ping.response = pong
+' > /usr/local/etc/php-fpm.d/zz-cermat.conf
+# Blade terkompilasi di image (storage/ adalah bind mount, akan menutupi hasil build).
+ENV VIEW_COMPILED_PATH=/var/www/html/bootstrap/cache/views
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
@@ -60,5 +67,6 @@ FROM nginx:1.27-alpine AS web
 ENV TZ=Asia/Jakarta
 RUN apk add --no-cache tzdata
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/diperbarui.html /usr/share/nginx/cermat/__cermat_diperbarui.html
 COPY public /var/www/html/public
 COPY --from=assets /src/public/build /var/www/html/public/build
