@@ -245,6 +245,7 @@ class FolderVerificationTest extends TestCase
         Queue::fake();
         AppSetting::put(AiBudget::KEY_BUDGET, 1);
         FolderAnalysis::create(['ftp_folder_id' => $this->synced()->id, 'status' => ReviewStatus::Selesai, 'cost_usd' => 1, 'finished_at' => now()]);
+        \App\Models\AiUsage::create(['jenis' => 'analisa', 'model' => 'x', 'biaya_usd' => 2]); // anggaran 1 + cadangan analisa 1
         $lain = FtpFolder::create(['path' => '/ftp/data/x', 'name' => 'x', 'files' => [], 'fingerprint' => 'x']);
 
         $this->actingAs($this->koordinator)->get(route('folders.show', $lain))->assertOk()->assertSee('Anggaran AI bulan ini sudah habis');

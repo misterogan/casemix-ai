@@ -30,7 +30,7 @@ class AiBudgetController extends Controller
         $new = ['budget' => $data['budget'] !== null && (float) $data['budget'] > 0 ? round((float) $data['budget'], 2) : null,
             'warn_pct' => (int) $data['warn_pct']];
 
-        AppSetting::put(AiBudget::KEY_BUDGET, $new['budget'], $request->user()->id);
+        AppSetting::put(AiBudget::KEY_BUDGET, $new['budget'] ?? 0, $request->user()->id); // 0 = tanpa batas (bukan kembali ke env)
         AppSetting::put(AiBudget::KEY_WARN, $new['warn_pct'], $request->user()->id);
         Audit::log('admin.anggaran', null, 'Mengubah anggaran AI: '
             . ($new['budget'] ? 'US$' . number_format($new['budget'], 2) . '/bulan' : 'tanpa batas')
@@ -38,6 +38,8 @@ class AiBudgetController extends Controller
                 'anggaran_usd' => ['lama' => $old['budget'], 'baru' => $new['budget']],
                 'peringatan_pct' => ['lama' => $old['warn_pct'], 'baru' => $new['warn_pct']],
             ]]);
+
+        \Illuminate\Support\Facades\Cache::forget('ai_budget_status');
 
         return back()->with('ok', 'Anggaran AI disimpan.');
     }

@@ -140,6 +140,7 @@ class ImportCommitterTest extends TestCase
         \App\Models\AppSetting::put(\App\Services\Ai\AiBudget::KEY_BUDGET, 1);
         $lama = Claim::create(['nama_pasien' => 'X', 'no_rm' => '999']);
         \App\Models\AiReview::create(['claim_id' => $lama->id, 'status' => 'selesai', 'cost_usd' => 1, 'finished_at' => now()]);
+        \App\Models\AiUsage::create(['jenis' => 'analisa', 'model' => 'x', 'biaya_usd' => 1]);
         $batch = $this->batch(['sep:0301R0011126V000001' => ['nama' => 'BUDI', 'no_rm' => '000123', 'no_sep' => '0301R0011126V000001']]);
 
         $result = app(ImportCommitter::class)->commit($batch, [], [], $this->user->id, ImportCommitter::NEXT_REVIEW);

@@ -77,6 +77,8 @@ class AiBudgetTest extends TestCase
         $claim = Claim::create(['nama_pasien' => 'X', 'no_rm' => (string) random_int(1000, 99999)]);
         AiReview::create(['claim_id' => $claim->id, 'status' => 'selesai', 'cost_usd' => $usd, 'tokens_in' => 1, 'tokens_out' => 1,
             'model' => 'claude-sonnet-5-5', 'finished_at' => $at ?? now(), 'requested_by' => $this->petugas->id]);
+        AiUsage::forceCreate(['jenis' => 'analisa', 'model' => 'claude-sonnet-5-5', 'input_tokens' => 1, 'output_tokens' => 1,
+            'biaya_usd' => $usd, 'created_at' => $at ?? now()]);
     }
 
     private function claimWithDocs(): Claim
@@ -255,7 +257,7 @@ class AiBudgetTest extends TestCase
 
     public function test_ai_usage_dicatat_dengan_biaya_per_model(): void
     {
-        $this->assertSame(0.6, AiUsage::biaya('claude-haiku-5-5', 1_000_000, 1_000_000));
+        $this->assertSame(3.0, AiUsage::biaya('claude-haiku-5-5', 1_000_000, 1_000_000)); // prompt > 100K: $0,50/$2,50
         $this->assertSame(12.0, AiUsage::biaya('claude-sonnet-5-5', 1_000_000, 1_000_000));
         $this->assertSame(24.0, AiUsage::biaya('claude-opus-5-5', 1_000_000, 1_000_000));
 
@@ -265,11 +267,39 @@ class AiBudgetTest extends TestCase
 
         $rows = AiUsage::orderBy('id')->get();
         $this->assertSame(['usulan_regulasi', 'analisa'], $rows->pluck('jenis')->all());
-        $this->assertSame([0.6, 4.0], $rows->pluck('biaya_usd')->all()); // 0,5×4 + 0,1×20
+        $this->assertSame([3.0, 4.0], $rows->pluck('biaya_usd')->all()); // 0,5×4 + 0,1×20
         $this->assertSame(7, $rows[0]->ref_id);
         $this->assertSame(1_000_000, $rows[0]->input_tokens);
         $this->assertSame('claude-haiku-5-5', app(AiManager::class)->model('usulan_regulasi', $this->provider));
         $this->assertSame('claude-sonnet-5-5', app(AiManager::class)->model('draf_sanggahan', $this->provider));
+    }
+
+    public function test_banner_dan_penahan_memakai_sum_ai_usage_dan_app_settings(): void
+    {
+        config(['casemix.ai.anggaran_bulanan_usd' => 3]);
+        $this->assertSame(3.0, $this->budget()->budget(), 'env hanya nilai awal');
+        $this->setBudget(4.2);
+        $this->assertSame(4.2, $this->budget()->budget(), 'app_settings mengalahkan env');
+        $this->assertSame(4.2, $this->budget()->anggaran());
+
+        // Biaya di baris AiReview (cost_usd) tidak lagi dihitung; hanya ai_usage.
+        $claim = Claim::create(['nama_pasien' => 'X', 'no_rm' => '1']);
+        AiReview::create(['claim_id' => $claim->id, 'status' => 'selesai', 'cost_usd' => 4.08, 'finished_at' => now()]);
+        $this->pakai(0.5291);
+        AiUsage::forceCreate(['jenis' => 'analisa', 'model' => 'x', 'biaya_usd' => 9, 'created_at' => now()->subMonthNoOverflow()->endOfMonth()]);
+        $this->assertSame(0.5291, $this->budget()->spent());
+        $this->assertSame('aman', $this->budget()->status()['state']);
+
+        $this->setBudget(null);
+        $this->actingAs($this->admin)->put(route('admin.budget.update'), ['budget' => '', 'warn_pct' => 80]);
+        $this->assertNull($this->budget()->budget(), 'Tanpa batas disimpan sebagai 0, tidak kembali ke env');
+    }
+
+    public function test_tarif_haiku_5_5_prompt_di_atas_100_ribu(): void
+    {
+        $this->assertSame(0.06, AiUsage::biaya('claude-haiku-5-5', 100_000, 100_000)); // 0,01 + 0,05
+        $this->assertSame(0.29955, AiUsage::biaya('claude-haiku-5-5', 99_000, 100_000, 1_001)); // prompt > 100K → $0,50/$2,50
+        $this->assertSame(0.3125, AiUsage::biaya('claude-haiku-5-5', 125_000, 100_000)); // 0,0625 + 0,25
     }
 
     public function test_banner_80_persen_untuk_koordinator(): void
@@ -286,7 +316,7 @@ class AiBudgetTest extends TestCase
     {
         config(['casemix.ai.anggaran_bulanan_usd' => 10, 'casemix.ai.anggaran_cadangan_analisa_usd' => 1]);
         $this->pakai(10);
-        Http::fake(['*/v1/messages' => Http::response($this->balasan('claude-haiku-5-5', 'ok', 1_000_000, 0))]); // $0,10 per panggilan
+        Http::fake(['*/v1/messages' => Http::response($this->balasan('claude-haiku-5-5', 'ok', 100_000, 180_000))]); // $0,01 + $0,09 = $0,10 per panggilan
 
         foreach (['usulan_regulasi', 'draf_sanggahan'] as $jenis) {
             try {

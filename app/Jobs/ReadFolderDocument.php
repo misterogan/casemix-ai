@@ -58,7 +58,7 @@ class ReadFolderDocument implements ShouldQueue
         $d->update(['status' => ReviewStatus::Berjalan, 'started_at' => now(), 'error' => null]);
 
         try {
-            if ($blocked = $budget->runBlocker()) {
+            if ($blocked = $budget->runBlocker('analisa')) {
                 throw new RuntimeException($blocked);
             }
             $config = $ai->defaultConfig();
@@ -78,7 +78,7 @@ class ReadFolderDocument implements ShouldQueue
 
             // Terpotong: coba ulang SEKALI dengan batas dua kali lipat dan jawaban lebih singkat
             if (self::truncated($res)) {
-                if ($blocked = $budget->runBlocker()) {
+                if ($blocked = $budget->runBlocker('analisa')) {
                     throw new RuntimeException($blocked);
                 }
                 $req->maxTokens = min((int) $config->max_tokens, $req->maxTokens * 2, self::RETRY_MAX_TOKENS);

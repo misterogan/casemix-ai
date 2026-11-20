@@ -42,10 +42,10 @@ class AiBudget
 
     private const USER_COLUMN = [FolderDocument::class => null, PnpkDokumen::class => 'diunggah_oleh'];
 
-    /** Anggaran bulanan dalam USD, atau null bila tidak dibatasi. */
+    /** Anggaran bulanan dalam USD, atau null bila tidak dibatasi. Sumber: app_settings.ai_budget_usd; env hanya nilai awal bila belum diisi. */
     public function budget(): ?float
     {
-        $v = AppSetting::get(self::KEY_BUDGET);
+        $v = AppSetting::get(self::KEY_BUDGET) ?? config('casemix.ai.anggaran_bulanan_usd', 0);
 
         return is_numeric($v) && (float) $v > 0 ? (float) $v : null;
     }
@@ -118,21 +118,17 @@ class AiBudget
         return now()->startOfMonth();
     }
 
-    /** Perkiraan biaya bulan berjalan (USD). */
+    /** Perkiraan biaya bulan berjalan (USD) = SUM(ai_usage.biaya_usd), sama dengan halaman Pemakaian AI. */
     public function spent(): float
     {
-        $from = $this->monthStart();
-
-        return round(collect(array_keys(self::SOURCES))->sum(fn ($m) => (float) $m::where('finished_at', '>=', $from)->sum('cost_usd')), 6);
+        return \App\Models\AiUsage::totalBulanIni();
     }
 
     /** Pemanggilan bulan ini yang memakai token tetapi harganya tidak diketahui (biaya tidak terhitung). */
     public function unpriced(): int
     {
-        $from = $this->monthStart();
-        $q = fn ($m) => $m::where('finished_at', '>=', $from)->whereNotNull('tokens_in')->whereNull('cost_usd')->count();
-
-        return collect(array_keys(self::SOURCES))->sum($q);
+        return \App\Models\AiUsage::where('created_at', '>=', $this->monthStart())->where('biaya_usd', '<=', 0)
+            ->where(fn ($q) => $q->where('input_tokens', '>', 0)->orWhere('output_tokens', '>', 0))->count();
     }
 
     /** Rata-rata biaya per pemanggilan dari 50 pemanggilan terakhir, untuk memperkirakan antrean. */
@@ -176,28 +172,42 @@ class AiBudget
             'pct' => $pct, 'warn_pct' => $this->warnPct(), 'state' => $state, 'unpriced' => $this->unpriced()];
     }
 
-    /** Alasan proses AI baru tidak boleh dimulai (dengan memperhitungkan antrean), atau null. */
-    public function startBlocker(): ?string
+    /** Alasan proses AI baru tidak boleh dimulai (dengan memperhitungkan antrean), atau null. Analisa boleh memakai cadangan. */
+    public function startBlocker(?string $jenis = null): ?string
     {
         $s = $this->status();
+        if ($jenis === 'analisa' && $s['state'] === 'habis') {
+            return $s['spent'] + $s['reserved'] >= $s['budget'] + $this->cadangan() ? $this->message($s) : null;
+        }
 
         return $s['state'] === 'habis' ? $this->message($s) : null;
     }
 
-    /** Pengecekan terakhir di dalam job, tepat sebelum memanggil AI. Tidak memperhitungkan antrean (termasuk job ini). */
-    public function runBlocker(): ?string
+    /**
+     * Pengecekan terakhir di dalam job, tepat sebelum memanggil AI. Tidak memperhitungkan antrean (termasuk job ini).
+     * Analisa diserahkan ke gate() (cadangan, lalu ditahan "menunggu anggaran", bukan gagal).
+     */
+    public function runBlocker(?string $jenis = null): ?string
     {
         $budget = $this->budget();
+        if ($jenis === 'analisa') {
+            return null;
+        }
 
         return $budget && $this->spent() >= $budget ? $this->message($this->status()) : null;
     }
 
-    // ------------------------------------------------ anggaran dari config (tabel ai_usage)
+    private function cadangan(): float
+    {
+        return (float) config('casemix.ai.anggaran_cadangan_analisa_usd', 1);
+    }
 
-    /** casemix.ai.anggaran_bulanan_usd; 0 = tanpa batas. */
+    // ------------------------------------------------ penahan per jenis (tabel ai_usage)
+
+    /** Anggaran yang sama dengan budget(); 0 = tanpa batas. */
     public function anggaran(): float
     {
-        return max(0.0, (float) config('casemix.ai.anggaran_bulanan_usd', 0));
+        return (float) ($this->budget() ?? 0);
     }
 
     /** Persen pemakaian ai_usage bulan ini terhadap anggaran, atau null bila tanpa batas. */
@@ -226,7 +236,7 @@ class AiBudget
         if ($jenis !== 'analisa') {
             throw new AnggaranHabis("$teks Usulan regulasi dan draf sanggahan tidak dijalankan sampai anggaran dinaikkan atau bulan berganti.");
         }
-        if ($spent >= $a + (float) config('casemix.ai.anggaran_cadangan_analisa_usd', 1)) {
+        if ($spent >= $a + $this->cadangan()) {
             throw new AnggaranHabis("$teks Cadangan analisa juga habis; analisa menunggu anggaran dan bisa dilanjutkan setelah anggaran dinaikkan.");
         }
     }

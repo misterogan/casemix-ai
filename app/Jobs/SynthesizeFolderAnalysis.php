@@ -89,7 +89,7 @@ class SynthesizeFolderAnalysis implements ShouldQueue
 
             $json = [];
             if ($need || $needSaran || $needKode) {
-                if ($blocked = $budget->runBlocker()) {
+                if ($blocked = $budget->runBlocker('analisa')) {
                     throw new RuntimeException($blocked);
                 }
                 $req->refId = $a->id;

@@ -49,11 +49,11 @@ return [
         'model_draf' => env('CASEMIX_AI_MODEL_DRAF'), // kosong = model_analisa
         // Harga USD per 1 juta token [input, output]; dicocokkan dari awal nama model. Ubah di sini tanpa mengubah kode.
         'harga' => [
-            'claude-haiku-5-5' => [0.10, 0.50],
+            'claude-haiku-5-5' => [0.10, 0.50, 'prompt_lebih_dari' => [100_000, 0.50, 2.50]],
             'claude-sonnet-5-5' => [2.00, 10.00],
             'claude-opus-5-5' => [4.00, 20.00],
         ],
-        // Anggaran bulanan pemakaian AI (tabel ai_usage). 0 = tanpa batas.
+        // Nilai AWAL anggaran bulanan (USD) bila app_settings.ai_budget_usd belum diisi; sesudah Admin menyimpan, app_settings yang berlaku. 0 = tanpa batas.
         'anggaran_bulanan_usd' => (float) env('CASEMIX_AI_ANGGARAN', 0),
         // Setelah anggaran habis, analisa tetap boleh memakai cadangan ini; sesudahnya ditahan "menunggu anggaran".
         'anggaran_cadangan_analisa_usd' => (float) env('CASEMIX_AI_CADANGAN_ANALISA', 1),

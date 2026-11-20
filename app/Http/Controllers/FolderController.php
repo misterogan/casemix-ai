@@ -377,7 +377,7 @@ class FolderController extends Controller
             return 'Belum ada penyedia AI yang aktif. Minta Admin mengatur Penyedia AI.';
         }
 
-        return $budget->startBlocker();
+        return $budget->startBlocker('analisa');
     }
 
     /** Analisa ulang otomatis (mis. dokumen manual ditambah/dihapus). Null bila sedang berjalan atau AI tidak tersedia. */

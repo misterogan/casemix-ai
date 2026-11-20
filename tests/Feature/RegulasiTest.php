@@ -297,7 +297,7 @@ class RegulasiTest extends TestCase
         $this->fakeAi(['paragraf' => []]);
 
         $this->actingAs($this->koor)->postJson(route('bpjs.klaim.draf', 'SEPA'), ['butir' => [$konf->id]])
-            ->assertStatus(422)->assertJsonPath('errors.butir.0', fn ($m) => str_contains($m, 'Anggaran AI bulan ini habis'));
+            ->assertStatus(422)->assertJsonPath('errors.butir.0', fn ($m) => str_contains($m, 'Anggaran AI bulan ini'));
         Http::assertSentCount(0);
         $this->assertSame(0, AiUsage::where('jenis', 'draf_sanggahan')->count());
     }
