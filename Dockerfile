@@ -26,11 +26,11 @@ ENV TZ=Asia/Jakarta
 COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
 RUN apt-get update \
  && apt-get install -y --no-install-recommends poppler-utils tzdata unzip \
- && install-php-extensions pdo_mysql zip intl bcmath pcntl opcache gd exif \
+ && install-php-extensions pdo_mysql zip intl bcmath pcntl opcache gd exif ftp \
  && rm -rf /var/lib/apt/lists/* \
  # ftp_ssl_connect (FtpClient) wajib tersedia — gagalkan build bila tidak.
  && php -r 'exit(function_exists("ftp_ssl_connect") ? 0 : 1);' \
- && pdftotext -v && pdftoppm -v
+ && command -v pdftotext && command -v pdftoppm
 
 # Jalankan PHP dengan UID/GID sama dengan pengguna host "oem" agar storage bind mount bisa ditulis.
 RUN groupmod -o -g "${GID}" www-data && usermod -o -u "${UID}" -g "${GID}" www-data

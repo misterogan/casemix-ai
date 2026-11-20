@@ -44,14 +44,17 @@ Pertimbangkan `SESSION_COOKIE=cermat_docker` agar sesi tidak bentrok dengan prod
 
 Kredensial MySQL kontainer (`/srv/cermat/mysql.env`, samakan dengan `.env` di atas):
 
+File ini harus milik `oem` (docker compose dijalankan sebagai `oem`; file root chmod 600 tidak terbaca). `/srv/cermat` milik root, jadi buat file kosong milik `oem` dulu, lalu isi tanpa sudo:
+
 ```bash
-sudo tee /srv/cermat/mysql.env >/dev/null <<'X'
+sudo install -m 600 -o oem -g oem /dev/null /srv/cermat/mysql.env
+cat > /srv/cermat/mysql.env <<'X'
 MYSQL_ROOT_PASSWORD=<sandi-root-kontainer>
 MYSQL_DATABASE=cermat
 MYSQL_USER=cermat
 MYSQL_PASSWORD=<sandi-baru-kontainer>
 X
-sudo chmod 600 /srv/cermat/mysql.env
+ls -l /srv/cermat/mysql.env   # -rw------- oem oem
 ```
 
 ## 3. Salin storage
