@@ -1,7 +1,9 @@
 # Cutover CERMAT: host → Docker
 
 Prasyarat: uji Docker di :8310 lulus (login, berkas, arsip, regulasi, analisa AI); `/srv/cermat/{.env,mysql.env,storage,mysql}` sudah ada (lihat [DOCKER.md](DOCKER.md)).
-Semua perintah di server, sebagai **oem** (pakai `sudo` bila tertulis). `C=/var/www/casemix-ai/scripts/cermat-compose.sh`.
+Semua perintah di server, sebagai **oem** (pakai `sudo` bila tertulis). Semua perintah compose **lewat** `scripts/cermat-compose.sh` (di sini `$C`; di shell oem tersedia alias `cermat`).
+
+> Catatan cutover 20 Nov 2026: scheduler & backup host ternyata **systemd timer** (`casemix-scheduler.timer`, `casemix-backup.timer` → `/usr/local/bin/backup-casemix.sh`), bukan crontab. Crontab oem hanya berisi antrol + `backup-cermat.sh` — **jangan disentuh**.
 
 > `docker-compose.yml` kini memakai `name: cermat`. Kontainer uji lama bernama `casemix-ai-*` — hentikan dulu di langkah 0.
 > **Jangan** hentikan `php8.4-fpm`, `nginx`, atau `mysql` host — dipakai antrol.
@@ -32,10 +34,11 @@ Nilai di `/srv/cermat/.env` harus sama dengan produksi (bukan nilai uji). Sekali
 cd /var/www/casemix-ai && php8.4 artisan down          # cegah tulis selama dump
 sudo systemctl stop casemix-queue.service
 sudo systemctl disable casemix-queue.service
-crontab -l | grep -n 'casemix-ai.*schedule:run'; sudo crontab -l -u www-data 2>/dev/null | grep -n 'casemix-ai.*schedule:run'
+sudo systemctl disable --now casemix-scheduler.timer casemix-backup.timer
+systemctl list-timers --all | grep casemix      # keduanya inactive/tidak terjadwal
 ```
 
-Bila ada baris `schedule:run` untuk casemix-ai: `crontab -e` (atau `sudo crontab -e -u www-data`) → beri `#` di depannya. Tanpa ini FTP/VClaim sync jalan ganda.
+Tanpa mematikan `casemix-scheduler.timer` FTP/VClaim sync jalan ganda. Crontab tidak diubah (crontab oem = antrol + backup-cermat.sh).
 
 ## c. Pindahkan database
 
@@ -62,10 +65,14 @@ $C exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" cermat -e "
 ## d. Salin ulang storage
 
 ```bash
-sudo rsync -aH --delete --info=progress2 /var/www/casemix-ai/storage/ /srv/cermat/storage/
+sudo rsync -aH --delete --info=progress2 \n  --exclude 'framework/down' --exclude 'framework/maintenance.php' \n  /var/www/casemix-ai/storage/ /srv/cermat/storage/
 sudo chown -R oem:oem /srv/cermat/storage
 sudo rm -rf /srv/cermat/storage/framework/views/*.php /srv/cermat/storage/framework/cache/data/*
+sudo rm -f /srv/cermat/storage/framework/down /srv/cermat/storage/framework/maintenance.php
+ls /srv/cermat/storage/framework/        # down & maintenance.php TIDAK ada
 ```
+
+`artisan down` (langkah b) membuat `storage/framework/maintenance.php`, bukan hanya `down` — bila ikut tersalin, Docker tampil 503.
 
 ## e. Lepas site nginx host CERMAT (port 8300 saja)
 
@@ -76,6 +83,8 @@ sudo nginx -t && sudo systemctl reload nginx
 ss -ltnp | grep ':8300' || echo "8300 bebas"
 ```
 
+Worker nginx lama bisa menahan 8300 beberapa detik setelah reload — ulangi `ss -tlnp | grep :8300` sampai kosong sebelum `up -d`.
+
 Site antrol tidak disentuh.
 
 ## f. Jalankan Docker di 8300
@@ -83,6 +92,7 @@ Site antrol tidak disentuh.
 ```bash
 nano /srv/cermat/.env      # APP_URL=http://192.168.1.253:8300   dan   CERMAT_PORT=8300
 cd /var/www/casemix-ai
+ss -tlnp | grep :8300 || echo "8300 bebas"   # wajib bebas
 $C up -d --build           # nginx, app, queue, scheduler, mysql
 $C exec -T app php artisan migrate --force
 $C ps                      # 5 layanan Up, nginx 0.0.0.0:8300->80
@@ -107,7 +117,7 @@ tailscale serve status
 ## h. Verifikasi
 
 ```bash
-$C exec -T app php artisan tinker --execute='echo config("app.timezone"), " ", now(), PHP_EOL;'   # Asia/Jakarta, jam WIB
+$C exec -T app php artisan tinker --execute='echo config("app.timezone"), " ", now(), PHP_EOL;'   # Asia/Jakarta, jam WIB (HOME=/tmp sudah di image)
 $C exec -T scheduler php artisan schedule:list
 $C logs -f --since=30m queue scheduler        # pantau 30 menit pertama
 ```
@@ -119,10 +129,10 @@ Di browser — via LAN `http://192.168.1.253:8300` **dan** via Tailscale `https:
 4. Via Tailscale: setelah login tetap di `https://` (TRUSTED_PROXIES benar).
 5. Log scheduler menampilkan `casemix:sync-ftp` / `vclaim-sync-*` berjalan, log queue `DONE` tanpa `FAIL` berulang.
 
-Backup harian (crontab oem):
+Backup harian (crontab oem, 01.30 — baris ini sudah ada; cukup pastikan):
 
 ```bash
-crontab -e
+crontab -l | grep backup-cermat
 30 1 * * * /var/www/casemix-ai/scripts/backup-cermat.sh >> /srv/cermat/backup/backup.log 2>&1
 ```
 
@@ -138,7 +148,7 @@ $C down
 sudo ln -s /etc/nginx/sites-available/<site-casemix-ai> /etc/nginx/sites-enabled/   # atau kembalikan link yang dipindah
 sudo nginx -t && sudo systemctl reload nginx
 sudo systemctl enable --now casemix-queue.service
-crontab -e                                  # hapus '#' pada baris schedule:run bila tadi dimatikan
+sudo systemctl enable --now casemix-scheduler.timer casemix-backup.timer
 php8.4 artisan up
 gh variable set CERMAT_DEPLOY --body host -R <owner>/<repo>
 sudo chmod +x /usr/local/bin/deploy-casemix.sh
@@ -151,8 +161,9 @@ Tailscale tetap ke 127.0.0.1:8300 → otomatis ke host lagi.
 ```bash
 scripts/backup-cermat.sh
 sudo tar czf /srv/cermat/backup/host-lama-$(date +%F).tgz -C /var/www/casemix-ai storage .env
-sudo systemctl disable casemix-queue.service && sudo rm /etc/systemd/system/casemix-queue.service && sudo systemctl daemon-reload
-sudo rm /etc/nginx/sites-available/<site-casemix-ai> /usr/local/bin/deploy-casemix.sh
+sudo systemctl disable casemix-queue.service && sudo rm /etc/systemd/system/casemix-queue.service
+sudo rm /etc/systemd/system/casemix-{scheduler,backup}.{timer,service} && sudo systemctl daemon-reload
+sudo rm /etc/nginx/sites-available/<site-casemix-ai> /usr/local/bin/deploy-casemix.sh /usr/local/bin/backup-casemix.sh
 mysql -h 127.0.0.1 -u root -p -e 'DROP DATABASE <db-prod>;'      # setelah dump final-host disimpan di luar server
 sudo rm -rf /var/www/casemix-ai/storage/app/*                       # repo tetap: dipakai build Docker
 ```
