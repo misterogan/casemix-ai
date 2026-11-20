@@ -23,12 +23,21 @@ class GeserZonaWaktuTest extends TestCase
         $this->artisan('casemix:geser-zona-waktu --dry-run')->expectsOutputToContain('ftp_folders')->assertSuccessful();
         $this->assertSame('2026-11-01 01:00:00', DB::table('ftp_folders')->value('created_at'));
 
-        $this->artisan('casemix:geser-zona-waktu')->assertSuccessful();
-        $f = DB::table('ftp_folders')->first();
-        $this->assertSame('2026-11-01 08:00:00', $f->created_at);
-        $this->assertSame('2026-11-01 01:00:00', $f->files_modified_at);
+        DB::table('ftp_folders')->insert(['name' => 'F2', 'path' => '/F2', 'fingerprint' => 'y', 'files' => '[]',
+            'created_at' => '2026-11-02 10:00:00', 'updated_at' => '2026-11-02 10:00:00']);
 
         $this->artisan('casemix:geser-zona-waktu')->assertFailed();
+        $this->artisan('casemix:geser-zona-waktu --sebelum=2026-11-02')->assertFailed();
+        $this->assertSame('2026-11-01 01:00:00', DB::table('ftp_folders')->where('name', 'F1')->value('created_at'));
+
+        $this->artisan('casemix:geser-zona-waktu', ['--sebelum' => '2026-11-02 00:00:00'])->assertSuccessful();
+        $f = DB::table('ftp_folders')->where('name', 'F1')->first();
+        $this->assertSame('2026-11-01 08:00:00', $f->created_at);
+        $this->assertSame('2026-11-01 08:00:00', $f->updated_at);
+        $this->assertSame('2026-11-01 01:00:00', $f->files_modified_at);
+        $this->assertSame('2026-11-02 10:00:00', DB::table('ftp_folders')->where('name', 'F2')->value('created_at'));
+
+        $this->artisan('casemix:geser-zona-waktu', ['--sebelum' => '2026-11-02 00:00:00'])->assertFailed();
         $this->assertSame('2026-11-01 08:00:00', DB::table('ftp_folders')->value('created_at'));
     }
 }
