@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 class GeserZonaWaktu extends Command
 {
     protected $signature = 'casemix:geser-zona-waktu {--dry-run : Hanya tampilkan tabel/kolom dan jumlah baris}
-        {--sebelum= : Batas UTC "YYYY-MM-DD HH:MM:SS"; hanya baris dengan created_at sebelum ini yang digeser (wajib bila bukan dry-run)}';
+        {--sebelum= : Batas UTC "YYYY-MM-DD HH:MM:SS"; per kolom, hanya nilai sebelum ini yang digeser (wajib bila bukan dry-run)}';
 
     protected $description = 'Geser timestamp *_at buatan aplikasi dari UTC ke WIB (+7 jam), sekali jalan';
 
@@ -49,7 +49,7 @@ class GeserZonaWaktu extends Command
         $daftar = $this->kolom();
         $baris = [];
         foreach ($daftar as [$tabel, $kolom]) {
-            $baris[] = [$tabel, $kolom, $this->saring(DB::table($tabel), $tabel, $kolom, $sebelum)->whereNotNull($kolom)->count()];
+            $baris[] = [$tabel, $kolom, DB::table($tabel)->whereNotNull($kolom)->when($sebelum !== null, fn ($q) => $q->where($kolom, '<', $sebelum))->count()];
         }
         $this->table(['Tabel', 'Kolom', 'Baris terisi'], $baris);
 
@@ -65,31 +65,25 @@ class GeserZonaWaktu extends Command
             $perTabel[$tabel][] = $kolom;
         }
         DB::transaction(function () use ($perTabel, $mysql, $sebelum) {
-            // Satu UPDATE per tabel: WHERE created_at dievaluasi sebelum kolom digeser.
+            // Satu UPDATE per tabel; tiap kolom disaring sendiri (baris lama bisa punya updated_at yang sudah WIB).
             foreach ($perTabel as $tabel => $kolomList) {
                 $set = [];
                 foreach ($kolomList as $kolom) {
                     $q = DB::getQueryGrammar()->wrap($kolom);
-                    $set[$kolom] = DB::raw("CASE WHEN $q IS NULL THEN NULL ELSE " . ($mysql ? "DATE_ADD($q, INTERVAL 7 HOUR)" : "datetime($q, '+7 hours')") . ' END');
+                    $tambah = $mysql ? "$q + INTERVAL 7 HOUR" : "datetime($q, '+7 hours')";
+                    $set[$kolom] = DB::raw("CASE WHEN $q < " . DB::getPdo()->quote($sebelum) . " THEN $tambah ELSE $q END");
                 }
-                $this->saring(DB::table($tabel), $tabel, $kolomList[0], $sebelum)->update($set);
+                DB::table($tabel)->where(function ($w) use ($kolomList, $sebelum) {
+                    foreach ($kolomList as $kolom) {
+                        $w->orWhere($kolom, '<', $sebelum);
+                    }
+                })->update($set);
             }
             DB::table('app_settings')->insert(['key' => self::PENANDA, 'value' => json_encode(now()->toDateTimeString()), 'created_at' => now(), 'updated_at' => now()]);
         });
         $this->info('Selesai: ' . count($daftar) . ' kolom digeser +7 jam.');
 
         return self::SUCCESS;
-    }
-
-    /** Batasi ke baris dengan created_at < $sebelum (tabel tanpa created_at: pakai kolom itu sendiri). */
-    private function saring($query, string $tabel, string $kolom, ?string $sebelum)
-    {
-        if ($sebelum === null) {
-            return $query;
-        }
-        $acuan = Schema::hasColumn($tabel, 'created_at') ? 'created_at' : $kolom;
-
-        return $query->where($acuan, '<', $sebelum);
     }
 
     /** @return array<int, array{0:string,1:string}> */

@@ -40,4 +40,16 @@ class GeserZonaWaktuTest extends TestCase
         $this->artisan('casemix:geser-zona-waktu', ['--sebelum' => '2026-11-02 00:00:00'])->assertFailed();
         $this->assertSame('2026-11-01 08:00:00', DB::table('ftp_folders')->value('created_at'));
     }
+
+    public function test_hanya_kolom_lama_yang_digeser(): void
+    {
+        DB::table('ftp_folders')->insert(['name' => 'F1', 'path' => '/F1', 'fingerprint' => 'x', 'files' => '[]',
+            'created_at' => '2026-11-01 01:00:00', 'updated_at' => '2026-11-03 09:00:00']);
+
+        $this->artisan('casemix:geser-zona-waktu', ['--sebelum' => '2026-11-02 00:00:00'])->assertSuccessful();
+        $f = DB::table('ftp_folders')->first();
+        $this->assertSame('2026-11-01 08:00:00', $f->created_at);
+        $this->assertSame('2026-11-03 09:00:00', $f->updated_at);
+        $this->assertTrue(DB::table('app_settings')->where('key', 'tz_geser_wib_selesai')->exists());
+    }
 }
