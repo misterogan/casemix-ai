@@ -50,6 +50,7 @@ RUN mkdir -p storage/app/private storage/app/public storage/framework/cache/data
 
 COPY docker/entrypoint.sh /usr/local/bin/cermat-entrypoint
 RUN chmod +x /usr/local/bin/cermat-entrypoint
+ENV HOME=/tmp
 USER www-data
 ENTRYPOINT ["cermat-entrypoint"]
 CMD ["php-fpm"]
