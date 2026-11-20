@@ -37,7 +37,10 @@ DB_PORT=3306
 DB_DATABASE=cermat
 DB_USERNAME=cermat
 DB_PASSWORD=<sandi-baru-kontainer>
+TRUSTED_PROXIES=127.0.0.1,172.16.0.0/12
 ```
+
+`TRUSTED_PROXIES` wajib di Docker: permintaan via Tailscale serve (https) tiba dari nginx kontainer (jaringan Docker 172.16.0.0/12); tanpa ini redirect Laravel jatuh ke `http://`. Produksi tanpa variabel ini tetap hanya memercayai `127.0.0.1,::1`.
 
 **`APP_KEY` wajib SAMA dengan produksi** — arsip berkas dienkripsi `Crypt::encrypt` dan API key provider AI tersimpan terenkripsi; APP_KEY lain = arsip & key tidak terbaca.
 Pertimbangkan `SESSION_COOKIE=cermat_docker` agar sesi tidak bentrok dengan produksi di host yang sama.

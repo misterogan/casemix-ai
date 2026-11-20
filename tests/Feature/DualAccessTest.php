@@ -64,6 +64,22 @@ class DualAccessTest extends TestCase
         $this->assertFalse($this->sessionCookie($res)->isSecure());
     }
 
+    public function test_docker_subnet_dipercaya_bila_trusted_proxies_diatur(): void
+    {
+        config(['trustedproxy.proxies' => ['127.0.0.1', '172.16.0.0/12']]);
+        $this->withServerVariables(['REMOTE_ADDR' => '172.18.0.5'])
+            ->withHeaders(['X-Forwarded-Proto' => 'https', 'X-Forwarded-Host' => self::TS, 'X-Forwarded-Port' => '8443'])
+            ->get('/')->assertRedirect('https://'.self::TS.':8443/masuk');
+    }
+
+    public function test_docker_subnet_tidak_dipercaya_secara_bawaan(): void
+    {
+        $res = $this->withServerVariables(['REMOTE_ADDR' => '172.18.0.5'])
+            ->withHeaders(['X-Forwarded-Proto' => 'https', 'X-Forwarded-Host' => self::TS])
+            ->get('/');
+        $this->assertStringStartsWith('http://localhost', $res->headers->get('Location'));
+    }
+
     public function test_notifikasi_menyimpan_path_relatif(): void
     {
         $n = new BpjsTindakLanjut(3, 'http://localhost/bpjs?tab=klaim&status=pending');
