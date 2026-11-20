@@ -59,7 +59,7 @@ sudo chmod 600 /srv/cermat/mysql.env
 ```bash
 sudo rsync -aH --info=progress2 /var/www/casemix-ai/storage/ /srv/cermat/storage/
 sudo chown -R oem:oem /srv/cermat/storage
-rm -f /srv/cermat/storage/framework/views/*.php /srv/cermat/storage/framework/cache/data/* -r 2>/dev/null || true
+sudo rm -rf /srv/cermat/storage/framework/views/*.php /srv/cermat/storage/framework/cache/data/*
 ```
 
 ## 4. Dump DB produksi (satu-satunya akses ke DB produksi)
@@ -75,8 +75,8 @@ mysqldump -h 127.0.0.1 -u <user-prod> -p --single-transaction --quick --routines
 
 ```bash
 cd /var/www/casemix-ai
-export UID_OEM=$(id -u oem) GID_OEM=$(id -g oem)
-UID=$UID_OEM GID=$GID_OEM docker compose build
+export CERMAT_UID=$(id -u oem) CERMAT_GID=$(id -g oem)   # (UID adalah variabel readonly di bash)
+docker compose build
 docker compose up -d mysql
 docker compose ps        # tunggu mysql "healthy"
 ```
@@ -97,7 +97,7 @@ docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" cermat
 Nyalakan semua & migrasi:
 
 ```bash
-UID=$UID_OEM GID=$GID_OEM docker compose up -d --build
+docker compose up -d --build
 docker compose exec app php artisan migrate --force
 docker compose restart queue scheduler
 ```
@@ -150,6 +150,6 @@ docker compose down --rmi local
 sudo rm -rf /srv/cermat/mysql /srv/cermat/storage
 ```
 
-Kembali ke versi image sebelumnya: `git checkout <commit-lama> && UID=$UID_OEM GID=$GID_OEM docker compose up -d --build`.
+Kembali ke versi image sebelumnya: `git checkout <commit-lama> && docker compose up -d --build`.
 
 Bila nanti Docker menggantikan produksi: hentikan worker/cron produksi **dulu** (dua queue worker + dua scheduler pada data berbeda tidak masalah, tapi pada DB yang sama akan menjalankan job ganda), lakukan dump ulang, ulangi §3–§6.

@@ -1,5 +1,5 @@
 # CERMAT di Docker — berdampingan dengan produksi (port 8310). Data di ${CERMAT_DIR:-/srv/cermat}.
-# Jalankan: UID=$(id -u oem) GID=$(id -g oem) docker compose up -d --build
+# Jalankan: CERMAT_UID=$(id -u oem) CERMAT_GID=$(id -g oem) docker compose up -d --build
 
 x-logging: &logging
   driver: json-file
@@ -13,8 +13,8 @@ x-app: &app
     context: .
     target: app
     args:
-      UID: ${UID:-1000}
-      GID: ${GID:-1000}
+      UID: ${CERMAT_UID:-1000}
+      GID: ${CERMAT_GID:-1000}
   restart: unless-stopped
   logging: *logging
   environment:
