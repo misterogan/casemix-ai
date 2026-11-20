@@ -1,0 +1,72 @@
+# CERMAT di Docker — berdampingan dengan produksi (port 8310). Data di ${CERMAT_DIR:-/srv/cermat}.
+# Jalankan: UID=$(id -u oem) GID=$(id -g oem) docker compose up -d --build
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  image: cermat-app:latest
+  build:
+    context: .
+    target: app
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+  restart: unless-stopped
+  logging: *logging
+  environment:
+    TZ: Asia/Jakarta
+  volumes:
+    - ${CERMAT_DIR:-/srv/cermat}/.env:/var/www/html/.env:ro
+    - ${CERMAT_DIR:-/srv/cermat}/storage:/var/www/html/storage
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+services:
+  app:
+    <<: *app
+
+  queue:
+    <<: *app
+    # Job AI memakai antrean "ai" (CASEMIX_AI_QUEUE); tanpa --queue worker hanya membaca "default".
+    command: php artisan queue:work --queue=ai,default --tries=3
+    stop_grace_period: 60s
+
+  scheduler:
+    <<: *app
+    command: php artisan schedule:work
+
+  nginx:
+    image: cermat-web:latest
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      TZ: Asia/Jakarta
+    ports:
+      - "8310:80"
+    depends_on:
+      - app
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    logging: *logging
+    env_file: ${CERMAT_DIR:-/srv/cermat}/mysql.env
+    environment:
+      TZ: Asia/Jakarta
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-time-zone=+07:00"]
+    volumes:
+      - ${CERMAT_DIR:-/srv/cermat}/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
