@@ -373,6 +373,10 @@ class VerifikasiLatarTest extends TestCase
                 $lanjut === true ? $r->assertSee(route('verifikasi.latar.lanjut', $f)) : $r->assertDontSee(route('verifikasi.latar.lanjut', $f));
                 $lanjut === false ? $r->assertSee(route('verifikasi.latar.jeda', $f)) : $r->assertDontSee(route('verifikasi.latar.jeda', $f));
                 $r->assertSee('data-verif-status="' . $status . '"', false);
+                // Ikon saja; tooltip + aria-label tetap "Jeda"/"Lanjutkan"; menjeda = ikon jeda nonaktif + spinner
+                $lanjut === true ? $r->assertSee('aria-label="Lanjutkan"', false) : $r->assertDontSee('aria-label="Lanjutkan"', false);
+                $lanjut === false ? $r->assertSee('aria-label="Jeda"', false) : $r->assertDontSee('aria-label="Jeda"', false);
+                $status === 'menjeda' ? $r->assertSee('data-tombol-menjeda', false) : $r->assertDontSee('data-tombol-menjeda', false);
             }
         }
         if ($status === 'berjalan') { // Jeda lewat fetch: JSON berisi status baru + tombol (tanpa memuat ulang)
@@ -414,5 +418,22 @@ class VerifikasiLatarTest extends TestCase
 
             return 'silang';
         })->countBy()->sortKeys()->all();
+    }
+
+    public function test_tombol_kembali_menjaga_filter_daftar_dan_pesan_aksi(): void
+    {
+        [$f] = $this->berkas(1);
+        $daftar = route('folders.index', ['q' => 'abc', 'page' => 2]);
+        // Dari daftar berfilter (asal sama): Kembali memakai URL itu
+        $this->actingAs($this->koordinator)->from($daftar)->get(route('folders.show', $f))->assertOk()
+            ->assertSee('data-kembali', false)->assertSee('href="' . e($daftar) . '"', false);
+        // Dari luar: fallback route daftar
+        $this->actingAs($this->koordinator)->from('https://contoh.lain/verifikasi')->get(route('folders.show', $f))
+            ->assertSee('href="' . route('folders.index') . '"', false)->assertDontSee('contoh.lain');
+
+        $this->fakeAi(1);
+        $this->actingAs($this->koordinator)->post(route('folders.analyze', $f))->assertSessionHas('ok', 'Verifikasi dimulai.');
+        $f->analyses()->update(['status' => ReviewStatus::Selesai->value]);
+        $this->actingAs($this->koordinator)->post(route('folders.analyze', $f))->assertSessionHas('ok', 'Analisa ulang dimulai.');
     }
 }

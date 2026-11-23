@@ -35,15 +35,20 @@
             @if (in_array($vs, ['antre', 'berjalan'], true))
                 <form method="POST" action="{{ route('verifikasi.latar.jeda', $f) }}" class="inline" data-verif-aksi>
                     @csrf
-                    <button type="submit" class="btn-secondary inline-flex items-center gap-1 !px-2 !py-0.5 text-xs" data-tombol-jeda>
-                        <svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Jeda
+                    <button type="submit" class="btn-secondary inline-flex size-8 shrink-0 items-center justify-center !p-0" title="Jeda" aria-label="Jeda" data-tombol-jeda>
+                        <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
                     </button>
                 </form>
+            @elseif ($vs === 'menjeda')
+                <button type="button" class="btn-secondary relative inline-flex size-8 shrink-0 items-center justify-center !p-0" title="Jeda" aria-label="Jeda (sedang menjeda…)" disabled data-tombol-menjeda>
+                    <svg class="size-4 opacity-40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+                    <svg class="absolute -right-1 -top-1 size-3 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </button>
             @elseif (in_array($vs, ['dijeda', 'terhenti', 'gagal'], true))
                 <form method="POST" action="{{ route('verifikasi.latar.lanjut', $f) }}" class="inline" data-verif-aksi data-lanjut>
                     @csrf
-                    <button type="submit" class="btn-secondary inline-flex items-center gap-1 !px-2 !py-0.5 text-xs" data-tombol-lanjut>
-                        <svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10-6.5a1 1 0 0 0 0-1.72l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg>Lanjutkan
+                    <button type="submit" class="btn-secondary inline-flex size-8 shrink-0 items-center justify-center !p-0" title="Lanjutkan" aria-label="Lanjutkan" data-tombol-lanjut>
+                        <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10-6.5a1 1 0 0 0 0-1.72l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg>
                     </button>
                 </form>
             @endif

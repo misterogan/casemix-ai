@@ -27,6 +27,11 @@
         $sanggahan = $sanggahan ?? null;
         $berkas = $berkas->concat($dasarKoding->flatMap(fn ($x) => $x['butir'])->concat($sanggahan['semua'] ?? [])
             ->map(fn ($b) => $b->dokumen)->unique('id')->map(fn ($d) => ['nama' => $d->namaPenampil(), 'url' => route('acuan.pnpk.pdf', $d)]))->values();
+        // Kembali: URL sebelumnya bila dari daftar berkas (asal sama), lalu daftar terakhir di sesi, lalu route daftar
+        $daftar = route('folders.index');
+        $sebelum = url()->previous();
+        $kembali = parse_url($sebelum, PHP_URL_HOST) === request()->getHost() && rtrim((string) parse_url($sebelum, PHP_URL_PATH), '/') === rtrim((string) parse_url($daftar, PHP_URL_PATH), '/')
+            ? $sebelum : session('folders.daftar_url', $daftar);
         $resume = $documents->first(fn ($d) => $d->doc_type === 'resume_medis')?->name;
         $awal = $berkas->search(fn ($b) => $resume ? $b['nama'] === $resume : stripos($b['nama'], 'resume') !== false);
         $awal = $awal === false ? 0 : $awal;
@@ -49,6 +54,9 @@
         <div class="vf-konten min-w-0 space-y-4">
             <header class="flex flex-wrap items-start justify-between gap-4" data-kepala>
                 <div class="min-w-0">
+                    <a href="{{ $kembali }}" class="mb-2 inline-flex min-h-8 items-center gap-1 rounded-md pr-2 text-sm font-medium text-gray-600 hover:text-gray-900 focus-visible:outline-2 dark:text-gray-300" data-kembali>
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Kembali
+                    </a>
                     <p class="truncate text-[13px] text-gray-500">{{ $folder->isManual() ? 'Unggah manual' : 'FTP Enigma' }} › {{ $folder->name }}</p>
                     <h1 class="mt-1 text-xl font-semibold text-gray-800 dark:text-white/90" data-judul-berkas>{{ $folder->nama_pasien ?: $folder->name }}
                         @if ($folder->isManual())<span class="ml-2 rounded-full bg-purple-100 px-2 py-0.5 align-middle text-xs font-medium text-purple-800">Manual</span>@endif
@@ -67,15 +75,15 @@
                     <div class="flex flex-wrap gap-2">
                         {{-- Siap diajukan: analisa ulang disembunyikan kecuali ada file berubah --}}
                         @if ($tampilAnalisa)
-                            <form method="POST" action="{{ route('folders.analyze', $folder) }}">
+                            <form method="POST" action="{{ route('folders.analyze', $folder) }}" @if ($latest) data-konfirmasi="Analisa ulang dengan AI? File yang belum berubah memakai hasil baca sebelumnya; hanya file baru/berubah yang dibaca ulang, lalu periksa silang dijalankan lagi. Memakai biaya AI." @endif>
                                 @csrf
-                                <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>{{ $latest ? 'Analisa ulang dengan AI' : 'Verifikasi dengan AI' }}</button>
+                                <button type="submit" class="btn-primary" title="{{ $blocker ?: ($latest ? 'Membaca file baru/berubah saja, lalu periksa silang seluruh berkas diulang. Memakai biaya AI.' : 'Membaca semua file lalu periksa silang. Memakai biaya AI.') }}" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>{{ $latest ? 'Analisa ulang dengan AI' : 'Verifikasi dengan AI' }}</button>
                             </form>
                         @endif
                         @if ($total)
-                            <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Semua file akan dibaca ulang dan memakai token. Lanjutkan?">
+                            <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Proses ulang semua file? SEMUA file dibaca ulang oleh AI dari awal (hasil baca sebelumnya tidak dipakai), lalu periksa silang. Biaya AI lebih besar.">
                                 @csrf
-                                <button type="submit" class="btn-secondary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang semua file</button>
+                                <button type="submit" class="btn-secondary" title="Membaca ulang SEMUA file dari awal tanpa memakai hasil sebelumnya, lalu periksa silang. Biaya AI lebih besar." @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Proses ulang semua file</button>
                             </form>
                         @endif
                         <form method="POST" action="{{ route('folders.resynthesize', $folder) }}" data-resynth{{ $canResynth ? '' : ' hidden' }}>
@@ -97,9 +105,9 @@
                         <span @class(['chip shrink-0', 'chip-sesuai' => $siap, 'chip-kritis' => ! $siap])>{{ $siap ? 'Siap' : 'Belum siap' }}</span>
                     @endif
                     @if ($tampilAnalisa)
-                        <form method="POST" action="{{ route('folders.analyze', $folder) }}" class="shrink-0">
+                        <form method="POST" action="{{ route('folders.analyze', $folder) }}" class="shrink-0" @if ($latest) data-konfirmasi="Analisa ulang dengan AI? Hanya file baru/berubah yang dibaca ulang, lalu periksa silang dijalankan lagi. Memakai biaya AI." @endif>
                             @csrf
-                            <button type="submit" class="btn-primary btn-sm" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Analisa ulang</button>
+                            <button type="submit" class="btn-primary btn-sm" title="Membaca file baru/berubah saja, lalu periksa silang diulang. Memakai biaya AI." @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Analisa ulang</button>
                         </form>
                     @endif
                 </div>

@@ -53,7 +53,7 @@ class VerifikasiLatarController extends Controller
         }
         Audit::log('folder.verifikasi_lanjut', $folder, 'Melanjutkan verifikasi berkas dari file yang belum selesai');
 
-        return $this->balas($request, $folder, 'ok', 'Verifikasi dilanjutkan dari file yang belum selesai.');
+        return $this->balas($request, $folder, 'ok', 'Verifikasi dilanjutkan.');
     }
 
     /** Tombol Jeda/Lanjutkan lewat fetch: kembalikan status + HTML terbaru supaya tombol berganti tanpa memuat ulang. */

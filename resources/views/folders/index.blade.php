@@ -116,13 +116,13 @@
                             @if ($nAktif)
                                 <form method="POST" action="{{ route('verifikasi.latar.jeda_semua') }}" data-konfirmasi="Jeda semua verifikasi yang antre/berjalan?">
                                     @csrf
-                                    <button type="submit" class="btn-secondary">Jeda semua</button>
+                                    <button type="submit" class="btn-secondary inline-flex min-h-8 items-center gap-1.5"><svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Jeda semua</button>
                                 </form>
                             @endif
                             @if ($nJeda)
                                 <form method="POST" action="{{ route('verifikasi.latar.lanjut_semua') }}">
                                     @csrf
-                                    <button type="submit" class="btn-secondary">Lanjutkan semua</button>
+                                    <button type="submit" class="btn-secondary inline-flex min-h-8 items-center gap-1.5"><svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10-6.5a1 1 0 0 0 0-1.72l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg>Lanjutkan semua</button>
                                 </form>
                             @endif
                         </div>

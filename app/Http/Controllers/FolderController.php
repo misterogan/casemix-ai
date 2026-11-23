@@ -38,6 +38,7 @@ class FolderController extends Controller
 {
     public function index(Request $request)
     {
+        $request->session()->put('folders.daftar_url', $request->fullUrl()); // tombol Kembali di detail berkas
         $v = $request->validate([
             'sep' => ['nullable', 'string', 'max:30'],
             'dari' => ['nullable', 'date'],
@@ -136,10 +137,11 @@ class FolderController extends Controller
         if ($blocked = $this->startBlocker($budget)) {
             return back()->with('warn', $blocked);
         }
+        $pernah = $folder->analyses()->exists();
         $this->start($folder, $request->user()->id, paksa: true); // tombol "Analisa ulang" selalu memanggil AI
         Audit::log('folder.analisa_ulang', $folder, 'Meminta analisa ulang folder');
 
-        return back()->with('ok', 'Analisa ulang dimulai. Halaman diperbarui otomatis saat selesai.');
+        return back()->with('ok', $pernah ? 'Analisa ulang dimulai.' : 'Verifikasi dimulai.');
     }
 
     /** Dipanggil polling tiap 3 detik: status dan HTML tiap file, supaya halaman diperbarui tanpa dimuat ulang. */
@@ -244,7 +246,7 @@ class FolderController extends Controller
         }
         Audit::log('folder.analisa_lanjut', $folder, 'Melanjutkan analisa dari file yang belum selesai (' . $n . ' dokumen)');
 
-        return back()->with('ok', 'Analisa dilanjutkan. Halaman diperbarui otomatis saat selesai.');
+        return back()->with('ok', 'Verifikasi dilanjutkan.');
     }
 
     /** Koordinator menerima butir yang kurang (alasan wajib). Butir diterima dianggap tidak menghalangi Siap diajukan. */
