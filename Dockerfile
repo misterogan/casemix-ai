@@ -30,17 +30,14 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  # ftp_ssl_connect (FtpClient) wajib tersedia — gagalkan build bila tidak.
  && php -r 'exit(function_exists("ftp_ssl_connect") ? 0 : 1);' \
- && command -v pdftotext && command -v pdftoppm
+ && command -v pdftotext && command -v pdftoppm && command -v cgi-fcgi
 
 # Jalankan PHP dengan UID/GID sama dengan pengguna host "oem" agar storage bind mount bisa ditulis.
 RUN groupmod -o -g "${GID}" www-data && usermod -o -u "${UID}" -g "${GID}" www-data
 
 COPY docker/php.ini /usr/local/etc/php/conf.d/zz-cermat.ini
 # ping.path untuk healthcheck (cgi-fcgi); hanya dalam jaringan kontainer, nginx tidak meneruskannya.
-RUN printf '[www]
-ping.path = /fpm-ping
-ping.response = pong
-' > /usr/local/etc/php-fpm.d/zz-cermat.conf
+RUN printf '[www]\nping.path = /fpm-ping\nping.response = pong\n' >/usr/local/etc/php-fpm.d/zz-cermat.conf
 # Blade terkompilasi di image (storage/ adalah bind mount, akan menutupi hasil build).
 ENV VIEW_COMPILED_PATH=/var/www/html/bootstrap/cache/views
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
