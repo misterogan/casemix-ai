@@ -12,13 +12,18 @@ use Illuminate\Support\Facades\Log;
 /** Sinkron status klaim dari E-Klaim (hanya get_claim_data). Tidak menulis apa pun ke E-Klaim. */
 class EklaimSyncStatus extends Command
 {
-    protected $signature = 'casemix:eklaim-sync-status {--limit=50} {--hari=30} {--dry-run} {--sep=}';
+    protected $signature = 'casemix:eklaim-sync-status {--limit=50} {--hari=30} {--dry-run} {--sep=} {--tampil-field : Bersama --sep: tampilkan semua nama key respons, nilai hanya untuk key status/_cd/error/code}';
 
     protected $description = 'Baca status klaim (final/terkirim) dari E-Klaim untuk berkas yang sudah dianalisa (READ-ONLY)';
 
     public function handle(EklaimClient $client): int
     {
         $sep = trim((string) $this->option('sep'));
+        if ($this->option('tampil-field') && $sep === '') {
+            $this->error('--tampil-field hanya berlaku bersama --sep.');
+
+            return self::FAILURE;
+        }
         if ($sep === '' && ! EklaimClient::enabled()) {
             $this->info('Sinkron E-Klaim nonaktif (EKLAIM_SYNC_ENABLED=false).');
 
@@ -86,6 +91,9 @@ class EklaimSyncStatus extends Command
             foreach (EklaimStatus::field($data) as $k => $v) {
                 $this->line("$k: ".(is_scalar($v) ? $v : json_encode($v)));
             }
+            if ($this->option('tampil-field')) {
+                $this->tampilField($data);
+            }
             $this->info('Status CERMAT: '.(EklaimStatus::dari($data) ?? 'belum final'));
         }
         if (! $dry) {
@@ -93,6 +101,21 @@ class EklaimSyncStatus extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** Daftar nama key (bertingkat: a.b.c); nilai hanya untuk key yang namanya memuat status/_cd/error/code. */
+    private function tampilField(array $data, string $awal = 'data'): void
+    {
+        foreach ($data as $k => $v) {
+            $nama = "$awal.$k";
+            if (is_array($v) && $v !== []) {
+                $this->tampilField($v, $nama);
+
+                continue;
+            }
+            $boleh = ! is_int($k) && preg_match('/status|_cd|error|code/i', (string) $k);
+            $this->line('  '.$nama.($boleh ? ' = '.(is_scalar($v) || $v === null ? var_export($v, true) : json_encode($v)) : ''));
+        }
     }
 
     /** Simpan hasil cek; true bila status berubah. Status tidak pernah diturunkan dari 'terkirim'. */

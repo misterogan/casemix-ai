@@ -133,6 +133,23 @@ class EklaimSyncStatusTest extends TestCase
         $this->assertSame('final', FtpFolder::where('no_sep', 'SEPA')->value('eklaim_status'));
     }
 
+    public function test_tampil_field_hanya_nilai_status(): void
+    {
+        $this->folder('SEPA');
+        $this->fakeEklaim(['SEPA' => ['klaim_status_cd' => 'final', 'nama_pasien' => 'RAHASIA', 'tarif' => ['total' => 999123],
+            'grouper' => ['error_code' => 'E01', 'diagnosa' => 'RAHASIA2']]]);
+
+        $this->artisan('casemix:eklaim-sync-status --sep=SEPA --dry-run --tampil-field')
+            ->expectsOutput("  data.klaim_status_cd = 'final'")
+            ->expectsOutput('  data.nama_pasien')
+            ->expectsOutput('  data.tarif.total')
+            ->expectsOutput("  data.grouper.error_code = 'E01'")
+            ->doesntExpectOutputToContain('RAHASIA')
+            ->doesntExpectOutputToContain('999123')
+            ->assertSuccessful();
+        $this->artisan('casemix:eklaim-sync-status --tampil-field')->assertFailed();
+    }
+
     public function test_tandai_diajukan_manual_dan_filter(): void
     {
         $this->seed(RolePermissionSeeder::class);

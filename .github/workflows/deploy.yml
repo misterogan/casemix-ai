@@ -40,6 +40,9 @@ jobs:
         run: scripts/cermat-compose.sh up -d --no-build --no-deps --wait --wait-timeout 120 app
       - name: Up queue, scheduler, nginx
         run: scripts/cermat-compose.sh up -d --no-build --no-deps --remove-orphans queue scheduler nginx
+      # Backup DB sebelum migrasi; bila gagal, step gagal → deploy berhenti (migrasi tidak dijalankan).
+      - name: Backup DB sebelum migrasi
+        run: /var/www/casemix-ai/scripts/backup-cermat.sh >> /srv/cermat/backup/backup.log 2>&1 || { tail -5 /srv/cermat/backup/backup.log >&2; exit 1; }
       - name: Migrasi
         run: scripts/cermat-compose.sh exec -T app php artisan migrate --force
       - name: Hasil ukur jeda
