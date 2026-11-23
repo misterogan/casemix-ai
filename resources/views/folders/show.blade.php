@@ -24,8 +24,10 @@
         $berkas = collect($folder->files ?? [])->values()->map(fn ($f, $i) => ['nama' => $f['name'] ?? ('File ' . ($i + 1)), 'url' => route('folders.file', [$folder, $i])]);
         // Dokumen acuan yang dirujuk panel Dasar koding / Dasar sanggahan ikut dibuka di penampil
         $dasarKoding = $dasarKoding ?? collect();
+        // Dasar koding hanya bila sudah ada hasil verifikasi AI atau saran diagnosis sekunder dari AI
+        $tampilDasar = $koordinator && ($done !== null || $dasarKoding->contains('peran', 'sekunder'));
         $sanggahan = $sanggahan ?? null;
-        $berkas = $berkas->concat($dasarKoding->flatMap(fn ($x) => $x['butir'])->concat($sanggahan['semua'] ?? [])
+        $berkas = $berkas->concat(($tampilDasar ? $dasarKoding : collect())->flatMap(fn ($x) => $x['butir'])->concat($sanggahan['semua'] ?? [])
             ->map(fn ($b) => $b->dokumen)->unique('id')->map(fn ($d) => ['nama' => $d->namaPenampil(), 'url' => route('acuan.pnpk.pdf', $d)]))->values();
         // Kembali: URL sebelumnya bila dari daftar berkas (asal sama), lalu daftar terakhir di sesi, lalu route daftar
         $daftar = route('folders.index');
@@ -37,7 +39,7 @@
         $awal = $awal === false ? 0 : $awal;
         $bagian = array_filter([
             'ringkasan' => 'Ringkasan',
-            'kode' => $kodeOn || $koordinator ? 'Diagnosis & kode' : null,
+            'kode' => $kodeOn || $tampilDasar ? 'Diagnosis & kode' : null,
             'kelengkapan' => 'Kelengkapan',
             'temuan' => 'Temuan (' . $temuan->count() . ')',
             'pnpk' => $koordinator ? 'Acuan PNPK' : null,
@@ -75,10 +77,7 @@
                     <div class="flex flex-wrap gap-2">
                         {{-- Siap diajukan: analisa ulang disembunyikan kecuali ada file berubah --}}
                         @if ($tampilAnalisa)
-                            <form method="POST" action="{{ route('folders.analyze', $folder) }}" @if ($latest) data-konfirmasi="Analisa ulang dengan AI? File yang belum berubah memakai hasil baca sebelumnya; hanya file baru/berubah yang dibaca ulang, lalu periksa silang dijalankan lagi. Memakai biaya AI." @endif>
-                                @csrf
-                                <button type="submit" class="btn-primary" title="{{ $blocker ?: ($latest ? 'Membaca file baru/berubah saja, lalu periksa silang seluruh berkas diulang. Memakai biaya AI.' : 'Membaca semua file lalu periksa silang. Memakai biaya AI.') }}" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>{{ $latest ? 'Analisa ulang dengan AI' : 'Verifikasi dengan AI' }}</button>
-                            </form>
+                            @include('folders.partials.tombol-analisa')
                         @endif
                         @if ($total)
                             <form method="POST" action="{{ route('folders.process_all', $folder) }}" data-konfirmasi="Proses ulang semua file? SEMUA file dibaca ulang oleh AI dari awal (hasil baca sebelumnya tidak dipakai), lalu periksa silang. Biaya AI lebih besar.">
@@ -104,11 +103,9 @@
                     @if ($siap !== null)
                         <span @class(['chip shrink-0', 'chip-sesuai' => $siap, 'chip-kritis' => ! $siap])>{{ $siap ? 'Siap' : 'Belum siap' }}</span>
                     @endif
+                    <span class="hidden shrink-0 sm:inline-flex">@include('folders.partials.verifikasi-latar', ['f' => $folder])</span>
                     @if ($tampilAnalisa)
-                        <form method="POST" action="{{ route('folders.analyze', $folder) }}" class="shrink-0" @if ($latest) data-konfirmasi="Analisa ulang dengan AI? Hanya file baru/berubah yang dibaca ulang, lalu periksa silang dijalankan lagi. Memakai biaya AI." @endif>
-                            @csrf
-                            <button type="submit" class="btn-primary btn-sm" title="Membaca file baru/berubah saja, lalu periksa silang diulang. Memakai biaya AI." @if ($kunci) data-lock @endif @disabled($berjalan || $blocker)>Analisa ulang</button>
-                        </form>
+                        @include('folders.partials.tombol-analisa', ['kecil' => true])
                     @endif
                 </div>
                 <nav aria-label="Bagian halaman" class="flex gap-2 overflow-x-auto py-2" data-nav-bagian>
@@ -150,10 +147,10 @@
                 </div>
             </section>
 
-            @if ($kodeOn || $koordinator)
+            @if ($kodeOn || $tampilDasar)
                 <section id="bagian-kode" data-bagian="kode" class="space-y-4">
                     @if ($kodeOn)@include('folders.partials.codes')@endif
-                    @if ($koordinator)@include('folders.partials.dasar-koding')@endif
+                    @if ($tampilDasar)@include('folders.partials.dasar-koding')@endif
                 </section>
             @endif
 

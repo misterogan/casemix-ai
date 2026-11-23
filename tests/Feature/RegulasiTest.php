@@ -202,6 +202,38 @@ class RegulasiTest extends TestCase
         $this->assertSame(1, AuditLog::where('action', 'regulasi.salin_dasar_koding')->count());
     }
 
+    private function kepalaSticky(string $html): string
+    {
+        $a = strpos($html, 'data-kepala-ringkas');
+
+        return substr($html, $a, strpos($html, 'data-nav-bagian', $a) - $a);
+    }
+
+    public function test_belum_dianalisa_sticky_verifikasi_dan_dasar_koding_tidak_dirender(): void
+    {
+        $f = FtpFolder::create(['path' => '/ftp/baru', 'name' => '000002_BARU_SEP2', 'nama_pasien' => 'BARU',
+            'files' => [['path' => '/ftp/baru/RESUME.pdf', 'name' => 'RESUME.pdf', 'size' => 1, 'modified' => 1]], 'fingerprint' => 'f']);
+
+        $res = $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()
+            ->assertDontSee('data-dasar-koding', false)->assertDontSee('Salin dasar koding')->assertDontSee('id="bagian-kode"', false);
+        $sticky = $this->kepalaSticky($res->getContent());
+        $this->assertStringContainsString('Verifikasi dengan AI', $sticky);
+        $this->assertStringNotContainsString('Analisa ulang', $sticky);
+        $this->assertStringContainsString('data-verif="' . $f->id . '"', $sticky);
+    }
+
+    public function test_sudah_dianalisa_sticky_analisa_ulang_dan_dasar_koding_tampil(): void
+    {
+        $f = $this->folder(['utama' => 'E11.9']);
+
+        $res = $this->actingAs($this->koor)->get(route('folders.show', $f))->assertOk()
+            ->assertSee('data-dasar-koding', false)->assertSee('Salin dasar koding');
+        $sticky = $this->kepalaSticky($res->getContent());
+        $this->assertStringContainsString('Analisa ulang', $sticky);
+        $this->assertStringContainsString('data-konfirmasi=', $sticky);
+        $this->assertStringNotContainsString('Verifikasi dengan AI', $sticky);
+    }
+
     public function test_kode_icd10_cm_memunculkan_peringatan(): void
     {
         $f = $this->folder(['utama' => 'E11.649']);
