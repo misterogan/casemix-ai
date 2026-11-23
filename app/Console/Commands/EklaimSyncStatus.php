@@ -29,6 +29,11 @@ class EklaimSyncStatus extends Command
 
             return self::SUCCESS;
         }
+        if (! EklaimClient::configured()) {
+            $this->error('Konfigurasi E-Klaim belum diisi (EKLAIM_WS_URL/EKLAIM_ENCRYPTION_KEY).');
+
+            return self::FAILURE;
+        }
         $dry = (bool) $this->option('dry-run');
 
         if ($sep !== '') {
@@ -81,10 +86,14 @@ class EklaimSyncStatus extends Command
         try {
             $data = $client->getClaimData($sep);
         } catch (EklaimException $e) {
-            $this->error($e->getMessage());
+            $this->tampilMeta($client);
+            $this->error('GAGAL: '.$e->getMessage());
+            $dry || FtpFolder::where('no_sep', $sep)->get()
+                ->each(fn ($f) => $f->forceFill(['eklaim_gagal_cek' => $f->eklaim_gagal_cek + 1])->save());
 
             return self::FAILURE;
         }
+        $this->tampilMeta($client);
         if ($data === null) {
             $this->warn('Klaim belum ada di E-Klaim.');
         } else {
@@ -103,7 +112,16 @@ class EklaimSyncStatus extends Command
         return self::SUCCESS;
     }
 
-    /** Daftar nama key (bertingkat: a.b.c); nilai hanya untuk key yang namanya memuat status/_cd/error/code. */
+    private function tampilMeta(EklaimClient $client): void
+    {
+        if ($this->option('tampil-field')) {
+            foreach (['code', 'message', 'error_no'] as $k) {
+                array_key_exists($k, $client->meta) && $this->line("  metadata.$k = ".var_export($client->meta[$k], true));
+            }
+        }
+    }
+
+    /** Daftar nama key (bertingkat: a.b.c); nilai hanya untuk key yang namanya memuat status/_cd/error/code, kecuali coder_* (nama/NIK koder). */
     private function tampilField(array $data, string $awal = 'data'): void
     {
         foreach ($data as $k => $v) {
@@ -113,7 +131,8 @@ class EklaimSyncStatus extends Command
 
                 continue;
             }
-            $boleh = ! is_int($k) && preg_match('/status|_cd|error|code/i', (string) $k);
+            $boleh = ! is_int($k) && ! str_starts_with(strtolower((string) $k), 'coder')
+                && preg_match('/status|_cd|error|code/i', (string) $k);
             $this->line('  '.$nama.($boleh ? ' = '.(is_scalar($v) || $v === null ? var_export($v, true) : json_encode($v)) : ''));
         }
     }
@@ -134,7 +153,7 @@ class EklaimSyncStatus extends Command
             'eklaim_dicek_at' => now(),
             'eklaim_gagal_cek' => 0,
             'eklaim_final_at' => $f->eklaim_final_at ?? ($baru ? now() : null),
-            'eklaim_terkirim_at' => $f->eklaim_terkirim_at ?? ($baru === EklaimStatus::TERKIRIM ? now() : null),
+            'eklaim_terkirim_at' => $f->eklaim_terkirim_at ?? ($baru === EklaimStatus::TERKIRIM ? EklaimStatus::waktuTerkirim($data ?? []) : null),
         ])->save();
 
         return $baru !== $lama;

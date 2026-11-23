@@ -35,6 +35,22 @@ class EklaimStatus
         };
     }
 
+    /** Waktu kirim: bpjs_dc_sent_dttm, lalu kemenkes_dc_sent_dttm, lalu sekarang. */
+    public static function waktuTerkirim(array $data): \Carbon\CarbonInterface
+    {
+        foreach (['bpjs_dc_sent_dttm', 'kemenkes_dc_sent_dttm'] as $k) {
+            $v = trim((string) ($data[$k] ?? ''));
+            if ($v !== '' && ! str_starts_with($v, '0000')) {
+                try {
+                    return \Illuminate\Support\Carbon::parse($v);
+                } catch (\Throwable) {
+                }
+            }
+        }
+
+        return now();
+    }
+
     public static function field(array $data): array
     {
         return array_intersect_key($data, array_flip(self::FIELD));

@@ -14,26 +14,37 @@ class EklaimClient
 {
     public const WHITELIST = ['get_claim_data'];
 
+    /** metadata respons terakhir (code, message, error_no) untuk diagnosa --tampil-field. */
+    public array $meta = [];
+
     public static function enabled(): bool
     {
         return (bool) config('services.eklaim.sync_enabled');
     }
 
+    /** URL dan key E-Klaim sudah diisi. */
+    public static function configured(): bool
+    {
+        return trim((string) config('services.eklaim.ws_url')) !== ''
+            && trim((string) config('services.eklaim.encryption_key')) !== '';
+    }
+
     /**
-     * Data klaim per SEP, atau null bila klaim belum ada di E-Klaim.
+     * Data klaim per SEP, atau null HANYA bila E-Klaim membalas kode error "klaim tidak ditemukan".
+     * Kegagalan lain (koneksi, HTTP, dekripsi/signature, kode error lain) dilempar sebagai EklaimException.
      *
      * @return array|null isi response.data
      */
     public function getClaimData(string $noSep): ?array
     {
         $r = $this->call('get_claim_data', ['nomor_sep' => $noSep]);
-        $meta = $r['metadata'] ?? [];
+        $meta = $this->meta = is_array($r['metadata'] ?? null) ? $r['metadata'] : [];
         if ((int) ($meta['code'] ?? 0) !== 200) {
-            if (in_array($meta['error_no'] ?? null, EklaimStatus::KODE_TIDAK_ADA, true)
-                || str_contains(strtolower((string) ($meta['message'] ?? '')), 'tidak ditemukan')) {
+            if (in_array($meta['error_no'] ?? null, EklaimStatus::KODE_TIDAK_ADA, true)) {
                 return null;
             }
-            throw new EklaimException('E-Klaim menolak permintaan (kode '.($meta['code'] ?? '?').', '.($meta['error_no'] ?? '-').').');
+            throw new EklaimException('E-Klaim menolak permintaan (kode '.($meta['code'] ?? '?').', '.($meta['error_no'] ?? '-')
+                .': '.mb_strimwidth((string) ($meta['message'] ?? '-'), 0, 200, '…').').');
         }
 
         return $r['response']['data'] ?? $r['response'] ?? [];
@@ -45,10 +56,11 @@ class EklaimClient
         if (! in_array($method, self::WHITELIST, true)) {
             throw new EklaimException("Metode E-Klaim '$method' tidak diizinkan (CERMAT hanya membaca).");
         }
-        $url = (string) config('services.eklaim.ws_url');
-        if ($url === '') {
-            throw new EklaimException('EKLAIM_WS_URL belum diisi.');
+        $this->meta = [];
+        if (! self::configured()) {
+            throw new EklaimException('Konfigurasi E-Klaim belum diisi (EKLAIM_WS_URL/EKLAIM_ENCRYPTION_KEY).');
         }
+        $url = trim((string) config('services.eklaim.ws_url'));
         $crypto = new EklaimCrypto((string) config('services.eklaim.encryption_key'));
         $body = $crypto->encrypt(json_encode(['metadata' => ['method' => $method], 'data' => $data]));
 
@@ -58,8 +70,8 @@ class EklaimClient
         } catch (ConnectionException) {
             throw new EklaimException('E-Klaim tidak terjangkau (timeout/koneksi).', true);
         }
-        if ($res->serverError()) {
-            throw new EklaimException('E-Klaim error HTTP '.$res->status().'.', true);
+        if ($res->status() !== 200) {
+            throw new EklaimException('E-Klaim error HTTP '.$res->status().'.', $res->serverError());
         }
         $json = json_decode($crypto->decrypt(EklaimCrypto::potong($res->body())), true);
         if (! is_array($json)) {

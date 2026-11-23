@@ -44,9 +44,19 @@ class EklaimSyncStatusTest extends TestCase
             if ($d === 'timeout') {
                 throw new ConnectionException('timeout');
             }
-            $json = $d === null
-                ? ['metadata' => ['code' => 400, 'message' => 'Nomor SEP tidak ditemukan', 'error_no' => 'E2004']]
-                : ['metadata' => ['code' => 200, 'message' => 'Ok'], 'response' => ['data' => $d + ['nama_pasien' => 'RAHASIA']]];
+            if ($d === 'http404') {
+                return Http::response('not found', 404);
+            }
+            if ($d === 'rusak') {
+                return Http::response("----BEGIN ENCRYPTED DATA----
+".base64_encode(str_repeat('x', 64))."----END ENCRYPTED DATA----
+");
+            }
+            $json = match (true) {
+                $d === null => ['metadata' => ['code' => 400, 'message' => 'Nomor SEP tidak ditemukan', 'error_no' => 'E2004']],
+                isset($d['__meta']) => ['metadata' => $d['__meta']],
+                default => ['metadata' => ['code' => 200, 'message' => 'Ok'], 'response' => ['data' => $d + ['nama_pasien' => 'RAHASIA']]],
+            };
 
             return Http::response("----BEGIN ENCRYPTED DATA----\n".$c->encrypt(json_encode($json))."----END ENCRYPTED DATA----\n");
         }]);
@@ -165,5 +175,80 @@ class EklaimSyncStatusTest extends TestCase
         $this->actingAs($u)->get(route('folders.show', $a))->assertSee('Sumber: manual', false);
         $this->actingAs($u)->get(route('folders.index', ['eklaim' => 'manual']))->assertSee('SEP SEPA')->assertDontSee('SEP SEPB');
         $this->actingAs($u)->get(route('folders.index', ['eklaim' => 'final']))->assertSee('Final di E-Klaim')->assertDontSee('SEP SEPA');
+    }
+
+    public function test_konfigurasi_kosong_berhenti_tanpa_mengubah_data(): void
+    {
+        $a = $this->folder('SEPA');
+        Http::fake();
+        foreach ([['ws_url' => ''], ['ws_url' => 'http://e-klaim.test/ws.php', 'encryption_key' => '']] as $cfg) {
+            config(['services.eklaim' => $cfg + config('services.eklaim')]);
+            $this->artisan('casemix:eklaim-sync-status --sep=SEPA')
+                ->expectsOutputToContain('Konfigurasi E-Klaim belum diisi')
+                ->doesntExpectOutputToContain('belum ada')
+                ->assertExitCode(1);
+            $this->artisan('casemix:eklaim-sync-status')->expectsOutputToContain('Konfigurasi E-Klaim belum diisi')->assertExitCode(1);
+        }
+        Http::assertNothingSent();
+        $a->refresh();
+        $this->assertNull($a->eklaim_dicek_at);
+        $this->assertSame(0, (int) $a->eklaim_gagal_cek);
+    }
+
+    public function test_error_selain_tidak_ditemukan_dihitung_gagal(): void
+    {
+        foreach (['SEPK', 'SEPH', 'SEPR', 'SEPM'] as $s) {
+            $this->folder($s);
+        }
+        $this->fakeEklaim([
+            'SEPK' => ['__meta' => ['code' => 400, 'message' => 'Akses ditolak', 'error_no' => 'E2099']],
+            'SEPH' => 'http404',
+            'SEPR' => 'rusak',
+            'SEPM' => ['__meta' => ['code' => 400, 'message' => 'Data tidak ditemukan untuk user ini']],
+        ]);
+
+        $this->artisan('casemix:eklaim-sync-status')->expectsOutputToContain('dicek 0, berubah 0, belum ada di E-Klaim 0, gagal 4')->assertSuccessful();
+        $this->assertSame([1, 1, 1, 1], FtpFolder::orderBy('no_sep')->pluck('eklaim_gagal_cek')->map(fn ($v) => (int) $v)->all());
+
+        $this->artisan('casemix:eklaim-sync-status --sep=SEPK')
+            ->expectsOutputToContain('GAGAL: E-Klaim menolak permintaan (kode 400, E2099: Akses ditolak)')
+            ->doesntExpectOutputToContain('belum ada')
+            ->assertExitCode(1);
+        $this->assertSame(2, (int) FtpFolder::where('no_sep', 'SEPK')->value('eklaim_gagal_cek'));
+        $this->artisan('casemix:eklaim-sync-status --sep=SEPH')->expectsOutputToContain('HTTP 404')->assertExitCode(1);
+        $this->artisan('casemix:eklaim-sync-status --sep=SEPR')->expectsOutputToContain('GAGAL')->assertExitCode(1);
+    }
+
+    public function test_tampil_field_metadata_dan_coder_disembunyikan(): void
+    {
+        $this->folder('SEPA');
+        $this->fakeEklaim(['SEPA' => ['klaim_status_cd' => 'final', 'coder_nm' => 'KODER RAHASIA', 'coder_nik' => '3201999']]);
+
+        $this->artisan('casemix:eklaim-sync-status --sep=SEPA --dry-run --tampil-field')
+            ->expectsOutput('  metadata.code = 200')
+            ->expectsOutput("  metadata.message = 'Ok'")
+            ->expectsOutput('  data.coder_nm')
+            ->expectsOutput('  data.coder_nik')
+            ->doesntExpectOutputToContain('KODER RAHASIA')
+            ->doesntExpectOutputToContain('3201999')
+            ->assertSuccessful();
+    }
+
+    public function test_waktu_terkirim_dari_field_sent_dttm(): void
+    {
+        $a = $this->folder('SEPA');
+        $b = $this->folder('SEPB');
+        $c = $this->folder('SEPC');
+        $this->fakeEklaim([
+            'SEPA' => ['klaim_status_cd' => 'final', 'bpjs_dc_status_cd' => 'sent', 'bpjs_dc_sent_dttm' => '2026-11-20 08:15:00', 'kemenkes_dc_sent_dttm' => '2026-11-19 07:00:00'],
+            'SEPB' => ['klaim_status_cd' => 'final', 'bpjs_dc_status_cd' => 'sent', 'kemenkes_dc_sent_dttm' => '2026-11-19 07:00:00'],
+            'SEPC' => ['klaim_status_cd' => 'final', 'bpjs_dc_status_cd' => 'sent'],
+        ]);
+
+        $this->artisan('casemix:eklaim-sync-status')->assertSuccessful();
+        $this->assertSame('2026-11-20 08:15:00', $a->refresh()->eklaim_terkirim_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-11-19 07:00:00', $b->refresh()->eklaim_terkirim_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-11-23 10:00:00', $c->refresh()->eklaim_terkirim_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-11-23 10:00:00', $a->eklaim_final_at->format('Y-m-d H:i:s'));
     }
 }
