@@ -49,7 +49,7 @@ class ConditionSuggestionToggleTest extends TestCase
                 'kondisi' => [['kondisi' => 'Kemungkinan anemia', 'bukti' => 'Hb rendah', 'dokumen' => 'SEP.pdf', 'halaman' => 1]]])]],
         ])]);
 
-        SynthesizeFolderAnalysis::dispatchSync($a->id);
+        SynthesizeFolderAnalysis::dispatchSync($a->id, true);
 
         return $a->fresh();
     }

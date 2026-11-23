@@ -184,7 +184,7 @@ class FolderController extends Controller
 
         $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
         $folder->update(['analysis_status' => 'berjalan']);
-        SynthesizeFolderAnalysis::dispatch($a->id);
+        SynthesizeFolderAnalysis::dispatch($a->id, true);
         Audit::log('folder.ulang_rekomendasi', $folder, 'Meminta rekomendasi keseluruhan dibuat ulang (file tidak dibaca ulang)');
 
         return back()->with('ok', 'Rekomendasi keseluruhan sedang dibuat ulang.');

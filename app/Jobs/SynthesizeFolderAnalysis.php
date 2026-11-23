@@ -15,6 +15,7 @@ use App\Services\Ai\AiRequest;
 use App\Services\Ai\AnggaranHabis;
 use App\Services\Pnpk\PnpkAcuan;
 use App\Services\Verification\FolderAnalyzer;
+use App\Services\Verification\VerifikasiLatar;
 use App\Support\Audit;
 use App\Support\VerificationRubric;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,7 +44,8 @@ class SynthesizeFolderAnalysis implements ShouldQueue
 
     public const MAX_CODES = 15;
 
-    public function __construct(public int $analysisId)
+    /** @param  bool  $alurBaru  false = job ber-antrean dari versi lama (rantai Bus::chain): berhenti aman, berkas "terhenti". */
+    public function __construct(public int $analysisId, public bool $alurBaru = false)
     {
         $this->onQueue(config('casemix.ai.queue'));
     }
@@ -52,6 +54,11 @@ class SynthesizeFolderAnalysis implements ShouldQueue
     {
         $a = FolderAnalysis::with(['folder', 'documents'])->find($this->analysisId);
         if (! $a || ! $a->status?->isActive()) {
+            return;
+        }
+        if (! $this->alurBaru) {
+            VerifikasiLatar::hentikanJobLama($a->folder, 'SynthesizeFolderAnalysis #' . $a->id);
+
             return;
         }
         $folder = $a->folder;

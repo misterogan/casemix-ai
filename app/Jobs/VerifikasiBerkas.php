@@ -8,6 +8,7 @@ use App\Services\Verification\VerifikasiLatar;
 use App\Support\Audit;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Throwable;
 
 /**
@@ -69,13 +70,13 @@ class VerifikasiBerkas implements ShouldQueue
         }
 
         if (! $doc) { // semua file selesai: tahap 2
-            app()->call([new SynthesizeFolderAnalysis($a->id), 'handle']);
+            app()->call([new SynthesizeFolderAnalysis($a->id, true), 'handle']);
             $latar->akhiri($f->refresh(), $a->refresh());
 
             return;
         }
 
-        app()->call([new ReadFolderDocument($doc->id), 'handle']);
+        app()->call([new ReadFolderDocument($doc->id, true), 'handle']);
         $doc->refresh();
         $f->refresh();
         $latar->hitung($f, $a);
@@ -101,6 +102,10 @@ class VerifikasiBerkas implements ShouldQueue
     /** Dipanggil saat job gagal di luar penanganan (mis. timeout): berkas jadi gagal, bisa dilanjutkan. */
     public function failed(?Throwable $e): void
     {
+        // Diambil ulang karena retry_after terlewati padahal job pertama masih jalan (heartbeat segar): jangan timpa status
+        if ($e instanceof MaxAttemptsExceededException && ($f = $this->berkas()) && $f->statusVerifikasi() === 'berjalan') {
+            return;
+        }
         if ($f = $this->berkas()) {
             app(VerifikasiLatar::class)->tandaiGagal($f, 'Verifikasi berhenti: ' . ($e?->getMessage() ?: 'job gagal'));
         }

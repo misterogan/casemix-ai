@@ -253,7 +253,7 @@ class PnpkTest extends TestCase
             'file_fingerprint' => '1|1', 'doc_type' => 'resume_medis', 'status' => ReviewStatus::Selesai, 'summary' => ['isian' => []]]);
         $this->fakeAi(['ringkasan' => 'ok', 'rubrik' => [], 'pnpk' => [['id' => $b->id, 'catatan' => 'CURB-65 tidak tertulis'], ['id' => 999999, 'catatan' => 'karangan']]]);
 
-        SynthesizeFolderAnalysis::dispatchSync($a->id);
+        SynthesizeFolderAnalysis::dispatchSync($a->id, true);
 
         $a->refresh();
         $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);

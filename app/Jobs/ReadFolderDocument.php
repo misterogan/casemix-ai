@@ -11,6 +11,7 @@ use App\Services\Ai\AiManager;
 use App\Services\Ai\AiResponse;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
+use App\Services\Verification\VerifikasiLatar;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Crypt;
@@ -38,7 +39,11 @@ class ReadFolderDocument implements ShouldQueue
 
     public int $timeout = 900;
 
-    public function __construct(public int $documentId)
+    /**
+     * @param  bool  $alurBaru  true bila dipanggil VerifikasiBerkas. Job ber-antrean dari versi sebelum verifikasi latar
+     *                          (rantai Bus::chain) tidak punya properti ini -> false -> berhenti aman, berkas "terhenti".
+     */
+    public function __construct(public int $documentId, public bool $alurBaru = false)
     {
         $this->onQueue(config('casemix.ai.queue'));
     }
@@ -47,6 +52,11 @@ class ReadFolderDocument implements ShouldQueue
     {
         $d = FolderDocument::with('folder')->find($this->documentId);
         if (! $d || $d->status !== ReviewStatus::Antre) {
+            return;
+        }
+        if (! $this->alurBaru) {
+            VerifikasiLatar::hentikanJobLama($d->folder, 'ReadFolderDocument #' . $d->id);
+
             return;
         }
         // Berhenti saat gagal: dokumen sebelumnya gagal → yang ini tidak diproses (tanpa memanggil AI)

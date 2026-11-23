@@ -52,7 +52,7 @@ class CodeSuggestionTest extends TestCase
             'content' => [['type' => 'text', 'text' => json_encode(['ringkasan' => 'Berkas lengkap.', 'rubrik' => [], 'kode' => $kode])]],
         ])]);
 
-        SynthesizeFolderAnalysis::dispatchSync($a->id);
+        SynthesizeFolderAnalysis::dispatchSync($a->id, true);
 
         return $a->fresh();
     }

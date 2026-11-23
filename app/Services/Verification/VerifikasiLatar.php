@@ -61,6 +61,21 @@ class VerifikasiLatar
         return $token;
     }
 
+    /**
+     * Job ber-antrean dari versi sebelum verifikasi latar (ReadFolderDocument/SynthesizeFolderAnalysis dalam Bus::chain)
+     * berhenti tanpa memanggil AI. Bila berkas belum diambil alih alur baru, tandai "terhenti" (berjalan tanpa heartbeat)
+     * supaya tombol Lanjutkan muncul. Bila sudah diambil alih (ada status verifikasi), cukup berhenti.
+     */
+    public static function hentikanJobLama(?FtpFolder $f, string $job): void
+    {
+        \Illuminate\Support\Facades\Log::info("Job versi lama dihentikan: $job", ['folder' => $f?->id]);
+        if ($f && $f->verifikasi_status === null) {
+            FtpFolder::withoutGlobalScopes()->whereKey($f->id)->whereNull('verifikasi_status')->update([
+                'verifikasi_status' => 'berjalan', 'verifikasi_heartbeat_at' => null,
+                'verifikasi_pesan' => 'Dihentikan saat pembaruan aplikasi; tekan Lanjutkan.']);
+        }
+    }
+
     /** Analisa baru: dokumen disiapkan (langsung tampil "menunggu"), lalu job berjalan di latar. */
     public function mulai(FtpFolder $f, int $userId, bool $all = false, bool $paksa = false, ?string $queue = null): FolderAnalysis
     {

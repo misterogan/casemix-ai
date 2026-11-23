@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Enums\ReviewStatus;
+use App\Jobs\ReadFolderDocument;
 use App\Jobs\RunFolderAnalysis;
+use App\Jobs\SynthesizeFolderAnalysis;
 use App\Jobs\VerifikasiBerkas;
 use App\Models\AiProvider;
 use App\Models\AiUsage;
@@ -60,12 +62,13 @@ class VerifikasiLatarTest extends TestCase
         return FtpFolder::orderBy('id')->get()->all();
     }
 
-    private function fakeAi(int $n): void
+    /** @param  array<int, string>  $teks  jawaban khusus per urutan panggilan (1-based), mis. bukan JSON */
+    private function fakeAi(int $n, array $teks = []): void
     {
         $seq = Http::sequence();
-        foreach (range(1, $n) as $_) {
+        foreach (range(1, $n) as $i) {
             $seq->push(['id' => 'x', 'model' => 'claude-sonnet-5-5', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 1000, 'output_tokens' => 100],
-                'content' => [['type' => 'text', 'text' => json_encode(['isian' => [], 'temuan' => [], 'ringkasan' => 'ok', 'kondisi' => []])]]]);
+                'content' => [['type' => 'text', 'text' => $teks[$i] ?? json_encode(['isian' => [], 'temuan' => [], 'ringkasan' => 'ok', 'kondisi' => []])]]]);
         }
         Http::fake(['*/v1/messages' => $seq]);
     }
@@ -220,5 +223,108 @@ class VerifikasiLatarTest extends TestCase
         $this->assertSame('antre', $f->fresh()->verifikasi_status);
         $this->assertSame(0, $f->analyses()->first()->documents()->where('status', 'berjalan')->count(), 'File yang terputus diantrekan lagi');
         $this->assertSame(2, Queue::pushed(VerifikasiBerkas::class)->count());
+    }
+
+    public function test_periksa_silang_tetap_jalan_setelah_file_gagal_lalu_dilanjutkan(): void
+    {
+        [$f] = $this->berkas(1);
+        $this->fakeAi(5, [2 => 'maaf, bukan json']); // A ok, B gagal | lanjut: B, C, periksa silang
+        $this->mulai($f);
+        while ($this->langkah());
+        $f->refresh();
+        $this->assertSame('gagal', $f->verifikasi_status);
+        $this->assertCount(2, Http::recorded(), 'Berhenti di file gagal; periksa silang belum dipanggil');
+
+        $this->actingAs($this->koordinator)->post(route('verifikasi.latar.lanjut', $f))->assertSessionHas('ok');
+        while ($this->langkah());
+        $a = $f->analyses()->first();
+        $this->assertSame(ReviewStatus::Selesai, $a->status, (string) $a->error);
+        $this->assertSame('selesai', $f->fresh()->verifikasi_status);
+        $this->assertCount(5, Http::recorded(), 'B dibaca ulang, C, lalu periksa silang; A tidak');
+        $this->assertSame(['A.png' => 1, 'B.png' => 2, 'C.png' => 1, 'silang' => 1], $this->panggilanPerFile());
+    }
+
+    public function test_jeda_setelah_file_terakhir_lanjut_hanya_periksa_silang(): void
+    {
+        [$f] = $this->berkas(1);
+        $this->fakeAi(4);
+        $this->mulai($f);
+        $this->langkah();
+        $this->langkah();
+        $this->langkah(); // file ketiga (terakhir) selesai
+        $this->actingAs($this->koordinator)->post(route('verifikasi.latar.jeda', $f));
+        $this->langkah();
+        $this->assertSame('dijeda', $f->fresh()->verifikasi_status);
+        $this->assertCount(3, Http::recorded());
+
+        $this->actingAs($this->koordinator)->post(route('verifikasi.latar.lanjut', $f))->assertSessionHas('ok');
+        while ($this->langkah());
+        $this->assertSame(ReviewStatus::Selesai, $f->analyses()->first()->status);
+        $this->assertSame(['A.png' => 1, 'B.png' => 1, 'C.png' => 1, 'silang' => 1], $this->panggilanPerFile());
+    }
+
+    public function test_retry_tidak_memproses_ulang_file_selesai(): void
+    {
+        $this->assertSame(1, (new VerifikasiBerkas(1, 'x'))->tries, 'Job tidak diulang worker (--tries=3 kalah oleh $tries job)');
+        [$f] = $this->berkas(1);
+        $this->fakeAi(1);
+        $this->mulai($f);
+        $this->langkah();
+        $doc = $f->analyses()->first()->documents()->where('status', 'selesai')->sole();
+        app()->call([new ReadFolderDocument($doc->id, true), 'handle']); // seandainya dijalankan lagi
+        $this->assertCount(1, Http::recorded());
+        $this->assertSame(1, AiUsage::count());
+    }
+
+    public function test_job_lama_di_antrean_berhenti_aman_dan_berkas_terhenti(): void
+    {
+        [$f] = $this->berkas(1);
+        // Analisa alur lama (sebelum deploy): tanpa status verifikasi, rantai ReadFolderDocument masih di antrean
+        $a = \App\Models\FolderAnalysis::create(['ftp_folder_id' => $f->id, 'status' => ReviewStatus::Berjalan, 'requested_by' => $this->koordinator->id]);
+        app(\App\Services\Verification\FolderAnalyzer::class)->prepare($a);
+        $f->update(['analysis_status' => 'berjalan', 'last_analysis_id' => $a->id]);
+        Http::fake();
+
+        $docs = $a->documents()->orderBy('id')->pluck('id');
+        app()->call([unserialize(serialize(new ReadFolderDocument($docs[0]))), 'handle']);
+        app()->call([new SynthesizeFolderAnalysis($a->id), 'handle']);
+        Http::assertNothingSent();
+        $f->refresh();
+        $this->assertSame('terhenti', $f->statusVerifikasi());
+        $this->assertSame(0, $a->documents()->where('status', '!=', 'antre')->count());
+        $this->actingAs($this->koordinator)->get(route('folders.index'))->assertSee('Terhenti')->assertSee('Lanjutkan');
+
+        $this->actingAs($this->koordinator)->post(route('verifikasi.latar.lanjut', $f))->assertSessionHas('ok');
+        $this->assertSame(1, Queue::pushed(VerifikasiBerkas::class)->count());
+
+        // Job lama berikutnya setelah diambil alih: berhenti tanpa mengubah status alur baru
+        app()->call([new ReadFolderDocument($docs[1]), 'handle']);
+        $this->assertSame('antre', $f->fresh()->verifikasi_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_rantai_lama_yang_mati_tanpa_job_menjadi_terhenti(): void
+    {
+        [$f] = $this->berkas(1);
+        $a = \App\Models\FolderAnalysis::create(['ftp_folder_id' => $f->id, 'status' => ReviewStatus::Berjalan, 'requested_by' => $this->koordinator->id]);
+        $f->update(['analysis_status' => 'berjalan', 'last_analysis_id' => $a->id]);
+        $this->assertNull($f->fresh()->statusVerifikasi());
+        $this->travel(FtpFolder::ALUR_LAMA_BASI_MENIT + 1)->minutes();
+        $this->assertSame('terhenti', $f->fresh()->statusVerifikasi());
+    }
+
+    /** Jumlah panggilan AI per file (dari nama file di prompt) + periksa silang. */
+    private function panggilanPerFile(): array
+    {
+        return Http::recorded()->map(function ($r) {
+            $body = $r[0]->body();
+            foreach (['A.png', 'B.png', 'C.png'] as $n) {
+                if (str_contains($body, $n) && ! str_contains($body, 'rubrik')) {
+                    return $n;
+                }
+            }
+
+            return 'silang';
+        })->countBy()->sortKeys()->all();
     }
 }

@@ -75,6 +75,9 @@ class FtpFolder extends Model
     /** Heartbeat lebih tua dari ini saat berjalan/menjeda = job terhenti (mis. worker restart saat deploy). */
     public const HEARTBEAT_BASI_MENIT = 10;
 
+    /** Analisa alur lama (tanpa heartbeat) dianggap terhenti bila tak ada aktivitas selama ini (> timeout baca satu file, 15 menit). */
+    public const ALUR_LAMA_BASI_MENIT = 20;
+
     /** Status tampil: antre|berjalan|menjeda|dijeda|selesai|gagal|terhenti, atau null bila belum pernah lewat verifikasi latar. */
     public function statusVerifikasi(): ?string
     {
@@ -82,6 +85,12 @@ class FtpFolder extends Model
         if (in_array($s, ['berjalan', 'menjeda'], true)
             && (! $this->verifikasi_heartbeat_at || $this->verifikasi_heartbeat_at->lt(now()->subMinutes(self::HEARTBEAT_BASI_MENIT)))) {
             return 'terhenti';
+        }
+        if ($s === null && in_array($this->analysis_status, ['antre', 'berjalan'], true) && $this->last_analysis_id) {
+            $akhir = collect([FolderAnalysis::whereKey($this->last_analysis_id)->value('updated_at'),
+                FolderDocument::where('folder_analysis_id', $this->last_analysis_id)->max('updated_at')])->filter()->max();
+
+            return $akhir && \Illuminate\Support\Carbon::parse($akhir)->lt(now()->subMinutes(self::ALUR_LAMA_BASI_MENIT)) ? 'terhenti' : null;
         }
 
         return $s;

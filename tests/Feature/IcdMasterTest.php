@@ -84,7 +84,7 @@ class IcdMasterTest extends TestCase
             'id' => 'x', 'model' => 'claude-sonnet-5-5', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 10, 'output_tokens' => 10],
             'content' => [['type' => 'text', 'text' => json_encode(['ringkasan' => 'ok', 'rubrik' => [], 'kode' => $kode])]],
         ])]);
-        SynthesizeFolderAnalysis::dispatchSync($a->id);
+        SynthesizeFolderAnalysis::dispatchSync($a->id, true);
 
         $this->assertSame(5, CodeSuggestion::count());
         $this->assertSame('Pneumonia, unspecified (master)', CodeSuggestion::where('code', 'J18.9')->value('title'));
