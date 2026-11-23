@@ -92,6 +92,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/verifikasi/{folder}/kode/{code}/status', [FolderController::class, 'codeStatus'])->whereNumber('code')->middleware('permission:folders.analyze')->name('folders.code.status');
         Route::post('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'store'])->middleware('role:koordinator')->name('folders.temuan_cek.store');
         Route::delete('/verifikasi/{folder}/temuan-cek', [\App\Http\Controllers\FolderTemuanCekController::class, 'destroy'])->middleware('role:koordinator')->name('folders.temuan_cek.destroy');
+        Route::post('/verifikasi/{folder}/diajukan', [FolderController::class, 'tandaiDiajukan'])->middleware('permission:folders.analyze')->name('folders.diajukan');
+        Route::delete('/verifikasi/{folder}/diajukan', [FolderController::class, 'batalDiajukan'])->middleware('permission:folders.analyze')->name('folders.diajukan.batal');
         Route::put('/verifikasi/{folder}/penugasan', [FolderController::class, 'assign'])->middleware('role:koordinator')->name('folders.assign');
         Route::post('/verifikasi/{folder}/dasar-koding/salin', [FolderController::class, 'salinDasarKoding'])->middleware('role:koordinator')->name('folders.dasar_koding.salin');
         Route::post('/verifikasi/{folder}/draf-sanggahan', [FolderController::class, 'drafSanggahan'])->middleware(['role:koordinator', 'throttle:10,1'])->name('folders.draf');

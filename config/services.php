@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    // E-Klaim INA-CBG (hanya get_claim_data, lihat App\Services\Eklaim\EklaimClient). Key tidak pernah dicetak/di-log.
+    'eklaim' => [
+        'ws_url' => env('EKLAIM_WS_URL'),
+        'encryption_key' => env('EKLAIM_ENCRYPTION_KEY'),
+        'sync_enabled' => (bool) env('EKLAIM_SYNC_ENABLED', false),
+        'timeout' => 10,
+        'jeda_ms' => 300,
+    ],
+
 ];

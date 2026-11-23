@@ -12,6 +12,7 @@
         },
         ['sudah' => 'Sudah diperiksa AI', 'belum' => 'Belum diperiksa AI'][$filters['periksa']] ?? null,
         ['siap' => 'Siap diajukan', 'belum_siap' => 'Belum siap'][$filters['kesiapan']] ?? null,
+        ['belum' => 'Belum diajukan', 'final' => 'Final di E-Klaim', 'terkirim' => 'Terkirim ke BPJS', 'manual' => 'Ditandai diajukan (manual)'][$filters['eklaim']] ?? null,
     ]));
 @endphp
 <x-app-layout title="Verifikasi berkas">
@@ -27,7 +28,7 @@
         </p>
 
         {{-- Filter (GET); pencarian No. SEP ada di header --}}
-        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:items-end">
+        <form method="GET" action="{{ route('folders.index') }}" role="search" class="panel mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-end">
             @if ($tab !== 'aktif')<input type="hidden" name="tab" value="{{ $tab }}">@endif
             <input type="hidden" name="sep" value="{{ $filters['sep'] }}">
             <div>
@@ -52,6 +53,15 @@
                     <option value="">Semua</option>
                     <option value="siap" @selected($filters['kesiapan'] === 'siap')>Siap diajukan</option>
                     <option value="belum_siap" @selected($filters['kesiapan'] === 'belum_siap')>Belum siap</option>
+                </select>
+            </div>
+            <div>
+                <label for="eklaim" class="label">Status pengajuan</label>
+                <select id="eklaim" name="eklaim" class="field">
+                    <option value="">Semua</option>
+                    @foreach (['belum' => 'Belum diajukan', 'final' => 'Final di E-Klaim', 'terkirim' => 'Terkirim ke BPJS', 'manual' => 'Ditandai manual'] as $k => $l)
+                        <option value="{{ $k }}" @selected($filters['eklaim'] === $k)>{{ $l }}</option>
+                    @endforeach
                 </select>
             </div>
             <div class="flex items-center gap-2 sm:col-span-2 lg:col-span-1">

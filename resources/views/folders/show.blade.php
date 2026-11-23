@@ -57,6 +57,7 @@
                         RM {{ $folder->no_rm ?: '—' }} · SEP {{ $folder->no_sep ?: '—' }} · {{ $jenis }} · {{ $folder->file_count }} dokumen
                         @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
                     </p>
+                    @include('folders.partials.eklaim-status')
                     @if ($menunggu)
                         <p class="mt-1 text-sm font-medium text-purple-800">Saran DPJP: {{ $menunggu }} menunggu tindak lanjut</p>
                     @endif

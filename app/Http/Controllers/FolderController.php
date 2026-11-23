@@ -43,6 +43,7 @@ class FolderController extends Controller
             'sampai' => ['nullable', 'date'],
             'periksa' => ['nullable', 'in:sudah,belum'],
             'kesiapan' => ['nullable', 'in:siap,belum_siap'],
+            'eklaim' => ['nullable', 'in:belum,final,terkirim,manual'],
             'tab' => ['nullable', 'in:aktif,dipindahkan,hilang_tanpa_periksa'],
         ]);
         $tab = $v['tab'] ?? 'aktif';
@@ -55,6 +56,7 @@ class FolderController extends Controller
         }
         $periksa = $v['periksa'] ?? '';
         $kesiapan = $v['kesiapan'] ?? '';
+        $eklaim = $v['eklaim'] ?? '';
 
         // Filter No. SEP dan tanggal; status pemeriksaan ditambahkan terpisah supaya jumlah per status bisa dihitung
         $filtered = fn () => FtpFolder::query()
@@ -62,7 +64,10 @@ class FolderController extends Controller
             ->when($dari, fn ($w) => $w->where('files_modified_at', '>=', $dari))
             ->when($sampai, fn ($w) => $w->where('files_modified_at', '<=', $sampai))
             ->when($kesiapan === 'siap', fn ($w) => $w->where('rubric_kurang', 0))
-            ->when($kesiapan === 'belum_siap', fn ($w) => $w->where('rubric_kurang', '>', 0));
+            ->when($kesiapan === 'belum_siap', fn ($w) => $w->where('rubric_kurang', '>', 0))
+            ->when($eklaim === 'belum', fn ($w) => $w->whereNull('eklaim_status')->whereNull('diajukan_manual_at'))
+            ->when(in_array($eklaim, ['final', 'terkirim'], true), fn ($w) => $w->where('eklaim_status', $eklaim))
+            ->when($eklaim === 'manual', fn ($w) => $w->whereNull('eklaim_status')->whereNotNull('diajukan_manual_at'));
         $base = fn () => $filtered()->moved($tab);
         $byStatus = fn ($w, string $p) => match ($p) {
             'sudah' => $w->where('analysis_status', 'selesai'),
@@ -79,7 +84,7 @@ class FolderController extends Controller
         return view('folders.index', [
             'folders' => $folders,
             'copies' => $copies,
-            'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa, 'kesiapan' => $kesiapan],
+            'filters' => ['sep' => $sep, 'dari' => $dari?->toDateString(), 'sampai' => $sampai?->toDateString(), 'periksa' => $periksa, 'kesiapan' => $kesiapan, 'eklaim' => $eklaim],
             'tab' => $tab,
             'tabCounts' => collect(['aktif', 'dipindahkan', 'hilang_tanpa_periksa'])->mapWithKeys(fn ($t) => [$t => $filtered()->moved($t)->count()])->all(),
             'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
@@ -302,6 +307,27 @@ class FolderController extends Controller
     }
 
     /** Tugaskan/lepas petugas folder (Koordinator). user_id kosong = lepas. Diaudit dengan nilai lama/baru. */
+    /** Tanda manual "sudah diajukan" bila status E-Klaim belum terdeteksi. Tidak menulis ke E-Klaim. */
+    public function tandaiDiajukan(Request $request, FtpFolder $folder)
+    {
+        if (! $folder->eklaim_status && ! $folder->diajukan_manual_at) {
+            $folder->forceFill(['diajukan_manual_at' => now(), 'diajukan_manual_oleh' => $request->user()->id])->save();
+            Audit::log('folder.diajukan_manual', $folder, 'Menandai berkas sudah diajukan (manual)');
+        }
+
+        return back()->with('status', 'Berkas ditandai sudah diajukan.');
+    }
+
+    public function batalDiajukan(FtpFolder $folder)
+    {
+        if ($folder->diajukan_manual_at) {
+            $folder->forceFill(['diajukan_manual_at' => null, 'diajukan_manual_oleh' => null])->save();
+            Audit::log('folder.diajukan_manual_batal', $folder, 'Membatalkan tanda sudah diajukan (manual)');
+        }
+
+        return back()->with('status', 'Tanda sudah diajukan dibatalkan.');
+    }
+
     public function assign(Request $request, FtpFolder $folder)
     {
         $v = $request->validate(['user_id' => ['nullable', 'integer', 'exists:users,id']]);

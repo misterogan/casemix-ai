@@ -43,5 +43,6 @@
                 <span class="chip chip-belum">Belum diperiksa AI</span>
         @endswitch
         @endif
+        @include('folders.partials.eklaim-chip', ['f' => $f])
     </div>
 </li>

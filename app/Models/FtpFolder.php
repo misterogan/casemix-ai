@@ -58,12 +58,28 @@ class FtpFolder extends Model
             'assigned_at' => 'datetime',
             'bpjs_status_at' => 'datetime',
             'bpjs_tindak_lanjut' => 'boolean',
+            'eklaim_final_at' => 'datetime',
+            'eklaim_terkirim_at' => 'datetime',
+            'eklaim_dicek_at' => 'datetime',
+            'eklaim_gagal_cek' => 'integer',
+            'diajukan_manual_at' => 'datetime',
         ];
     }
 
     public function analyses(): HasMany
     {
         return $this->hasMany(FolderAnalysis::class)->latest('id');
+    }
+
+    public function diajukanManualOleh(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'diajukan_manual_oleh');
+    }
+
+    /** Tahap pengajuan: terkirim | final (otomatis dari E-Klaim) | manual | dianalisa | null. */
+    public function tahapPengajuan(): ?string
+    {
+        return $this->eklaim_status ?: ($this->diajukan_manual_at ? 'manual' : ($this->analysis_status === 'selesai' ? 'dianalisa' : null));
     }
 
     public function vclaimKlaim(): HasOne

@@ -169,3 +169,29 @@ sudo rm -rf /var/www/casemix-ai/storage/app/*                       # repo tetap
 ```
 
 Hapus juga job `deploy-host` dari `.github/workflows/deploy.yml`. Jangan hapus `/var/www/casemix-ai` (sumber build & lokasi runner deploy).
+
+## Lampiran: Sinkron status E-Klaim (READ-ONLY)
+
+CERMAT membaca status klaim dari E-Klaim (`get_claim_data` saja; metode lain ditolak di `App\Services\Eklaim\EklaimClient::WHITELIST`). Tidak ada penulisan ke E-Klaim.
+
+**Konfigurasi** (`/srv/cermat/.env`, jangan pernah dicetak/di-log):
+
+```
+EKLAIM_WS_URL=http://192.168.1.43/eklaim/ws.php
+EKLAIM_ENCRYPTION_KEY=<hex 64 karakter dari Setup E-Klaim>
+EKLAIM_SYNC_ENABLED=false
+```
+
+**Kolom** di `ftp_folders`: `eklaim_status` (null|final|terkirim), `eklaim_final_at`, `eklaim_terkirim_at`, `eklaim_dicek_at`, `eklaim_gagal_cek`, `diajukan_manual_at`, `diajukan_manual_oleh`.
+Pemetaan field respons → status ada di satu tempat: `App\Services\Eklaim\EklaimStatus` (perkiraan: `bpjs_dc_status_cd=sent` → terkirim, `klaim_status_cd=final` → final). Koreksi di sana setelah melihat respons nyata.
+
+**Cara uji & aktivasi**
+
+1. `cermat exec -T app php artisan migrate --force`
+2. Isi `EKLAIM_WS_URL` dan `EKLAIM_ENCRYPTION_KEY`, biarkan `EKLAIM_SYNC_ENABLED=false`, lalu `cermat up -d app` (atau `config:cache` ulang).
+3. Uji satu SEP (hanya field status yang ditampilkan): `cermat exec -T app php artisan casemix:eklaim-sync-status --sep=<NO_SEP> --dry-run`. Cocokkan dengan E-Klaim; bila nama/nilai field berbeda, ubah `EklaimStatus`.
+4. Uji putaran tanpa menyimpan: `... casemix:eklaim-sync-status --dry-run --limit=10`.
+5. Aktifkan: `EKLAIM_SYNC_ENABLED=true`, muat ulang konfigurasi. Scheduler menjalankan tiap 15 menit (withoutOverlapping), jeda 300 ms per permintaan, berhenti setelah 3 kegagalan koneksi beruntun.
+6. Pantau ringkasan (jumlah saja) di `storage/logs/eklaim-YYYY-MM-DD.log`.
+
+Di halaman berkas tampil alur Dianalisa → Final di E-Klaim → Terkirim ke BPJS → status VClaim, sumber (otomatis/manual), dan tombol "Tandai sudah diajukan" bila status E-Klaim belum terdeteksi. Daftar verifikasi punya filter "Status pengajuan".

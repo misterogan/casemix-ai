@@ -73,6 +73,14 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Ringkasan sinkron status E-Klaim (jumlah saja, tanpa data pasien)
+        'eklaim' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/eklaim.log'),
+            'level' => 'info',
+            'days' => 30,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

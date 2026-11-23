@@ -16,3 +16,7 @@ Artisan::command('inspire', function () {
 // Bridging VClaim Monitoring (hanya GET; berhenti diam bila CASEMIX_VCLAIM_ENABLED=false)
 \Illuminate\Support\Facades\Schedule::command('casemix:vclaim-sync-kunjungan')->hourly()->withoutOverlapping();
 \Illuminate\Support\Facades\Schedule::command('casemix:vclaim-sync-klaim')->dailyAt('02:00')->withoutOverlapping();
+
+// Status klaim dari E-Klaim (hanya get_claim_data, READ-ONLY); aktif bila EKLAIM_SYNC_ENABLED=true
+\Illuminate\Support\Facades\Schedule::command('casemix:eklaim-sync-status')->everyFifteenMinutes()->withoutOverlapping(14)
+    ->when(fn () => \App\Services\Eklaim\EklaimClient::enabled());
