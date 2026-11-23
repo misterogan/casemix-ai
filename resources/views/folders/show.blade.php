@@ -58,6 +58,7 @@
                         @if ($folder->files_modified_at) · diperbarui di FTP {{ $folder->files_modified_at->translatedFormat('d M Y H:i') }}@endif
                     </p>
                     @include('folders.partials.eklaim-status')
+                    <div class="mt-1">@include('folders.partials.verifikasi-latar', ['f' => $folder])</div>
                     @if ($menunggu)
                         <p class="mt-1 text-sm font-medium text-purple-800">Saran DPJP: {{ $menunggu }} menunggu tindak lanjut</p>
                     @endif
@@ -283,5 +284,5 @@
         </div>
     </dialog>
 </div>
-@vite(['resources/js/folder-status.js', 'resources/js/manual-upload.js', 'resources/js/folder-page.js'])
+@vite(['resources/js/folder-status.js', 'resources/js/manual-upload.js', 'resources/js/folder-page.js', 'resources/js/verifikasi-latar.js'])
 </x-app-layout>

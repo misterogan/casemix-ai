@@ -41,6 +41,8 @@ return [
         'render_dpi' => 110,
         'pdftoppm_binary' => env('PDFTOPPM_BINARY', 'pdftoppm'),
         'queue' => env('CASEMIX_AI_QUEUE', 'ai'),
+        // Verifikasi massal di antrean terpisah supaya verifikasi satuan tidak antre di belakangnya
+        'queue_massal' => env('CASEMIX_AI_QUEUE_MASSAL', 'ai-bulk'),
         // Claude: off = thinking dimatikan (token keluaran untuk jawaban), low = effort rendah
         'thinking' => env('CASEMIX_AI_THINKING', 'off'),
         // Model per tugas. Kosong = model standar Penyedia AI aktif.

@@ -45,6 +45,17 @@ class FolderDocument extends Model
         return DocumentType::tryFrom((string) $this->doc_type)?->label() ?? 'Lainnya';
     }
 
+    /** Status pemeriksaan per file untuk verifikasi latar: menunggu|diperiksa|selesai|gagal (turunan kolom status). */
+    public function statusPemeriksaan(): string
+    {
+        return match ($this->status) {
+            ReviewStatus::Berjalan => 'diperiksa',
+            ReviewStatus::Selesai => 'selesai',
+            ReviewStatus::Gagal => 'gagal',
+            default => 'menunggu',
+        };
+    }
+
     public function isDone(): bool
     {
         return in_array($this->status, [ReviewStatus::Selesai, ReviewStatus::Gagal], true);

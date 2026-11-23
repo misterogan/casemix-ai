@@ -367,7 +367,9 @@ class FolderVerificationTest extends TestCase
 
         $this->assertCount(2, Http::recorded(), 'Tidak ada request setelah dokumen gagal, termasuk tahap 2');
         $st = $a->documents->pluck('status', 'name')->map->value->all();
-        $this->assertSame(['Billing.png' => 'selesai', 'Resume Medis.png' => 'gagal', 'SEP.png' => 'dibatalkan'], $st);
+        $this->assertSame(['Billing.png' => 'selesai', 'Resume Medis.png' => 'gagal', 'SEP.png' => 'antre'], $st, 'File sesudahnya tetap menunggu');
+        $this->assertSame('gagal', $folder->fresh()->verifikasi_status);
+        $this->assertStringContainsString('Resume Medis.png', $folder->fresh()->verifikasi_pesan);
         $resume = $a->documents->firstWhere('name', 'Resume Medis.png');
         $this->assertStringContainsString('bukan JSON', $resume->error);
         $this->assertEquals(0.003, (float) $resume->cost_usd, 'Biaya tetap tercatat walau jawaban gagal diolah');
@@ -376,7 +378,7 @@ class FolderVerificationTest extends TestCase
         $this->assertSame('gagal', $folder->fresh()->state());
 
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))
-            ->assertSee('Tidak diproses karena dokumen sebelumnya gagal')->assertSee('Lanjutkan dari dokumen yang gagal')
+            ->assertSee('Belum diproses; tekan Lanjutkan untuk memeriksa')->assertSee('Lanjutkan dari dokumen yang gagal')
             ->assertSee('data-resynth hidden', false);
         $this->actingAs($this->koordinator)->post(route('folders.resynthesize', $folder))->assertSessionHas('warn');
         $this->assertCount(2, Http::recorded(), 'Ulangi rekomendasi ditolak bila ada file gagal');
@@ -403,7 +405,8 @@ class FolderVerificationTest extends TestCase
         Queue::fake();
         $this->actingAs($this->koordinator)->post(route('folders.resume', $folder))->assertSessionHas('ok');
 
-        Queue::assertPushedWithChain(ReadFolderDocument::class, [ReadFolderDocument::class, SynthesizeFolderAnalysis::class]);
+        Queue::assertPushed(\App\Jobs\VerifikasiBerkas::class, 1);
+        Queue::assertNotPushed(ReadFolderDocument::class);
         $this->assertSame(['Billing.png' => 'selesai', 'Resume Medis.png' => 'antre', 'SEP.png' => 'antre'],
             FolderAnalysis::sole()->documents->pluck('status', 'name')->map->value->all());
     }

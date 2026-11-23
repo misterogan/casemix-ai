@@ -99,13 +99,43 @@
                     @endif
                 </div>
             @else
+                @if ($bolehAksi)
+                    {{-- Verifikasi massal: checkbox di tiap baris memakai form="form-massal" --}}
+                    <form id="form-massal" method="POST" action="{{ route('verifikasi.latar.massal') }}" data-perkiraan-url="{{ route('verifikasi.latar.perkiraan') }}"
+                          class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                        @csrf
+                        <label class="inline-flex items-center gap-2"><input type="checkbox" class="size-4" data-pilih-semua> Pilih semua di halaman ini</label>
+                        <label class="inline-flex items-center gap-2"><input type="checkbox" name="ulang" value="1" class="size-4" data-ulang> Analisa ulang yang sudah selesai</label>
+                        <button type="submit" class="btn-primary" data-verifikasi-terpilih disabled>Verifikasi terpilih <span class="num" data-jumlah-terpilih></span></button>
+                        <span class="text-xs text-abu">Maks {{ \App\Services\Verification\VerifikasiLatar::MAKS_MASSAL }} berkas per aksi; berjalan di latar belakang.</span>
+                    </form>
+                    @php $nAktif = ($latar['antre'] ?? 0) + ($latar['berjalan'] ?? 0); $nJeda = $latar['dijeda'] ?? 0; @endphp
+                    @if ($nAktif || $nJeda || ($latar['menjeda'] ?? 0))
+                        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                            <span class="num text-abu">Verifikasi latar: {{ $nAktif }} antre/berjalan · {{ $latar['menjeda'] ?? 0 }} menjeda · {{ $nJeda }} dijeda</span>
+                            @if ($nAktif)
+                                <form method="POST" action="{{ route('verifikasi.latar.jeda_semua') }}" data-konfirmasi="Jeda semua verifikasi yang antre/berjalan?">
+                                    @csrf
+                                    <button type="submit" class="btn-secondary">Jeda semua</button>
+                                </form>
+                            @endif
+                            @if ($nJeda)
+                                <form method="POST" action="{{ route('verifikasi.latar.lanjut_semua') }}">
+                                    @csrf
+                                    <button type="submit" class="btn-secondary">Lanjutkan semua</button>
+                                </form>
+                            @endif
+                        </div>
+                    @endif
+                @endif
                 <ol class="mt-1">
                     @foreach ($folders as $f)
-                        @include('folders.partials.result-item', ['f' => $f, 'q' => ''])
+                        @include('folders.partials.result-item', ['f' => $f, 'q' => '', 'massal' => $bolehAksi])
                     @endforeach
                 </ol>
                 {{ $folders->links('folders.partials.pagination') }}
             @endif
         </div>
     </div>
+@vite(['resources/js/verifikasi-latar.js'])
 </x-app-layout>

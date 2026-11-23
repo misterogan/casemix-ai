@@ -11,7 +11,7 @@
         'gagal' => \Illuminate\Support\Str::limit((string) $d->error, 90),
         'dibatalkan' => 'Tidak diproses karena dokumen sebelumnya gagal',
         'berjalan' => 'sedang dibaca',
-        default => 'menunggu',
+        default => ($berjalan ?? true) ? 'menunggu' : 'Belum diproses; tekan Lanjutkan untuk memeriksa',
     };
     $daftar = fn ($v) => collect(is_array($v) ? $v : [])->filter(fn ($x) => is_string($x) && $x !== '')->values();
     $biaya = collect(is_array($isi['biaya'] ?? null) ? $isi['biaya'] : [])->filter(fn ($b) => is_array($b) && filled($b['komponen'] ?? null));

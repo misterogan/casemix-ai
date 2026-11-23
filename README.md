@@ -43,7 +43,7 @@ npm run build
 Jalankan worker antrean. Pemeriksaan AI dan impor FTP berjalan di antrean `ai`:
 
 ```bash
-php artisan queue:work redis --queue=ai,default --timeout=1800 --tries=1
+php artisan queue:work redis --queue=ai,ai-bulk,default --timeout=1800 --tries=1
 # atau: php artisan horizon
 ```
 

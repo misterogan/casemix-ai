@@ -63,7 +63,38 @@ class FtpFolder extends Model
             'eklaim_dicek_at' => 'datetime',
             'eklaim_gagal_cek' => 'integer',
             'diajukan_manual_at' => 'datetime',
+            'verifikasi_heartbeat_at' => 'datetime',
+            'verifikasi_file_selesai' => 'integer',
+            'verifikasi_file_total' => 'integer',
         ];
+    }
+
+    /** Status verifikasi latar belakang yang masih "hidup" (polling berjalan selama salah satunya tampil). */
+    public const VERIFIKASI_AKTIF = ['antre', 'berjalan', 'menjeda'];
+
+    /** Heartbeat lebih tua dari ini saat berjalan/menjeda = job terhenti (mis. worker restart saat deploy). */
+    public const HEARTBEAT_BASI_MENIT = 10;
+
+    /** Status tampil: antre|berjalan|menjeda|dijeda|selesai|gagal|terhenti, atau null bila belum pernah lewat verifikasi latar. */
+    public function statusVerifikasi(): ?string
+    {
+        $s = $this->verifikasi_status;
+        if (in_array($s, ['berjalan', 'menjeda'], true)
+            && (! $this->verifikasi_heartbeat_at || $this->verifikasi_heartbeat_at->lt(now()->subMinutes(self::HEARTBEAT_BASI_MENIT)))) {
+            return 'terhenti';
+        }
+
+        return $s;
+    }
+
+    public function bisaDijeda(): bool
+    {
+        return in_array($this->statusVerifikasi(), ['antre', 'berjalan'], true);
+    }
+
+    public function bisaDilanjutkan(): bool
+    {
+        return in_array($this->statusVerifikasi(), ['dijeda', 'gagal', 'terhenti'], true);
     }
 
     public function analyses(): HasMany

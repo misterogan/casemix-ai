@@ -77,6 +77,16 @@ Route::middleware(['auth', 'active'])->group(function () {
     // Verifikasi langsung dari folder FTP
     Route::middleware('permission:folders.view')->group(function () {
         Route::get('/verifikasi', [FolderController::class, 'index'])->name('folders.index');
+        // Verifikasi latar belakang: status (polling), massal, jeda/lanjut
+        Route::get('/verifikasi-latar/status', [\App\Http\Controllers\VerifikasiLatarController::class, 'status'])->name('verifikasi.latar.status');
+        Route::middleware('permission:folders.analyze')->controller(\App\Http\Controllers\VerifikasiLatarController::class)->group(function () {
+            Route::post('/verifikasi-latar/perkiraan', 'perkiraan')->name('verifikasi.latar.perkiraan');
+            Route::post('/verifikasi-latar/massal', 'massal')->name('verifikasi.latar.massal');
+            Route::post('/verifikasi-latar/jeda-semua', 'jedaSemua')->name('verifikasi.latar.jeda_semua');
+            Route::post('/verifikasi-latar/lanjutkan-semua', 'lanjutSemua')->name('verifikasi.latar.lanjut_semua');
+            Route::post('/verifikasi/{folder}/jeda', 'jeda')->name('verifikasi.latar.jeda');
+            Route::post('/verifikasi/{folder}/lanjutkan-latar', 'lanjut')->name('verifikasi.latar.lanjut');
+        });
         Route::get('/verifikasi/{folder}', [FolderController::class, 'show'])->name('folders.show');
         Route::get('/verifikasi/{folder}/status', [FolderController::class, 'status'])->name('folders.status');
         Route::get('/folders/{folder}/status-analisa', [FolderController::class, 'statusAnalisa'])->name('folders.status_analisa');

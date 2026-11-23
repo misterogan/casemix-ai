@@ -7,7 +7,7 @@ Docker berjalan terpisah: web di port **8310**, MySQL sendiri tanpa port publik,
 |---|---|
 | `app` | php-fpm 8.4 (UID/GID = `oem`) |
 | `nginx` | port 8310 → 80, root `public/` |
-| `queue` | `php artisan queue:work --queue=ai,default --tries=3` (job AI ada di antrean `ai`) |
+| `queue` | `php artisan queue:work --queue=ai,ai-bulk,default --tries=3` (verifikasi satuan di `ai`, massal di `ai-bulk`) |
 | `scheduler` | `php artisan schedule:work` |
 | `mysql` | MySQL 8, data `/srv/cermat/mysql` |
 

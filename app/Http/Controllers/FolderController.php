@@ -23,6 +23,7 @@ use App\Services\Vclaim\VclaimHistoriService;
 use App\Services\Import\SimrsFtp;
 use App\Services\Verification\FolderAnalyzer;
 use App\Services\Verification\FolderSync;
+use App\Services\Verification\VerifikasiLatar;
 use App\Support\Audit;
 use App\Support\VerificationRubric;
 use Illuminate\Http\Request;
@@ -89,6 +90,9 @@ class FolderController extends Controller
             'tabCounts' => collect(['aktif', 'dipindahkan', 'hilang_tanpa_periksa'])->mapWithKeys(fn ($t) => [$t => $filtered()->moved($t)->count()])->all(),
             'counts' => ['semua' => $base()->count(), 'sudah' => $byStatus($base(), 'sudah')->count(), 'belum' => $byStatus($base(), 'belum')->count()],
             'lastSync' => AppSetting::get(FolderSync::KEY_LAST),
+            'bolehAksi' => $request->user()->can('folders.analyze'),
+            'latar' => FtpFolder::withoutGlobalScopes()->whereNotNull('verifikasi_status')->whereIn('verifikasi_status', ['antre', 'berjalan', 'menjeda', 'dijeda'])
+                ->selectRaw('verifikasi_status, count(*) as n')->groupBy('verifikasi_status')->pluck('n', 'verifikasi_status')->all(),
         ]);
     }
 
@@ -220,10 +224,9 @@ class FolderController extends Controller
             return back()->with('warn', $blocked);
         }
 
-        $document->update(['status' => ReviewStatus::Antre, 'error' => null, 'reused' => false]);
-        $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
-        $folder->update(['analysis_status' => 'berjalan']);
-        Bus::chain([new ReadFolderDocument($document->id), new SynthesizeFolderAnalysis($a->id)])->onQueue(config('casemix.ai.queue'))->dispatch();
+        if ($err = app(VerifikasiLatar::class)->lanjut($folder, ulangDokumen: [$document->id])) {
+            return back()->with('warn', $err);
+        }
         Audit::log('folder.proses_file', $folder, 'Meminta file dibaca ulang: ' . $document->name);
 
         return back()->with('ok', 'File dibaca ulang. Hasil tampil saat selesai.');
@@ -234,24 +237,14 @@ class FolderController extends Controller
     {
         $a = $folder->analyses()->first();
         abort_unless($a, 404);
-        if ($a->status?->isActive()) {
-            return back()->with('warn', 'Folder ini sedang dianalisa.');
-        }
-        $pending = $a->documents()->whereIn('status', [ReviewStatus::Gagal->value, ReviewStatus::Dibatalkan->value])->get();
-        if ($pending->isEmpty()) {
-            return back()->with('warn', 'Tidak ada dokumen yang perlu dilanjutkan.');
-        }
         if ($blocked = $this->startBlocker($budget)) {
             return back()->with('warn', $blocked);
         }
-
-        FolderDocument::whereKey($pending->modelKeys())->update(['status' => ReviewStatus::Antre->value, 'error' => null, 'reused' => false]);
-        $a->update(['status' => ReviewStatus::Berjalan, 'error' => null]);
-        $folder->update(['analysis_status' => 'berjalan']);
-        $jobs = $pending->sortBy('file_index')->map(fn ($d) => new ReadFolderDocument($d->id))->values()->all();
-        $jobs[] = new SynthesizeFolderAnalysis($a->id);
-        Bus::chain($jobs)->onQueue(config('casemix.ai.queue'))->dispatch();
-        Audit::log('folder.analisa_lanjut', $folder, 'Melanjutkan analisa dari dokumen yang gagal (' . $pending->count() . ' dokumen)');
+        $n = $a->documents()->whereNot('status', ReviewStatus::Selesai->value)->count();
+        if ($err = app(VerifikasiLatar::class)->lanjut($folder)) {
+            return back()->with('warn', $err);
+        }
+        Audit::log('folder.analisa_lanjut', $folder, 'Melanjutkan analisa dari file yang belum selesai (' . $n . ' dokumen)');
 
         return back()->with('ok', 'Analisa dilanjutkan. Halaman diperbarui otomatis saat selesai.');
     }
@@ -434,15 +427,9 @@ class FolderController extends Controller
     }
 
     /** @param bool $all true = semua file dibaca ulang; false = hanya file yang berubah */
-    private function start(FtpFolder $folder, int $userId, bool $all = false, bool $paksa = false): FolderAnalysis
+    public function start(FtpFolder $folder, int $userId, bool $all = false, bool $paksa = false, ?string $queue = null): FolderAnalysis
     {
-        $a = FolderAnalysis::create(['ftp_folder_id' => $folder->id, 'status' => ReviewStatus::Antre, 'requested_by' => $userId, 'paksa' => $paksa || $all]);
-        $folder->update(['analysis_status' => 'antre', 'last_analysis_id' => $a->id]);
-        app(FolderAnalyzer::class)->prepare($a); // daftar dokumen langsung tampil sebagai "menunggu"
-        if ($all) {
-            $a->documents()->update(['status' => ReviewStatus::Antre->value, 'reused' => false, 'summary' => null, 'findings' => null, 'finished_at' => null]);
-        }
-        RunFolderAnalysis::dispatch($a->id);
+        $a = app(VerifikasiLatar::class)->mulai($folder, $userId, $all, $paksa, $queue);
 
         return $a;
     }

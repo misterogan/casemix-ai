@@ -42,8 +42,8 @@ services:
 
   queue:
     <<: *app
-    # Job AI memakai antrean "ai" (CASEMIX_AI_QUEUE); tanpa --queue worker hanya membaca "default".
-    command: php artisan queue:work --queue=ai,default --tries=3
+    # Urutan prioritas: "ai" (verifikasi satuan) dulu, lalu "ai-bulk" (verifikasi massal), lalu "default".
+    command: php artisan queue:work --queue=ai,ai-bulk,default --tries=3
     stop_grace_period: 60s
 
   scheduler:
