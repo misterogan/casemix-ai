@@ -69,7 +69,7 @@
                         @if ($tampilAnalisa)
                             <form method="POST" action="{{ route('folders.analyze', $folder) }}">
                                 @csrf
-                                <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>Analisa ulang dengan AI</button>
+                                <button type="submit" class="btn-primary" @if ($kunci) data-lock @endif @disabled($berjalan || $blocker) @if ($blocker) title="{{ $blocker }}" @endif>{{ $latest ? 'Analisa ulang dengan AI' : 'Verifikasi dengan AI' }}</button>
                             </form>
                         @endif
                         @if ($total)

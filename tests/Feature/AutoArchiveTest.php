@@ -187,6 +187,6 @@ class AutoArchiveTest extends TestCase
         $koor = User::factory()->create(['is_active' => true])->assignRole('koordinator');
         $this->actingAs($koor)->get(route('folders.index', ['tab' => 'hilang_tanpa_periksa']))->assertOk()
             ->assertSee('SEPHILANG')->assertSee('Salinan tersedia s.d. 17 Feb 2027');
-        $this->actingAs($koor)->get(route('folders.show', FtpFolder::first()))->assertOk()->assertSee('Analisa ulang dengan AI');
+        $this->actingAs($koor)->get(route('folders.show', FtpFolder::first()))->assertOk()->assertSee('Verifikasi dengan AI');
     }
 }

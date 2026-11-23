@@ -36,24 +36,36 @@ class VerifikasiLatarController extends Controller
     public function jeda(Request $request, FtpFolder $folder)
     {
         if (! $this->latar->jeda($folder)) {
-            return back()->with('warn', 'Berkas ini tidak sedang diverifikasi.');
+            return $this->balas($request, $folder, 'warn', 'Berkas ini tidak sedang diverifikasi.');
         }
         Audit::log('folder.verifikasi_jeda', $folder, 'Menjeda verifikasi berkas');
 
-        return back()->with('ok', 'Verifikasi dijeda. File yang sedang dibaca AI diselesaikan dulu.');
+        return $this->balas($request, $folder, 'ok', 'Verifikasi dijeda. File yang sedang dibaca AI diselesaikan dulu.');
     }
 
     public function lanjut(Request $request, FtpFolder $folder)
     {
         if ($blocked = $this->blocker()) {
-            return back()->with('warn', $blocked);
+            return $this->balas($request, $folder, 'warn', $blocked);
         }
         if ($err = $this->latar->lanjut($folder)) {
-            return back()->with('warn', $err);
+            return $this->balas($request, $folder, 'warn', $err);
         }
         Audit::log('folder.verifikasi_lanjut', $folder, 'Melanjutkan verifikasi berkas dari file yang belum selesai');
 
-        return back()->with('ok', 'Verifikasi dilanjutkan dari file yang belum selesai.');
+        return $this->balas($request, $folder, 'ok', 'Verifikasi dilanjutkan dari file yang belum selesai.');
+    }
+
+    /** Tombol Jeda/Lanjutkan lewat fetch: kembalikan status + HTML terbaru supaya tombol berganti tanpa memuat ulang. */
+    private function balas(Request $request, FtpFolder $folder, string $jenis, string $pesan)
+    {
+        if (! $request->expectsJson()) {
+            return back()->with($jenis, $pesan);
+        }
+        $folder->refresh();
+
+        return response()->json(['ok' => $jenis === 'ok', 'pesan' => $pesan, 'status' => $folder->statusVerifikasi(),
+            'html' => view('folders.partials.verifikasi-latar', ['f' => $folder, 'bolehAksi' => true])->render()]);
     }
 
     /** POST JSON: jumlah berkas yang akan diproses/dilewati dan perkiraan biaya, untuk konfirmasi sebelum dispatch. */

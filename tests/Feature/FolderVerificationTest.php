@@ -215,13 +215,17 @@ class FolderVerificationTest extends TestCase
         $this->actingAs($this->koordinator)->get(route('folders.index'))->assertOk();
     }
 
-    public function test_dibuka_pertama_kali_menganalisa_otomatis_lalu_tidak_lagi(): void
+    public function test_dibuka_tidak_menganalisa_otomatis_hanya_lewat_tombol(): void
     {
         Queue::fake();
         $folder = $this->synced();
 
+        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('Verifikasi dengan AI');
+        Queue::assertNothingPushed();
+        $this->assertSame(0, FolderAnalysis::count());
+
+        $this->actingAs($this->koordinator)->post(route('folders.analyze', $folder))->assertSessionHas('ok');
         $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk()->assertSee('AI sedang membaca')->assertSee('0 dari 2 file selesai');
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder))->assertOk();
 
         Queue::assertPushed(RunFolderAnalysis::class, 1);
         $this->assertSame(1, FolderAnalysis::count());
@@ -482,7 +486,7 @@ class FolderVerificationTest extends TestCase
     {
         Queue::fake();
         $folder = $this->synced();
-        $this->actingAs($this->koordinator)->get(route('folders.show', $folder));
+        $this->actingAs($this->koordinator)->post(route('folders.analyze', $folder));
 
         $this->actingAs($this->koordinator)->getJson(route('folders.status', $folder))
             ->assertJson(['active' => true, 'done' => 0, 'total' => 2, 'summary_html' => null])->assertJsonCount(2, 'docs');

@@ -5,27 +5,47 @@ function elemenAktif() {
   return [...document.querySelectorAll('[data-verif]')].filter((el) => AKTIF.includes(el.dataset.verifStatus));
 }
 
+// Polling selalu hidup: tiap 3 detik memindai DOM; hanya memanggil server bila ada berkas antre/berjalan/menjeda.
+// Jadi baris yang baru menjadi "menjeda" (atau dimuat lewat pencarian) tetap diikuti sampai "dijeda" dan tombolnya berganti.
+function ganti(id, html) {
+  document.querySelectorAll(`[data-verif="${id}"]`).forEach((el) => { el.outerHTML = html; });
+}
+
 function initPolling() {
-  const awal = elemenAktif();
-  if (!awal.length) return;
-  const url = awal[0].dataset.verifUrl;
   const tick = async () => {
     const aktif = elemenAktif();
-    if (!aktif.length) return; // semua selesai/dijeda: polling berhenti
-    try {
-      const ids = aktif.map((el) => el.dataset.verif).join(',');
-      const r = await fetch(`${url}?ids=${encodeURIComponent(ids)}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      if (!r.ok) return setTimeout(tick, 6000);
-      const j = await r.json();
-      j.berkas.forEach((b) => {
-        document.querySelectorAll(`[data-verif="${b.id}"]`).forEach((el) => { el.outerHTML = b.html; });
-      });
-      if (j.aktif) setTimeout(tick, 3000);
-    } catch {
-      setTimeout(tick, 6000);
+    if (aktif.length) {
+      try {
+        const ids = [...new Set(aktif.map((el) => el.dataset.verif))].join(',');
+        const r = await fetch(`${aktif[0].dataset.verifUrl}?ids=${encodeURIComponent(ids)}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (r.ok) (await r.json()).berkas.forEach((b) => ganti(b.id, b.html));
+      } catch { /* coba lagi di putaran berikutnya */ }
     }
+    setTimeout(tick, 3000);
   };
   setTimeout(tick, 3000);
+}
+
+// Tombol Jeda/Lanjutkan: kirim lewat fetch, ganti status + tombol langsung (tanpa memuat ulang). Tanpa JS: form POST biasa.
+function initAksi() {
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest?.('form[data-verif-aksi]');
+    if (!form) return;
+    e.preventDefault();
+    const wadah = form.closest('[data-verif]');
+    form.querySelector('button')?.setAttribute('disabled', '');
+    try {
+      const r = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || r.status);
+      // Halaman detail: setelah Lanjutkan muat ulang supaya daftar file ikut dipantau (GET detail tidak memulai apa pun)
+      if (j.ok && form.hasAttribute('data-lanjut') && document.querySelector('[data-docs]')) return window.location.reload();
+      if (wadah) ganti(wadah.dataset.verif, j.html);
+      if (!j.ok && j.pesan) window.alert(j.pesan);
+    } catch {
+      form.submit();
+    }
+  });
 }
 
 function initMassal() {
@@ -74,4 +94,5 @@ function initMassal() {
 }
 
 initPolling();
+initAksi();
 initMassal();

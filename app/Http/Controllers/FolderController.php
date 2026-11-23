@@ -102,16 +102,14 @@ class FolderController extends Controller
         return FolderDocument::where('ftp_folder_id', $folder->id)->whereNotNull('stored_path')->exists();
     }
 
-    /** Dibuka pertama kali: analisa AI dimulai otomatis. Berikutnya: hasil tersimpan, tanpa memanggil AI. */
+    /**
+     * Hanya menampilkan hasil tersimpan. GET tidak pernah memulai/melanjutkan verifikasi atau mengubah statusnya;
+     * verifikasi hanya lewat POST eksplisit (Verifikasi/Analisa, Lanjutkan, atau aksi massal).
+     */
     public function show(Request $request, FtpFolder $folder, AiBudget $budget)
     {
         $latest = $folder->analyses()->first();
         $blocker = $this->startBlocker($budget);
-
-        if (! $latest && ! $folder->missing_at && ! $blocker && $request->user()->can('folders.analyze')) {
-            $latest = $this->start($folder, $request->user()->id);
-            Audit::log('folder.analisa', $folder, 'Membuka folder pertama kali; analisa AI dimulai otomatis');
-        }
 
         $data = $this->viewData($folder, $latest, $blocker);
         // Bagian Temuan: gabungan semua file, tanda "Sudah dicek" per kunci stabil

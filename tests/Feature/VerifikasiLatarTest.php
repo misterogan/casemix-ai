@@ -313,6 +313,94 @@ class VerifikasiLatarTest extends TestCase
         $this->assertSame('terhenti', $f->fresh()->statusVerifikasi());
     }
 
+    /** Berkas pada status tertentu: dijeda, terhenti, gagal (punya analisa), atau belum diverifikasi. */
+    private function berkasStatus(string $status): FtpFolder
+    {
+        [$f] = $this->berkas(1);
+        if ($status === 'belum') {
+            return $f;
+        }
+        $this->fakeAi(1);
+        $this->mulai($f);
+        $this->langkah(); // file pertama selesai, berkas berjalan
+        match ($status) {
+            'dijeda' => app(VerifikasiLatar::class)->tandaiDijeda($f->fresh(), VerifikasiLatar::PESAN_JEDA),
+            'terhenti' => $f->update(['verifikasi_heartbeat_at' => now()->subMinutes(FtpFolder::HEARTBEAT_BASI_MENIT + 1)]),
+            'gagal' => app(VerifikasiLatar::class)->tandaiGagal($f->fresh(), 'uji'),
+        };
+        $f->refresh();
+        $this->assertSame($status, $f->statusVerifikasi());
+
+        return $f;
+    }
+
+    public static function statusDiam(): array
+    {
+        return ['dijeda' => ['dijeda'], 'terhenti' => ['terhenti'], 'gagal' => ['gagal'], 'belum' => ['belum']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('statusDiam')]
+    public function test_buka_detail_tidak_memulai_atau_melanjutkan_verifikasi(string $status): void
+    {
+        {
+            $f = $this->berkasStatus($status);
+            Queue::fake(); // abaikan job dari persiapan
+            $sebelum = [$f->verifikasi_status, $f->analysis_status, $f->analyses()->count(), $f->analyses()->first()?->status];
+
+            $this->actingAs($this->koordinator)->get(route('folders.show', $f))->assertOk();
+            $this->actingAs($this->koordinator)->get(route('folders.status', $f))->assertOk();
+            $this->actingAs($this->koordinator)->get(route('folders.status_analisa', $f))->assertOk();
+            $this->actingAs($this->koordinator)->get(route('verifikasi.latar.status', ['ids' => $f->id]))->assertOk();
+
+            Queue::assertNothingPushed();
+            $f->refresh();
+            $this->assertSame($sebelum, [$f->verifikasi_status, $f->analysis_status, $f->analyses()->count(), $f->analyses()->first()?->status], "Status berubah saat GET ($status)");
+        }
+    }
+
+    public static function statusTombol(): array
+    {
+        return ['dijeda' => ['dijeda', true], 'terhenti' => ['terhenti', true], 'gagal' => ['gagal', true], 'berjalan' => ['berjalan', false], 'menjeda' => ['menjeda', null]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('statusTombol')]
+    public function test_tombol_jeda_lanjutkan_sesuai_status_di_daftar_dan_detail(string $status, ?bool $lanjut): void
+    {
+        {
+            $f = $status === 'berjalan' || $status === 'menjeda' ? $this->berkasBerjalan($status) : $this->berkasStatus($status);
+            foreach ([route('folders.index'), route('folders.show', $f)] as $url) {
+                $r = $this->actingAs($this->koordinator)->get($url)->assertOk();
+                $lanjut === true ? $r->assertSee(route('verifikasi.latar.lanjut', $f)) : $r->assertDontSee(route('verifikasi.latar.lanjut', $f));
+                $lanjut === false ? $r->assertSee(route('verifikasi.latar.jeda', $f)) : $r->assertDontSee(route('verifikasi.latar.jeda', $f));
+                $r->assertSee('data-verif-status="' . $status . '"', false);
+            }
+        }
+        if ($status === 'berjalan') { // Jeda lewat fetch: JSON berisi status baru + tombol (tanpa memuat ulang)
+            $this->actingAs($this->koordinator)->postJson(route('verifikasi.latar.jeda', $f))
+                ->assertJsonPath('status', 'menjeda')->assertJsonPath('ok', true);
+            $this->langkah();
+            $j = $this->actingAs($this->koordinator)->getJson(route('verifikasi.latar.status', ['ids' => $f->id]))->assertJsonPath('berkas.0.status', 'dijeda');
+            $this->assertStringContainsString(route('verifikasi.latar.lanjut', $f), $j->json('berkas.0.html'));
+
+            return;
+        }
+        // Polling status JSON: menjeda tetap aktif (polling berjalan terus sampai dijeda)
+        $this->actingAs($this->koordinator)->get(route('verifikasi.latar.status', ['ids' => $f->id]))->assertJsonPath('aktif', $lanjut === null ? true : $lanjut === false);
+    }
+
+    private function berkasBerjalan(string $status): FtpFolder
+    {
+        [$f] = $this->berkas(1);
+        $this->fakeAi(1);
+        $this->mulai($f);
+        $this->langkah();
+        if ($status === 'menjeda') {
+            app(VerifikasiLatar::class)->jeda($f);
+        }
+
+        return $f->fresh();
+    }
+
     /** Jumlah panggilan AI per file (dari nama file di prompt) + periksa silang. */
     private function panggilanPerFile(): array
     {
